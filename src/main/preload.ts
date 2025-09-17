@@ -29,14 +29,19 @@ const electronHandler = {
 contextBridge.exposeInMainWorld('electron', electronHandler)
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  addCount: (callback: (_event: Electron.IpcRendererEvent, value: number) => void) => {
+  addCount: (
+    callback: (_event: Electron.IpcRendererEvent, value: number) => void
+  ) => {
     ipcRenderer.on('add-count', callback)
   },
-  fileOpen: (callback: (_event: Electron.IpcRendererEvent, filePath: string) => void) => {
+  fileOpen: (
+    callback: (_event: Electron.IpcRendererEvent, filePath: string) => void
+  ) => {
     ipcRenderer.on('file-open', callback)
   },
   openFile: (url: string) => ipcRenderer.send('open-file', url),
-  sendFile: (callback: (url: string) => void) => ipcRenderer.on('send-file', (_event, url) => callback(url)),
+  sendFile: (callback: (url: string) => void) =>
+    ipcRenderer.on('send-file', (_event, url) => callback(url))
 })
 
 export type ElectronHandler = typeof electronHandler

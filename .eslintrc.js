@@ -11,7 +11,8 @@ module.exports = {
     "plugin:@typescript-eslint/recommended",
     "plugin:react/recommended",
     "plugin:react-hooks/recommended",
-    "plugin:jsdoc/recommended"
+    "plugin:jsdoc/recommended",
+    "prettier"
   ],
   overrides: [
     {
@@ -45,7 +46,11 @@ module.exports = {
     "@typescript-eslint/prefer-optional-chain": "error",
     "object-curly-spacing": ["error", "always"],
     "no-constant-condition": "warn",
-    "jsdoc/require-jsdoc": "off"
+    "jsdoc/require-jsdoc": "off",
+    "@typescript-eslint/no-extra-semi": "off",
+    "no-extra-semi": "off",
+    "semi": "off",
+    "@typescript-eslint/semi": "off"
   },
   env: {
     browser: true,

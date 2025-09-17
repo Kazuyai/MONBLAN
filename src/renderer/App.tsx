@@ -16,15 +16,19 @@ const App = () => {
   const [selectionStartFrame, setSelectionStartFrame] = useState<number>(0)
   const [selectionFrameWidth, setSelectionFrameWidth] = useState<number>(0)
 
-  const [autoAnnotationResponseData, setAutoAnnotationResponseData] = useState<{
-    startFrame: number
-    endFrame: number
-    text: string
-    layerName: string
-    layerIndex: number
-  }[]>([])
+  const [autoAnnotationResponseData, setAutoAnnotationResponseData] = useState<
+    {
+      startFrame: number
+      endFrame: number
+      text: string
+      layerName: string
+      layerIndex: number
+    }[]
+  >([])
 
-  const timelineRef = useRef<{ exportCSV: () => void }>(null)
+  const timelineRef = useRef<{ exportCSV: () => void; exportEAF: () => void }>(
+    null
+  )
 
   const MAX_HEIGHT = 80
 
@@ -35,6 +39,12 @@ const App = () => {
   const handleExportCSV = () => {
     if (timelineRef.current) {
       timelineRef.current.exportCSV()
+    }
+  }
+
+  const handleExportEAF = () => {
+    if (timelineRef.current) {
+      timelineRef.current.exportEAF()
     }
   }
 
@@ -89,6 +99,7 @@ const App = () => {
           playSpeed={playSpeed}
           setPlaySpeed={setPlaySpeed}
           onExportCSV={handleExportCSV}
+          onExportEAF={handleExportEAF}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
         />
       </div>

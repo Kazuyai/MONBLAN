@@ -1,17 +1,31 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { OpenFile, AutoAnnotation, AudioVideoControls, ExportFile } from './settings_components';
-import Processing from './Processing';
+import React, { useEffect, useRef, useState } from 'react'
+import {
+  OpenFile,
+  AutoAnnotation,
+  AudioVideoControls,
+  ExportFile
+} from './settings_components'
+import Processing from './Processing'
 
 interface SettingsProps {
-  isProcessing: boolean;
-  setIsProcessing: (isProcessing: boolean) => void;
-  setVideoSrcs: (srcs: string[]) => void;
-  setIsEditing: (isEditing: boolean) => void;
-  setFrameRate: (frameRate: number) => void;
-  playSpeed: number;
-  setPlaySpeed: (playSpeed: number) => void;
-  onExportCSV: () => void;
-  setAutoAnnotationResponseData: (data: { startFrame: number; endFrame: number; text: string; layerName: string; layerIndex: number }[]) => void;
+  isProcessing: boolean
+  setIsProcessing: (isProcessing: boolean) => void
+  setVideoSrcs: (srcs: string[]) => void
+  setIsEditing: (isEditing: boolean) => void
+  setFrameRate: (frameRate: number) => void
+  playSpeed: number
+  setPlaySpeed: (playSpeed: number) => void
+  onExportCSV: () => void
+  onExportEAF: () => void
+  setAutoAnnotationResponseData: (
+    data: {
+      startFrame: number
+      endFrame: number
+      text: string
+      layerName: string
+      layerIndex: number
+    }[]
+  ) => void
 }
 
 export const Settings: React.FC<SettingsProps> = ({
@@ -23,10 +37,11 @@ export const Settings: React.FC<SettingsProps> = ({
   playSpeed,
   setPlaySpeed,
   onExportCSV,
-  setAutoAnnotationResponseData,
+  onExportEAF,
+  setAutoAnnotationResponseData
 }) => {
-  const [selectedTabIndex, setSelectedTabIndex] = useState(0);
-  const tabHeaderRef = useRef<HTMLDivElement>(null);
+  const [selectedTabIndex, setSelectedTabIndex] = useState(0)
+  const tabHeaderRef = useRef<HTMLDivElement>(null)
 
   const tabs = [
     {
@@ -37,7 +52,7 @@ export const Settings: React.FC<SettingsProps> = ({
           setVideoSrcs={setVideoSrcs}
           setFrameRate={setFrameRate}
         />
-      ),
+      )
     },
     {
       label: '動作範囲検出',
@@ -47,76 +62,71 @@ export const Settings: React.FC<SettingsProps> = ({
           setIsEditing={setIsEditing}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
         />
-      ),
+      )
     },
     {
       label: '再生速度',
       component: () => (
-        <AudioVideoControls
-          playSpeed={playSpeed}
-          setPlaySpeed={setPlaySpeed}
-        />
-      ),
+        <AudioVideoControls playSpeed={playSpeed} setPlaySpeed={setPlaySpeed} />
+      )
     },
     {
       label: 'ファイルをエクスポート',
       component: () => (
-        <ExportFile
-          onExportCSV={onExportCSV}
-        />
-      ),
-    },
-  ];
+        <ExportFile onExportCSV={onExportCSV} onExportEAF={onExportEAF} />
+      )
+    }
+  ]
 
   useEffect(() => {
-    const tabHeader = tabHeaderRef.current;
+    const tabHeader = tabHeaderRef.current
 
     // タブヘッダーのスクロール幅を取得してCSS変数に設定
     const updateScrollWidth = () => {
       if (tabHeader) {
-        const scrollWidth = tabHeader.scrollWidth; // スクロール可能な幅
-        tabHeader.style.setProperty('--tab-header-scroll-width', `${scrollWidth}px`);
+        const scrollWidth = tabHeader.scrollWidth // スクロール可能な幅
+        tabHeader.style.setProperty(
+          '--tab-header-scroll-width',
+          `${scrollWidth}px`
+        )
       }
-    };
+    }
 
     // 初期化
-    updateScrollWidth();
+    updateScrollWidth()
 
     // ウィンドウリサイズ時に再計算
-    window.addEventListener('resize', updateScrollWidth);
+    window.addEventListener('resize', updateScrollWidth)
 
     // クリーンアップ処理
     return () => {
-      window.removeEventListener('resize', updateScrollWidth);
-    };
-  }, []);
+      window.removeEventListener('resize', updateScrollWidth)
+    }
+  }, [])
 
   useEffect(() => {
-    const tabHeader = tabHeaderRef.current;
+    const tabHeader = tabHeaderRef.current
 
     const handleWheel = (event: WheelEvent) => {
       if (tabHeader) {
-        event.preventDefault(); // デフォルトのスクロールを防ぐ
-        tabHeader.scrollLeft += event.deltaY; // 横スクロールを実行
+        event.preventDefault() // デフォルトのスクロールを防ぐ
+        tabHeader.scrollLeft += event.deltaY // 横スクロールを実行
       }
-    };
+    }
 
     // カスタムイベントリスナーを追加（passive: false を指定）
-    tabHeader?.addEventListener('wheel', handleWheel, { passive: false });
+    tabHeader?.addEventListener('wheel', handleWheel, { passive: false })
 
     // クリーンアップ処理
     return () => {
-      tabHeader?.removeEventListener('wheel', handleWheel);
-    };
-  }, []);
+      tabHeader?.removeEventListener('wheel', handleWheel)
+    }
+  }, [])
 
   return (
     <section className="settings">
       {/* タブのヘッダー */}
-      <div 
-        className='tab-header'
-        ref={tabHeaderRef}
-      >
+      <div className="tab-header" ref={tabHeaderRef}>
         {tabs.map((tab, index) => (
           <div
             key={index}
@@ -129,7 +139,7 @@ export const Settings: React.FC<SettingsProps> = ({
       </div>
 
       {/* タブのコンテンツ */}
-      <div className='tab-content'>
+      <div className="tab-content">
         {tabs.map((tab, index) => (
           <div
             key={index}
@@ -139,11 +149,9 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         ))}
       </div>
-      {isProcessing && (
-        <Processing/>
-      )}
+      {isProcessing && <Processing />}
     </section>
-  );
-};
+  )
+}
 
-export default Settings;
+export default Settings
