@@ -1,0 +1,108 @@
+{
+  "name": "annotation-tool",
+  "version": "1.0.0",
+  "description": "Desktop annotation tool built with React, TypeScript, and Electron",
+  "main": "dist/main/main.js",
+  "author": "Your Name",
+  "license": "MIT",
+  "homepage": "./",
+  "scripts": {
+    "dev": "concurrently -k --names VITE,TS,ELECTRON -c blue,yellow,green \"yarn dev:react\" \"yarn dev:main\" \"yarn dev:electron\"",
+    "dev:react": "vite --port 3001 --strictPort",
+    "dev:main": "tsc-watch -p tsconfig.main.json --onSuccess \"echo TS build ready\"",
+    "dev:electron": "wait-on http://localhost:3001 && wait-on dist/main/main.js && cross-env NODE_ENV=development electron .",
+    "build": "yarn build:react && yarn build:electron",
+    "build:react": "vite build",
+    "build:electron": "tsc -p tsconfig.main.json",
+    "dist": "yarn build && electron-builder",
+    "dist:dir": "yarn build && electron-builder --dir",
+    "pack": "electron-builder --dir",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "typecheck": "tsc --noEmit",
+    "prettier": "prettier --write src/**/*.{ts,tsx,js,jsx,json,css,scss,md}",
+    "prettier:check": "prettier --check src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.8.0",
+    "electron-devtools-installer": "^4.0.0",
+    "electronmon": "^2.0.2",
+    "eslint": "^8.55.0",
+    "eslint-plugin-jsdoc": "^46.9.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-tsdoc": "^0.2.17",
+    "prettier": "^3.1.1",
+    "sass": "^1.69.5",
+    "ts-node": "^10.9.1",
+    "tsc-watch": "^7.1.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "electron-debug": "^3.2.0",
+    "electron-log": "^4.4.8",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.1",
+    "uuid": "^10.0.0"
+  },
+  "build": {
+    "appId": "com.annotation-tool.app",
+    "productName": "Annotation Tool",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+}
