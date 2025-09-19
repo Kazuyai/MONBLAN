@@ -31,6 +31,11 @@ export const OpenFile: React.FC<SettingsProps> = ({
     if (files) {
       setIsProcessing(true)
       const urls = Array.from(files).map((file) => URL.createObjectURL(file))
+
+      // ファイル名を保存（EAFエクスポート用）
+      const fileNames = Array.from(files).map((file) => file.name)
+      localStorage.setItem('videoFileNames', JSON.stringify(fileNames))
+
       setVideoSrcs(urls)
 
       const file = files[0]
