@@ -27,6 +27,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Claude Code
+.claude/
+
 # Logs
 logs
 *.log
@@ -64,3 +67,18 @@ dist-electron/
 # Temporary folders
 tmp/
 temp/
+
+# API関連
+API/AlphaPose
+API/MotionBERT
+API/out
+API/venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# PyInstaller
+*.spec
+API/build/
+API/dist/
