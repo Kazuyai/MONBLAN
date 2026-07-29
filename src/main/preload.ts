@@ -3,6 +3,31 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 
 export type Channels = 'ipc-example'
+
+export interface ApiEnvironmentCheck {
+  name: string
+  path?: string
+  kind?: string
+  exists?: boolean
+  ok: boolean
+  available?: boolean
+  error?: string
+}
+
+export interface ApiEnvironmentStatus {
+  ai_available: boolean
+  checks: ApiEnvironmentCheck[]
+  missing: ApiEnvironmentCheck[]
+}
+
+export interface ApiStatus {
+  status: 'starting' | 'ready' | 'unavailable' | 'failed' | 'stopped'
+  baseUrl: string
+  managed: boolean
+  aiAvailable: boolean | null
+  environment: ApiEnvironmentStatus | null
+  error: string | null
+}
 const electronHandler = {
   ipcRenderer: {
     sendMessage(channel: Channels, ...args: unknown[]) {
@@ -41,7 +66,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   openFile: (url: string) => ipcRenderer.send('open-file', url),
   sendFile: (callback: (url: string) => void) =>
-    ipcRenderer.on('send-file', (_event, url) => callback(url))
+    ipcRenderer.on('send-file', (_event, url) => callback(url)),
+  getApiStatus: (): Promise<ApiStatus> => ipcRenderer.invoke('api:get-status'),
+  refreshApiStatus: (): Promise<ApiStatus> =>
+    ipcRenderer.invoke('api:refresh-status'),
+  restartApi: (): Promise<ApiStatus> => ipcRenderer.invoke('api:restart'),
+  onApiStatusChanged: (callback: (status: ApiStatus) => void) => {
+    const subscription = (_event: IpcRendererEvent, status: ApiStatus) =>
+      callback(status)
+    ipcRenderer.on('api:status-changed', subscription)
+
+    return () => {
+      ipcRenderer.removeListener('api:status-changed', subscription)
+    }
+  }
 })
 
 export type ElectronHandler = typeof electronHandler

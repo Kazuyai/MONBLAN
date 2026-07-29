@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import type { ApiStatus } from '../../../main/preload'
 
 interface SettingsProps {
   setIsProcessing: (isProcessing: boolean) => void
@@ -12,6 +13,7 @@ interface SettingsProps {
       layerIndex: number
     }[]
   ) => void
+  apiStatus: ApiStatus | null
 }
 
 interface KeyPoint {
@@ -31,7 +33,8 @@ interface AutoAnnotationLayerParam {
 export const AutoAnnotation: React.FC<SettingsProps> = ({
   setIsProcessing,
   setIsEditing,
-  setAutoAnnotationResponseData
+  setAutoAnnotationResponseData,
+  apiStatus
 }) => {
   // 画像サイズ
   //   width : 170rem
@@ -196,7 +199,13 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     }
   }
 
+  const isAiReady =
+    apiStatus?.status === 'ready' && apiStatus.aiAvailable === true
+
   const getHumanImages = () => {
+    if (!isAiReady) {
+      return
+    }
     const input = document.getElementById('input') as HTMLInputElement
     const files = input.files
     if (files) {
@@ -234,6 +243,9 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   }
 
   const autoAnnotation = () => {
+    if (!isAiReady) {
+      return
+    }
     const input = document.getElementById('input') as HTMLInputElement
     const files = input.files
     if (files) {
@@ -273,6 +285,18 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
 
   return (
     <div id="auto-annotation">
+      {!isAiReady && (
+        <div className="api-status-message">
+          AI自動アノテーション環境を確認中、または未セットアップです。
+          {apiStatus?.environment?.missing?.length ? (
+            <ul>
+              {apiStatus.environment.missing.map((item) => (
+                <li key={item.name}>{item.name}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      )}
       {/* isHumanCountSingleがnullならhuman-count-selectorを表示 */}
       {isHumanCountSingle === null ? (
         <div className="human-count-selector">
@@ -280,6 +304,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
           <div className="button-container">
             <button onClick={() => setIsHumanCountSingle(true)}>1人</button>
             <button
+              disabled={!isAiReady}
               onClick={() => {
                 setIsHumanCountSingle(false)
                 getHumanImages()
@@ -402,7 +427,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
                 </div>
               </div>
             </div>
-            <button onClick={() => autoAnnotation()}>実行</button>
+            <button disabled={!isAiReady} onClick={() => autoAnnotation()}>実行</button>
           </div>
         </div>
       )}

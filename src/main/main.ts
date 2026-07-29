@@ -1,6 +1,14 @@
 import path from 'path'
 import { app, dialog, BrowserWindow, shell, ipcMain } from 'electron'
 import log from 'electron-log'
+import {
+  getApiStatus,
+  getProjectRoot,
+  refreshApiEnvironment,
+  setApiStatusListener,
+  startApiServer,
+  stopApiServer
+} from './apiServer'
 
 class AppUpdater {
   constructor() {
@@ -9,6 +17,16 @@ class AppUpdater {
 }
 
 let mainWindow: BrowserWindow | null = null
+
+ipcMain.handle('api:get-status', async () => getApiStatus())
+ipcMain.handle('api:refresh-status', async () => refreshApiEnvironment())
+ipcMain.handle('api:restart', async () =>
+  startApiServer(getProjectRoot(app.getAppPath()))
+)
+
+setApiStatusListener((status) => {
+  mainWindow?.webContents.send('api:status-changed', status)
+})
 
 ipcMain.on('ipc-example', async (event, arg) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`
@@ -113,6 +131,7 @@ const createWindow = async () => {
       return
     }
 
+    stopApiServer()
     app.exit()
   })
 
@@ -124,6 +143,10 @@ const createWindow = async () => {
   new AppUpdater()
 }
 
+app.on('before-quit', () => {
+  stopApiServer()
+})
+
 app.on('window-all-closed', () => {
   app.quit()
 })
@@ -131,6 +154,9 @@ app.on('window-all-closed', () => {
 app
   .whenReady()
   .then(() => {
+    startApiServer(getProjectRoot(app.getAppPath())).catch((error) => {
+      log.error('Failed to start API server', error)
+    })
     createWindow()
     console.log('mainWindow:', mainWindow)
     ipcMain.on('open-file', openFile)

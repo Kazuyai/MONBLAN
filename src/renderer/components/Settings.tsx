@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import type { ApiStatus } from '../../main/preload'
 import {
   OpenFile,
   AutoAnnotation,
@@ -26,6 +27,7 @@ interface SettingsProps {
       layerIndex: number
     }[]
   ) => void
+  apiStatus: ApiStatus | null
 }
 
 export const Settings: React.FC<SettingsProps> = ({
@@ -38,7 +40,8 @@ export const Settings: React.FC<SettingsProps> = ({
   setPlaySpeed,
   onExportCSV,
   onExportEAF,
-  setAutoAnnotationResponseData
+  setAutoAnnotationResponseData,
+  apiStatus
 }) => {
   const [selectedTabIndex, setSelectedTabIndex] = useState(0)
   const tabHeaderRef = useRef<HTMLDivElement>(null)
@@ -61,6 +64,7 @@ export const Settings: React.FC<SettingsProps> = ({
           setIsProcessing={setIsProcessing}
           setIsEditing={setIsEditing}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
+          apiStatus={apiStatus}
         />
       )
     },

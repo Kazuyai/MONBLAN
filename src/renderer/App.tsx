@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ApiStatus } from '../main/preload'
 import { Video, Settings, Timeline, Processing } from './components'
 import './App.scss'
 
 const App = () => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false)
+  const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null)
   const [videoSrcs, setVideoSrcs] = useState<string[]>([])
   const [videoDuration, setVideoDuration] = useState<number>(0)
   const [isEditing, setIsEditing] = useState<boolean>(false)
@@ -35,6 +37,18 @@ const App = () => {
   const containerRef = useRef<HTMLDivElement>(null)
   const [topHeight, setTopHeight] = useState<number>(55)
   const [isResizing, setIsResizing] = useState<boolean>(false)
+
+  useEffect(() => {
+    window.electronAPI
+      ?.getApiStatus()
+      .then(setApiStatus)
+      .catch((error) => console.error('Failed to get API status:', error))
+
+    const unsubscribe = window.electronAPI?.onApiStatusChanged(setApiStatus)
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
 
   const handleExportCSV = () => {
     if (timelineRef.current) {
@@ -101,6 +115,7 @@ const App = () => {
           onExportCSV={handleExportCSV}
           onExportEAF={handleExportEAF}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
+          apiStatus={apiStatus}
         />
       </div>
       <div id="divider" onMouseDown={startVerticalResizing}></div>

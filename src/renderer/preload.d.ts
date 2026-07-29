@@ -1,4 +1,4 @@
-import { ElectronHandler } from '../main/preload'
+import { ApiStatus, ElectronHandler } from '../main/preload'
 
 declare global {
   interface Window {
@@ -12,6 +12,10 @@ declare global {
       ) => void
       openFile: (url: string) => void
       sendFile: (callback: (url: string) => void) => void
+      getApiStatus: () => Promise<ApiStatus>
+      refreshApiStatus: () => Promise<ApiStatus>
+      restartApi: () => Promise<ApiStatus>
+      onApiStatusChanged: (callback: (status: ApiStatus) => void) => () => void
     }
   }
 }
