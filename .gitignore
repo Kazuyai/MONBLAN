@@ -82,3 +82,4 @@ __pycache__
 *.spec
 API/build/
 API/dist/
+API/api_log.txt
