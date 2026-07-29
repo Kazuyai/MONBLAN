@@ -1,4 +1,8 @@
-"""AI runtime environment diagnostics."""
+"""AI実行環境の診断ユーティリティ。
+
+Electron側は check_environment() の ai_available を見て、自動アノテーションUIを
+有効化するか判断する。依存が不足していても例外で落とさず、missing に不足項目を返す。
+"""
 
 import os
 import sys
@@ -23,6 +27,7 @@ except ImportError:
 
 
 def _path_status(name: str, path: str, kind: str) -> dict[str, Any]:
+    """ファイルまたはディレクトリの存在確認結果を、UIで扱いやすい辞書にする。"""
     exists = os.path.isdir(path) if kind == "directory" else os.path.isfile(path)
     return {
         "name": name,
@@ -34,6 +39,7 @@ def _path_status(name: str, path: str, kind: str) -> dict[str, Any]:
 
 
 def _cuda_status() -> dict[str, Any]:
+    """PyTorchとCUDAが利用できるか確認する。PyTorch未導入でも例外は外へ出さない。"""
     try:
         import torch
     except Exception as error:
@@ -56,6 +62,7 @@ def _cuda_status() -> dict[str, Any]:
 
 
 def check_environment() -> dict[str, Any]:
+    """AIパイプライン実行に必要なディレクトリ・スクリプト・重み・CUDAを確認する。"""
     checks = [
         _path_status("Python executable", sys.executable, "file"),
         _path_status("AlphaPose directory", ALPHAPOSE_DIR, "directory"),

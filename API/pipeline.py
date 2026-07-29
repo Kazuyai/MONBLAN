@@ -1,4 +1,9 @@
-"""Pose-estimation pipeline runner."""
+"""姿勢推定と動作検出の実行パイプライン。
+
+FastAPIのリクエストごとにジョブディレクトリを作成し、AlphaPose、MotionBERT、
+detect_movement の入出力をその中へ閉じ込める。os.chdir() は使わず、
+subprocess.run(cwd=...) で各外部スクリプトの作業ディレクトリを指定する。
+"""
 
 import base64
 import json
@@ -21,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_job_dir() -> str:
+    """リクエストごとの一時作業ディレクトリを作成する。"""
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(tempfile.gettempdir(), "annotation-tool-jobs", job_id)
     os.makedirs(job_dir, exist_ok=True)
@@ -28,11 +34,13 @@ def create_job_dir() -> str:
 
 
 def cleanup_job_dir(job_dir: str):
+    """成功時に不要になったジョブディレクトリを削除する。"""
     if os.path.exists(job_dir):
         shutil.rmtree(job_dir, ignore_errors=True)
 
 
 def _save_subprocess_log(job_dir: str, step_name: str, stdout: str, stderr: str):
+    """外部スクリプト失敗時の標準出力・標準エラーを調査用に保存する。"""
     if stdout:
         stdout_path = os.path.join(job_dir, f"{step_name}_stdout.log")
         with open(stdout_path, "w", encoding="utf-8") as file:
@@ -44,6 +52,7 @@ def _save_subprocess_log(job_dir: str, step_name: str, stdout: str, stderr: str)
 
 
 def _run_subprocess(args: list[str], cwd: str, job_dir: str, step_name: str) -> subprocess.CompletedProcess:
+    """外部Pythonスクリプトを実行し、失敗時はログを残して例外化する。"""
     result = subprocess.run(
         args,
         cwd=cwd,
@@ -70,6 +79,7 @@ def _run_subprocess(args: list[str], cwd: str, job_dir: str, step_name: str) -> 
 
 
 def run_alphapose(video_file_path: str, job_dir: str) -> subprocess.CompletedProcess:
+    """AlphaPoseで2D姿勢推定を実行し、alphapose-results.json を job_dir に出力する。"""
     return _run_subprocess(
         [
             sys.executable,
@@ -91,6 +101,7 @@ def run_alphapose(video_file_path: str, job_dir: str) -> subprocess.CompletedPro
 
 
 def run_motionbert(video_file_path: str, json_path: str, job_dir: str, focus: str) -> subprocess.CompletedProcess:
+    """MotionBERTで指定人物の3D姿勢推定を実行し、X3D.npy を job_dir に出力する。"""
     return _run_subprocess(
         [
             sys.executable,
@@ -113,6 +124,7 @@ def run_motionbert(video_file_path: str, json_path: str, job_dir: str, focus: st
 
 
 def run_npy2csv(job_dir: str) -> subprocess.CompletedProcess:
+    """MotionBERTの X3D.npy を X3D.csv に変換する。"""
     npy2csv_script = os.path.join(DETECT_MOVEMENT_DIR, "npy2csv.py")
     return _run_subprocess(
         [sys.executable, npy2csv_script],
@@ -123,6 +135,7 @@ def run_npy2csv(job_dir: str) -> subprocess.CompletedProcess:
 
 
 def run_calc_cross_product(job_dir: str) -> subprocess.CompletedProcess:
+    """X3D.csv から外積特徴量を計算し、output_cross_product.csv を出力する。"""
     calc_script = os.path.join(DETECT_MOVEMENT_DIR, "calc_keypoint_cross_product_rotate.py")
     return _run_subprocess(
         [sys.executable, calc_script],
@@ -133,6 +146,7 @@ def run_calc_cross_product(job_dir: str) -> subprocess.CompletedProcess:
 
 
 def run_detect_movement_script(video_file_path: str, annotation_file: str, job_dir: str) -> subprocess.CompletedProcess:
+    """外積特徴量とユーザー指定レイヤーから動作区間を検出する。"""
     detect_script = os.path.join(DETECT_MOVEMENT_DIR, "detect_movement.py")
     return _run_subprocess(
         [
@@ -148,6 +162,7 @@ def run_detect_movement_script(video_file_path: str, annotation_file: str, job_d
 
 
 def _largest_person_per_frame(alphapose_results: list[dict]) -> list[dict]:
+    """AlphaPose結果をフレームごとにまとめ、各フレームで面積最大の人物を代表として選ぶ。"""
     grouped_by_idx: dict[object, list[dict]] = {}
     for item in alphapose_results:
         idx = item["idx"]
@@ -161,6 +176,7 @@ def _largest_person_per_frame(alphapose_results: list[dict]) -> list[dict]:
 
 
 def _read_frame(video_file_path: str, frame_id: int):
+    """OpenCVで指定フレームを読み込む。VideoCapture は必ず解放する。"""
     cap = cv2.VideoCapture(video_file_path)
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video file: {video_file_path}")
@@ -179,6 +195,7 @@ def _read_frame(video_file_path: str, frame_id: int):
 
 
 def extract_human_images(video_file_path: str, job_dir: str) -> list[str]:
+    """AlphaPose結果から人物領域を切り出し、JPEGのBase64文字列リストとして返す。"""
     run_alphapose(video_file_path, job_dir)
 
     results_path = os.path.join(job_dir, "alphapose-results.json")
@@ -194,6 +211,7 @@ def extract_human_images(video_file_path: str, job_dir: str) -> list[str]:
         x2 = x + width
         y2 = y + height
 
+        # AlphaPoseのboxが動画範囲外へ出る場合があるため、フレーム内に丸める。
         frame_height, frame_width, _ = frame.shape
         x = max(0, min(x, frame_width))
         y = max(0, min(y, frame_height))
@@ -213,12 +231,14 @@ def extract_human_images(video_file_path: str, job_dir: str) -> list[str]:
 
 
 def run_pose_pipeline(video_file_path: str, auto_annotation_layer: list[dict]) -> list[dict]:
+    """自動アノテーション用の全パイプラインを実行し、検出された動作区間を返す。"""
     job_dir = create_job_dir()
     success = False
     try:
         run_alphapose(video_file_path, job_dir)
         alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
 
+        # MotionBERTは対象人物をfocusで指定するため、humanIdごとにレイヤーを処理する。
         grouped_by_human_id: dict[int, list[dict]] = {}
         for item in auto_annotation_layer:
             human_id = item["humanId"]
@@ -252,6 +272,7 @@ def run_pose_pipeline(video_file_path: str, auto_annotation_layer: list[dict]) -
 
 
 def get_video_framerate(video_file_path: str) -> float:
+    """動画ファイルをOpenCVで開き、FPSを返す。"""
     cap = cv2.VideoCapture(video_file_path)
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video file: {video_file_path}")

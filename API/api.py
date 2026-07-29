@@ -1,4 +1,7 @@
-"""FastAPI HTTP routing layer for the annotation API."""
+"""FastAPI のHTTP受付層。
+
+重い処理は pipeline.py に委譲し、このファイルではルーティング、一時ファイル管理、ログ、エラー整形だけを扱う。
+"""
 
 import json
 import os
@@ -12,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 try:
+    # 標準起動: リポジトリルートから `python -m uvicorn API.api:app` を実行する。
     from .environment import check_environment
     from .paths import BASE_DIR
     from .pipeline import (
@@ -22,6 +26,7 @@ try:
         run_pose_pipeline,
     )
 except ImportError:
+    # 互換用: APIディレクトリ内から `uvicorn api:app` で起動した場合も動かす。
     from environment import check_environment
     from paths import BASE_DIR
     from pipeline import (
@@ -34,6 +39,7 @@ except ImportError:
 
 app = FastAPI()
 
+# 現状はローカル利用前提で全許可。Electron連携時にlocalhost限定へ絞る。
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,6 +52,7 @@ LOG_FILE = os.path.join(BASE_DIR, "api_log.txt")
 
 
 def log_api_call(api_name: str, start_time: float, end_time: float, additional_info: str = ""):
+    """API呼び出しの処理時間と結果概要を記録する。"""
     duration = end_time - start_time
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = f"Time: {current_time}, API: {api_name}, Duration: {duration:.2f}s, Info: {additional_info}\n"
@@ -54,6 +61,7 @@ def log_api_call(api_name: str, start_time: float, end_time: float, additional_i
 
 
 async def save_upload_to_temp(file: UploadFile) -> str:
+    """UploadFileをOpenCVや外部スクリプトが読める一時mp4ファイルとして保存する。"""
     contents = await file.read()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
         temp_file.write(contents)
@@ -61,10 +69,12 @@ async def save_upload_to_temp(file: UploadFile) -> str:
 
 
 def _format_subprocess_error(error: subprocess.CalledProcessError) -> dict:
+    """外部AIスクリプト失敗時に、UI側で原因を表示しやすい形へ整形する。"""
     return {
         "message": "A subprocess error occurred",
         "command": str(error.cmd),
         "returncode": error.returncode,
+        # レスポンス肥大化を避けるため、詳細ログ本体はジョブディレクトリ側に残す。
         "stdout": (error.stdout or error.output or "")[:2000],
         "stderr": (error.stderr or "")[:2000],
     }
@@ -72,11 +82,13 @@ def _format_subprocess_error(error: subprocess.CalledProcessError) -> dict:
 
 @app.get("/environment/")
 async def get_environment_status():
+    """AI自動アノテーション機能を利用できる環境か診断する。"""
     return check_environment()
 
 
 @app.post("/get_framerate/")
 async def get_framerate(file: UploadFile = File(...)):
+    """動画ファイルからフレームレートを取得する軽量エンドポイント。"""
     start_time = time.time()
     temp_filename = None
     try:
@@ -98,6 +110,7 @@ async def get_framerate(file: UploadFile = File(...)):
 
 @app.post("/get_human_images/")
 async def get_human_images(file: UploadFile = File(...)):
+    """AlphaPoseの検出結果から、各フレームの代表人物画像を切り出して返す。"""
     start_time = time.time()
     temp_filename = None
     job_dir = None
@@ -129,6 +142,7 @@ async def get_human_images(file: UploadFile = File(...)):
             if success:
                 cleanup_job_dir(job_dir)
             else:
+                # 失敗時は原因調査のため、stdout/stderrと中間ファイルを残す。
                 log_api_call("get_human_images", 0, 0, f"Job directory preserved for debugging: {job_dir}")
 
 
@@ -137,6 +151,7 @@ async def create_item(
     file: UploadFile = File(...),
     autoAnnotationLayer: str = Form(...),
 ):
+    """AlphaPose、MotionBERT、動作検出を順に実行し、自動アノテーション範囲を返す。"""
     start_time = time.time()
     temp_filename = None
     try:
