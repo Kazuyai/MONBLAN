@@ -144,12 +144,38 @@ AIパイプラインのサブプロセスが失敗した場合、ジョブディ
 
 成功時のジョブディレクトリは自動削除されます。
 
-## Phase 2 での利用方針
+## Electron連携
 
-Electron 側では以下の順で扱います。
+Electron開発起動時は、メインプロセスがAPIサーバーを自動起動します。
 
-1. Electron メインプロセスからAPIを起動する
-2. `GET /environment/` を呼ぶ
-3. `ai_available === true` の場合のみ自動アノテーションUIを有効化する
-4. `ai_available === false` の場合でも通常アノテーション機能は利用可能にする
-5. Electron終了時にAPIプロセスを停止する
+起動コマンド:
+
+```powershell
+python -m uvicorn API.api:app --host 127.0.0.1 --port 8000
+```
+
+実装上の前提:
+
+- Electronの `child_process.spawn` からAPIを起動する
+- `cwd` はリポジトリルートに固定する
+- 既に `127.0.0.1:8000` でAPIが起動している場合は、そのプロセスを再利用する
+- Python実行ファイルは既定で `python` を使う
+- 別のPythonを使う場合は `ANNOTATION_TOOL_PYTHON` 環境変数で指定できる
+
+renderer側は preload 経由でAPI状態を受け取ります。
+
+- `getApiStatus()` で現在のAPI状態を取得する
+- `onApiStatusChanged()` で状態変更通知を受け取る
+- `aiAvailable === true` の場合のみ自動アノテーション操作を有効にする
+- `aiAvailable !== true` の場合は不足項目を表示し、通常アノテーション機能は維持する
+
+アプリ終了時は、Electronが起動したAPIプロセスを停止します。ユーザーが事前に起動していたAPIプロセスはElectron管理外として扱います。
+
+### 開発時の確認結果
+
+`yarn dev` からの起動で以下を確認済みです。
+
+- Electron起動時にFastAPIが自動起動する
+- `GET /environment/` が `200 OK` を返す
+- 動画ファイル選択時に `POST /get_framerate/` が `200 OK` を返す
+- アプリの×ボタン終了後、Electronが起動したAPIプロセスが残らない
