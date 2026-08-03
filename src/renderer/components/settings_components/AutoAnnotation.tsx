@@ -30,6 +30,16 @@ interface AutoAnnotationLayerParam {
   points: number[]
 }
 
+interface ApiErrorPayload {
+  message?: string
+  error?: string
+  stderr?: string
+  stdout?: string
+  command?: string
+  returncode?: number
+  job_dir?: string
+}
+
 export const AutoAnnotation: React.FC<SettingsProps> = ({
   setIsProcessing,
   setIsEditing,
@@ -64,6 +74,26 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   const [hoveredKeyPointName, setHoveredKeyPointName] = useState<string | null>(
     null
   )
+  const [apiError, setApiError] = useState<ApiErrorPayload | null>(null)
+
+  const readApiError = async (response: Response): Promise<ApiErrorPayload> => {
+    try {
+      return await response.json()
+    } catch {
+      return {
+        message: `API request failed with status ${response.status}`
+      }
+    }
+  }
+
+  const formatApiErrorSummary = (error: ApiErrorPayload): string => {
+    return (
+      error.stderr ||
+      error.error ||
+      error.message ||
+      'AI自動アノテーション処理に失敗しました。'
+    )
+  }
 
   const selectHuman = (humanId: number) => {
     setAutoAnnotationLayer(
@@ -202,7 +232,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   const isAiReady =
     apiStatus?.status === 'ready' && apiStatus.aiAvailable === true
 
-  const getHumanImages = () => {
+  const getHumanImages = async () => {
     if (!isAiReady) {
       return
     }
@@ -210,39 +240,45 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     const files = input.files
     if (files) {
       setIsProcessing(true)
+      setApiError(null)
       const file = files[0]
       const formData = new FormData()
       formData.append('file', file)
 
-      fetch('http://127.0.0.1:8000/get_human_images/', {
-        method: 'POST',
-        body: formData
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(
-              'Network response was not ok ' + response.statusText
-            )
+      try {
+        const response = await fetch(
+          'http://127.0.0.1:8000/get_human_images/',
+          {
+            method: 'POST',
+            body: formData
           }
-          return response.json()
+        )
+        if (!response.ok) {
+          setApiError(await readApiError(response))
+          return
+        }
+        const data = await response.json()
+        if (data.images) {
+          const imageUrls = data.images.map(
+            (base64String: string) => `data:image/jpeg;base64,${base64String}`
+          )
+          setHumanImageUrls(imageUrls)
+        }
+      } catch (error) {
+        console.error('Error:', error)
+        setApiError({
+          message:
+            error instanceof Error
+              ? error.message
+              : 'APIとの通信に失敗しました。'
         })
-        .then((data) => {
-          if (data.images) {
-            const imageUrls = data.images.map(
-              (base64String: string) => `data:image/jpeg;base64,${base64String}`
-            )
-            setHumanImageUrls(imageUrls)
-          }
-          setIsProcessing(false)
-        })
-        .catch((error) => {
-          console.error('Error:', error)
-          setIsProcessing(false)
-        })
+      } finally {
+        setIsProcessing(false)
+      }
     }
   }
 
-  const autoAnnotation = () => {
+  const autoAnnotation = async () => {
     if (!isAiReady) {
       return
     }
@@ -250,6 +286,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     const files = input.files
     if (files) {
       setIsProcessing(true)
+      setApiError(null)
       const file = files[0]
       const formData = new FormData()
       formData.append('file', file)
@@ -259,27 +296,29 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
         JSON.stringify(autoAnnotationLayer)
       )
 
-      fetch('http://127.0.0.1:8000/items/', {
-        method: 'POST',
-        body: formData
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(
-              'Network response was not ok ' + response.statusText
-            )
-          }
-          return response.json()
+      try {
+        const response = await fetch('http://127.0.0.1:8000/items/', {
+          method: 'POST',
+          body: formData
         })
-        .then((data) => {
-          console.log(data)
-          setAutoAnnotationResponseData(data)
-          setIsProcessing(false)
+        if (!response.ok) {
+          setApiError(await readApiError(response))
+          return
+        }
+        const data = await response.json()
+        console.log(data)
+        setAutoAnnotationResponseData(data)
+      } catch (error) {
+        console.error('Error:', error)
+        setApiError({
+          message:
+            error instanceof Error
+              ? error.message
+              : 'APIとの通信に失敗しました。'
         })
-        .catch((error) => {
-          console.error('Error:', error)
-          setIsProcessing(false)
-        })
+      } finally {
+        setIsProcessing(false)
+      }
     }
   }
 
@@ -295,6 +334,25 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
               ))}
             </ul>
           ) : null}
+        </div>
+      )}
+      {apiError && (
+        <div className="api-error-message">
+          <div className="api-error-header">
+            <strong>
+              {'AI処理に失敗しました'}
+            </strong>
+            <button onClick={() => setApiError(null)}>
+              {'閉じる'}
+            </button>
+          </div>
+          <p>{formatApiErrorSummary(apiError)}</p>
+          {apiError.returncode !== undefined && (
+            <p>{`終了コード: ${apiError.returncode}`}</p>
+          )}
+          {apiError.job_dir && (
+            <p>{`詳細ログ: ${apiError.job_dir}`}</p>
+          )}
         </div>
       )}
       {/* isHumanCountSingleがnullならhuman-count-selectorを表示 */}
@@ -427,7 +485,9 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
                 </div>
               </div>
             </div>
-            <button disabled={!isAiReady} onClick={() => autoAnnotation()}>実行</button>
+            <button disabled={!isAiReady} onClick={() => autoAnnotation()}>
+              実行
+            </button>
           </div>
         </div>
       )}
