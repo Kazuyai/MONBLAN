@@ -68,9 +68,9 @@ async def save_upload_to_temp(file: UploadFile) -> str:
         return temp_file.name
 
 
-def _format_subprocess_error(error: subprocess.CalledProcessError) -> dict:
+def _format_subprocess_error(error: subprocess.CalledProcessError, job_dir: str | None = None) -> dict:
     """外部AIスクリプト失敗時に、UI側で原因を表示しやすい形へ整形する。"""
-    return {
+    response = {
         "message": "A subprocess error occurred",
         "command": str(error.cmd),
         "returncode": error.returncode,
@@ -78,6 +78,9 @@ def _format_subprocess_error(error: subprocess.CalledProcessError) -> dict:
         "stdout": (error.stdout or error.output or "")[:2000],
         "stderr": (error.stderr or "")[:2000],
     }
+    if job_dir:
+        response["job_dir"] = job_dir
+    return response
 
 
 @app.get("/environment/")
@@ -128,13 +131,16 @@ async def get_human_images(file: UploadFile = File(...)):
 
     except subprocess.CalledProcessError as error:
         end_time = time.time()
-        error_info = _format_subprocess_error(error)
+        error_info = _format_subprocess_error(error, job_dir)
         log_api_call("get_human_images", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
         return JSONResponse(status_code=500, content=error_info)
     except Exception as error:
         end_time = time.time()
         log_api_call("get_human_images", start_time, end_time, f"Error: {str(error)}")
-        return JSONResponse(status_code=500, content={"message": "An error occurred", "error": str(error)})
+        content = {"message": "An error occurred", "error": str(error)}
+        if job_dir:
+            content["job_dir"] = job_dir
+        return JSONResponse(status_code=500, content=content)
     finally:
         if temp_filename and os.path.exists(temp_filename):
             os.remove(temp_filename)
@@ -154,25 +160,37 @@ async def create_item(
     """AlphaPose、MotionBERT、動作検出を順に実行し、自動アノテーション範囲を返す。"""
     start_time = time.time()
     temp_filename = None
+    job_dir = None
+    success = False
     try:
         auto_annotation_layer = json.loads(autoAnnotationLayer)
         temp_filename = await save_upload_to_temp(file)
+        job_dir = create_job_dir()
 
-        motion_times = run_pose_pipeline(temp_filename, auto_annotation_layer)
+        motion_times = run_pose_pipeline(temp_filename, auto_annotation_layer, job_dir)
 
         end_time = time.time()
         log_api_call("create_item", start_time, end_time, f"Processed {len(motion_times)} motion times")
+        success = True
         return motion_times
 
     except subprocess.CalledProcessError as error:
         end_time = time.time()
-        error_info = _format_subprocess_error(error)
+        error_info = _format_subprocess_error(error, job_dir)
         log_api_call("create_item", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
         return JSONResponse(status_code=500, content=error_info)
     except Exception as error:
         end_time = time.time()
         log_api_call("create_item", start_time, end_time, f"Error: {str(error)}")
-        return JSONResponse(status_code=500, content={"message": "An error occurred", "error": str(error)})
+        content = {"message": "An error occurred", "error": str(error)}
+        if job_dir:
+            content["job_dir"] = job_dir
+        return JSONResponse(status_code=500, content=content)
     finally:
         if temp_filename and os.path.exists(temp_filename):
             os.remove(temp_filename)
+        if job_dir:
+            if success:
+                cleanup_job_dir(job_dir)
+            else:
+                log_api_call("create_item", 0, 0, f"Job directory preserved for debugging: {job_dir}")

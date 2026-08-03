@@ -230,9 +230,15 @@ def extract_human_images(video_file_path: str, job_dir: str) -> list[str]:
     return image_data_list
 
 
-def run_pose_pipeline(video_file_path: str, auto_annotation_layer: list[dict]) -> list[dict]:
+def run_pose_pipeline(
+    video_file_path: str,
+    auto_annotation_layer: list[dict],
+    job_dir: str | None = None,
+) -> list[dict]:
     """自動アノテーション用の全パイプラインを実行し、検出された動作区間を返す。"""
-    job_dir = create_job_dir()
+    owns_job_dir = job_dir is None
+    if job_dir is None:
+        job_dir = create_job_dir()
     success = False
     try:
         run_alphapose(video_file_path, job_dir)
@@ -265,9 +271,9 @@ def run_pose_pipeline(video_file_path: str, auto_annotation_layer: list[dict]) -
         return sorted(motion_times, key=lambda item: item["layerIndex"])
 
     finally:
-        if success:
+        if success and owns_job_dir:
             cleanup_job_dir(job_dir)
-        else:
+        elif not success:
             logger.warning("Job failed. Preserving job directory for debugging: %s", job_dir)
 
 
