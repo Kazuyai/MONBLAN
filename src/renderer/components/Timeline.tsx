@@ -908,7 +908,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
             return annotationElements[globalIndex]
           })
 
-        return `    <TIER LINGUISTIC_TYPE_REF="default-lt" TIER_ID="${layerName}">
+        return `    <TIER LINGUISTIC_TYPE_REF="default-lt" TIER_ID="${escapeXml(layerName)}">
 ${layerAnnotations.join('\n')}
     </TIER>`
       })
@@ -938,16 +938,16 @@ ${layerAnnotations.join('\n')}
                         fileName.toLowerCase().endsWith('.webm') ? 'video/webm' :
                         fileName.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4'
 
-        return `  <MEDIA_DESCRIPTOR MEDIA_URL="${escapeXml(mediaUrl)}" MIME_TYPE="${mimeType}" RELATIVE_MEDIA_URL="${escapeXml(fileName)}"/>`
+        return `    <MEDIA_DESCRIPTOR MEDIA_URL="${escapeXml(mediaUrl)}" MIME_TYPE="${mimeType}" RELATIVE_MEDIA_URL="${escapeXml(fileName)}"/>`
       }).join('\n')
 
       return `<?xml version="1.0" encoding="UTF-8"?>
 <ANNOTATION_DOCUMENT AUTHOR="" DATE="${currentDate}" FORMAT="3.0" VERSION="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.mpi.nl/tools/elan/EAFv3.0.xsd">
   <HEADER TIME_UNITS="milliseconds">
+${mediaDescriptors}
     <PROPERTY NAME="URN">urn:nl-mpi-tools-elan-eaf:${uuidv4()}</PROPERTY>
     <PROPERTY NAME="lastUsedAnnotationId">${annotations.length}</PROPERTY>
   </HEADER>
-${mediaDescriptors}
   <TIME_ORDER>
 ${timeSlots.map((slot) => `    <TIME_SLOT TIME_SLOT_ID="${slot.id}" TIME_VALUE="${slot.value}"/>`).join('\n')}
   </TIME_ORDER>
