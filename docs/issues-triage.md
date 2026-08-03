@@ -21,7 +21,7 @@ Handle them before broad architecture cleanup.
 | #14   | bug       | Define selectedLayerIndex behavior when all layers are removed.    |
 | #13   | bug       | Remove fragile class-name dependency from timeline click handling. |
 | #12   | bug       | Track annotation dragging at document/window level.                |
-| #11   | export    | Escape commas and quotes correctly in CSV export.                  |
+| #11   | export    | Fixed: CSV cells escape commas, quotes, and newlines.              |
 | #10   | export    | Place EAF MEDIA_DESCRIPTOR under the correct HEADER element.       |
 | #9    | bug       | Synchronize zoom state with timeline rendering.                    |
 
@@ -55,7 +55,7 @@ than verified user-facing bugs.
 
 ## Recommended next order
 
-1. Finish #20 for remaining timeline/export alerts.
-2. Fix export correctness: #11, then #10.
+1. Fix EAF export correctness: #10.
+2. Finish #20 for remaining timeline/export alerts.
 3. Fix state/undo correctness: #14 and #19.
 4. Fix timeline zoom/playhead synchronization: #9, #15, and #17.

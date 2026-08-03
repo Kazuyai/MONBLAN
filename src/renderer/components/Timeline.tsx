@@ -797,21 +797,42 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }
     }
 
+    const escapeCsvCell = (value: string | number): string => {
+      const text = String(value)
+      if (/[",\r\n]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`
+      }
+      return text
+    }
+
+    const createCsvRow = (values: (string | number)[]): string => {
+      return values.map(escapeCsvCell).join(',')
+    }
+
     // 注釈付けしたものをCSVで出力する関数
     const exportCSV = () => {
-      // CSVのヘッダーにBOMを追加
-      let csvContent =
-        '\uFEFF注釈層名,開始フレーム,終了フレーム,開始時間(hh:mm:ss.SSS),終了時間(hh:mm:ss.SSS),注釈名\n'
-
-      // 注釈データを処理
-      annotations.forEach((annotation) => {
-        const layerName = layerNames[annotation.layerIndex]
+      const headers = [
+        '注釈層名',
+        '開始フレーム',
+        '終了フレーム',
+        '開始時間(hh:mm:ss.SSS)',
+        '終了時間(hh:mm:ss.SSS)',
+        '注釈名'
+      ]
+      const rows = annotations.map((annotation) => {
+        const layerName = layerNames[annotation.layerIndex] ?? ''
         const startTime = convertFrameToTime(annotation.startFrame)
         const endTime = convertFrameToTime(annotation.endFrame)
-        const annotationName = annotation.text // 注釈名を固定で設定（必要に応じて変更可能）
-
-        csvContent += `${layerName},${annotation.startFrame},${annotation.endFrame},${startTime},${endTime},${annotationName}\n`
+        return createCsvRow([
+          layerName,
+          annotation.startFrame,
+          annotation.endFrame,
+          startTime,
+          endTime,
+          annotation.text
+        ])
       })
+      const csvContent = `\uFEFF${[createCsvRow(headers), ...rows].join('\n')}\n`
 
       // CSVファイルの作成とダウンロード
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
