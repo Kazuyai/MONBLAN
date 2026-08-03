@@ -342,8 +342,13 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
             <strong>
               {'AI処理に失敗しました'}
             </strong>
-            <button onClick={() => setApiError(null)}>
-              {'閉じる'}
+            <button
+              type="button"
+              aria-label="エラー通知を閉じる"
+              title="閉じる"
+              onClick={() => setApiError(null)}
+            >
+              ×
             </button>
           </div>
           <p>{formatApiErrorSummary(apiError)}</p>
