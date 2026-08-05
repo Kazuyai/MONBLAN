@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 
 interface SettingsProps {
   setIsProcessing: (isProcessing: boolean) => void
@@ -11,6 +11,8 @@ export const OpenFile: React.FC<SettingsProps> = ({
   setVideoSrcs,
   setFrameRate
 }) => {
+  const [hasSelectedFiles, setHasSelectedFiles] = useState(false)
+
   const getVideoFrameRate = (videoUrl: string): Promise<number> => {
     return new Promise((resolve, reject) => {
       const video = document.createElement('video')
@@ -28,7 +30,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
   const openFile = async () => {
     const input = document.getElementById('input') as HTMLInputElement
     const files = input.files
-    if (files) {
+    if (files && files.length > 0) {
       setIsProcessing(true)
       const urls = Array.from(files).map((file) => URL.createObjectURL(file))
 
@@ -80,8 +82,18 @@ export const OpenFile: React.FC<SettingsProps> = ({
 
   return (
     <div id="open-file">
-      <input type="file" id="input" accept="video/*" multiple />
-      <button onClick={() => openFile()}>開く</button>
+      <input
+        type="file"
+        id="input"
+        accept="video/*"
+        multiple
+        onChange={(event) =>
+          setHasSelectedFiles((event.currentTarget.files?.length ?? 0) > 0)
+        }
+      />
+      <button disabled={!hasSelectedFiles} onClick={() => openFile()}>
+        開く
+      </button>
     </div>
   )
 }
