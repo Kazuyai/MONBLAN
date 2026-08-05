@@ -37,7 +37,7 @@ or together with related work.
 | #34   | code-quality | Remove unused setTimelineContainerRef if still unused.              |
 | #31   | code-quality | Delete commented-out code while touching related files.             |
 | #30   | code-quality | Remove console.log or replace with logging.                         |
-| #20   | UX           | Continue replacing blocking alerts; AI API failures are now inline. |
+| #20   | UX           | Fixed: blocking alerts are replaced by inline/floating notices.     |
 | #17   | latent-bug   | Consolidate frameWidth/zoomLevel state with zoom fixes.             |
 
 ## defer
@@ -55,6 +55,5 @@ than verified user-facing bugs.
 
 ## Recommended next order
 
-1. Finish #20 for remaining timeline/export alerts.
-2. Fix state/undo correctness: #14 and #19.
-3. Fix timeline zoom/playhead synchronization: #9, #15, and #17.
+1. Fix state/undo correctness: #14 and #19.
+2. Fix timeline zoom/playhead synchronization: #9, #15, and #17.

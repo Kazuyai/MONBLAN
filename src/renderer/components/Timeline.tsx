@@ -109,6 +109,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<
       string[]
     >([])
+    const [timelineNotice, setTimelineNotice] = useState<string | null>(null)
     const [editingLayerIndex, setEditingLayerIndex] = useState<number | null>(
       null
     )
@@ -117,6 +118,10 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     )
     const [playheadLeft, setPlayheadLeft] = useState(0)
     const [isDragging, setIsDragging] = useState<boolean>(false)
+
+    const showTimelineNotice = (message: string) => {
+      setTimelineNotice(message)
+    }
 
     // 選択範囲の状態を追加
     const [isSelecting, setIsSelecting] = useState<boolean>(false)
@@ -192,7 +197,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const addAnnotation = () => {
       if (selectedLayerIndex !== null) {
         if (selectionWidth === 0) {
-          alert('アノテーションを追加する範囲を選択してください。')
+          showTimelineNotice('アノテーションを追加する範囲を選択してください。')
           return
         }
 
@@ -202,7 +207,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         )
 
         if (endFrame <= startFrame) {
-          alert('選択範囲が無効です。')
+          showTimelineNotice('選択範囲が無効です。')
           return
         }
 
@@ -229,7 +234,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
           // アノテーションを追加した後、選択範囲をクリア
           setSelectionWidth(0)
         } else {
-          alert('アノテーションが重なっています。')
+          showTimelineNotice('アノテーションが重なっています。')
         }
       }
     }
@@ -590,7 +595,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
               annotations: newAnnotations
             }
           } else {
-            alert('アノテーションが重なっています。')
+            showTimelineNotice('アノテーションが重なっています。')
             return prevState // 変更なし
           }
         }
@@ -601,7 +606,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     // 結合機能の実装
     const mergeAnnotations = () => {
       if (selectedAnnotationIds.length < 2) {
-        alert('結合するアノテーションを2つ以上選択してください。')
+        showTimelineNotice('結合するアノテーションを2つ以上選択してください。')
         return
       }
 
@@ -617,7 +622,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       )
 
       if (!allSameLayer) {
-        alert('異なるレイヤーのアノテーションは結合できません。')
+        showTimelineNotice('異なるレイヤーのアノテーションは結合できません。')
         return
       }
 
@@ -643,7 +648,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       )
 
       if (!canInsertAnnotation(newAnnotation, layerAnnotations)) {
-        alert('選択されていないアノテーションと重なるため、結合できません。')
+        showTimelineNotice('選択されていないアノテーションと重なるため、結合できません。')
         return
       }
 
@@ -668,7 +673,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     // 分割機能の実装
     const splitAnnotations = () => {
       if (selectedAnnotationIds.length === 0) {
-        alert('分割するアノテーションを選択してください。')
+        showTimelineNotice('分割するアノテーションを選択してください。')
         return
       }
 
@@ -685,7 +690,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         )
 
         if (annotationsToSplit.length === 0) {
-          alert('プレイヘッドの位置に分割可能なアノテーションがありません。')
+          showTimelineNotice('プレイヘッドの位置に分割可能なアノテーションがありません。')
           return
         }
 
@@ -737,7 +742,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         )
 
         if (annotationsToSplit.length === 0) {
-          alert('選択範囲内に分割可能なアノテーションがありません。')
+          showTimelineNotice('選択範囲内に分割可能なアノテーションがありません。')
           return
         }
 
@@ -1163,6 +1168,19 @@ ${tierElements.join('\n')}
             進める
           </button>
         </div>
+        {timelineNotice && (
+          <div className="timeline-notice">
+            <span>{timelineNotice}</span>
+            <button
+              type="button"
+              aria-label="通知を閉じる"
+              title="通知を閉じる"
+              onClick={() => setTimelineNotice(null)}
+            >
+              &times;
+            </button>
+          </div>
+        )}
         <div className="timeline-container">
           {videoSrcs.length == 0 ? (
             <></>
