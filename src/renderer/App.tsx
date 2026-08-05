@@ -129,6 +129,7 @@ const App = () => {
         currentFrame={currentFrame}
         setCurrentFrame={setCurrentFrame}
         selectionStartFrame={selectionStartFrame}
+        selectionFrameWidth={selectionFrameWidth}
         setSelectionStartFrame={setSelectionStartFrame}
         setSelectionFrameWidth={setSelectionFrameWidth}
         isPlaying={isPlaying}

@@ -17,13 +17,13 @@ Handle them before broad architecture cleanup.
 | ----- | --------- | ------------------------------------------------------------------ |
 | #19   | UX / undo | Fixed: layer-name edits enter undo history only on commit.         |
 | #16   | bug       | Merge duplicated partial-playback initialization effects.          |
-| #15   | bug       | Recompute playhead position from frame after zoom changes.         |
+| #15   | bug       | Fixed: playhead position is derived from frame after zoom changes. |
 | #14   | bug       | Fixed: selected layer is clamped or cleared after layer changes.   |
 | #13   | bug       | Remove fragile class-name dependency from timeline click handling. |
 | #12   | bug       | Track annotation dragging at document/window level.                |
 | #11   | export    | Fixed: CSV cells escape commas, quotes, and newlines.              |
 | #10   | export    | Fixed: EAF media descriptors are emitted inside HEADER.            |
-| #9    | bug       | Synchronize zoom state with timeline rendering.                    |
+| #9    | bug       | Fixed: frame and timeline widths are derived from zoom state.      |
 
 ## should-fix
 
@@ -38,7 +38,7 @@ or together with related work.
 | #31   | code-quality | Delete commented-out code while touching related files.             |
 | #30   | code-quality | Remove console.log or replace with logging.                         |
 | #20   | UX           | Fixed: blocking alerts are replaced by inline/floating notices.     |
-| #17   | latent-bug   | Consolidate frameWidth/zoomLevel state with zoom fixes.             |
+| #17   | latent-bug   | Fixed: frameWidth/timelineWidth are no longer duplicated state.     |
 
 ## defer
 
@@ -55,4 +55,4 @@ than verified user-facing bugs.
 
 ## Recommended next order
 
-1. Fix timeline zoom/playhead synchronization: #9, #15, and #17.
+1. Continue with remaining must-fix timeline interaction bugs: #16, #13, and #12.

@@ -19,6 +19,7 @@ interface TimelineProps {
   currentFrame: number
   setCurrentFrame: Dispatch<SetStateAction<number>>
   selectionStartFrame: number
+  selectionFrameWidth: number
   setSelectionStartFrame: Dispatch<SetStateAction<number>>
   setSelectionFrameWidth: Dispatch<SetStateAction<number>>
   isPlaying?: boolean
@@ -65,6 +66,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       currentFrame,
       setCurrentFrame,
       selectionStartFrame,
+      selectionFrameWidth,
       setSelectionStartFrame,
       setSelectionFrameWidth,
       isPlaying,
@@ -99,10 +101,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
 
     const [zoomLevel, setZoomLevel] = useState(defaultZoomLevel)
     const [minZoomLevel, setMinZoomLevel] = useState(0.5)
-    const [frameWidth, setFrameWidth] = useState(10 * zoomLevel)
-    const [timelineWidth, setTimelineWidth] = useState(
-      frameWidth * (totalFrames - 1)
-    )
+    const frameWidth = 10 * zoomLevel
+    const timelineWidth = frameWidth * Math.max(totalFrames - 1, 0)
     const [focusedAnnotationId, setFocusedAnnotationId] = useState<
       string | null
     >(null)
@@ -129,7 +129,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [isSelecting, setIsSelecting] = useState<boolean>(false)
     const [selectionStart, setSelectionStart] = useState<number>(0)
     const [selectionWidth, setSelectionWidth] = useState<number>(0)
-    const selectionStartRef = useRef<number>(0)
+    const selectionAnchorFrameRef = useRef<number>(1)
 
     const annotations = state.annotations
     const layerNames = state.layerNames
@@ -466,27 +466,24 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const remInPixels = parseFloat(
         getComputedStyle(document.documentElement).fontSize
       )
-      const offset = 10 * remInPixels
-      updatePlayheadPosition(
-        (timeBarRef.current?.getBoundingClientRect().left ?? 0) +
-          (currentFrame - 1) * frameWidth +
-          offset
-      )
-    }, [zoomLevel])
+      const offset = 140 * remInPixels
+      setPlayheadLeft(offset + (currentFrame - 1) * frameWidth)
+    }, [currentFrame, frameWidth])
 
     useEffect(() => {
-      if (!isPlaying && !isPartiallyPlaying) return
+      if (selectionFrameWidth === 0) {
+        setSelectionWidth(0)
+        return
+      }
+
       const remInPixels = parseFloat(
         getComputedStyle(document.documentElement).fontSize
       )
       const offset = 140 * remInPixels
-      const newPlayheadLeft = offset + (currentFrame - 1) * frameWidth
-      setPlayheadLeft(newPlayheadLeft)
-    }, [currentFrame])
-
-    useEffect(() => {
-      setTimelineWidth(frameWidth * (totalFrames - 1))
-    }, [frameWidth, totalFrames])
+      const nextSelectionStart = (selectionStartFrame - 1) * frameWidth + offset
+      setSelectionStart(nextSelectionStart)
+      setSelectionWidth(selectionFrameWidth * frameWidth)
+    }, [frameWidth, selectionFrameWidth, selectionStartFrame])
 
     const setTimelineContainerRef = (node: HTMLTableElement) => {
       ;(timelineContainerRef.current as HTMLTableElement) = node
@@ -557,7 +554,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const startX = clientX - containerRect.left - offset
       const frameIndex = Math.round(startX / frameWidth) + 1
       const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
-      selectionStartRef.current = (clampedFrameIndex - 1) * frameWidth + offset
+      selectionAnchorFrameRef.current = clampedFrameIndex
       setSelectionStartFrame(clampedFrameIndex)
       setSelectionStart((clampedFrameIndex - 1) * frameWidth + offset)
       setSelectionFrameWidth(0)
@@ -595,18 +592,14 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         const relativeX = e.clientX - containerRect.left - offset
         const frameIndex = Math.round(relativeX / frameWidth) + 1
         const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
-        const clampedRelativeX = (clampedFrameIndex - 1) * frameWidth + offset
-        const startX = selectionStartRef.current
+        const anchorFrameIndex = selectionAnchorFrameRef.current
+        const startFrame = Math.min(anchorFrameIndex, clampedFrameIndex)
+        const frameWidthCount = Math.abs(anchorFrameIndex - clampedFrameIndex)
 
-        const width = Math.abs(clampedRelativeX - startX)
-        const left = Math.min(startX, clampedRelativeX)
-
-        setSelectionStartFrame(Math.min(selectionStartFrame, clampedFrameIndex))
-        setSelectionStart(left)
-        setSelectionFrameWidth(
-          Math.abs(selectionStartFrame - clampedFrameIndex)
-        )
-        setSelectionWidth(width)
+        setSelectionStartFrame(startFrame)
+        setSelectionStart((startFrame - 1) * frameWidth + offset)
+        setSelectionFrameWidth(frameWidthCount)
+        setSelectionWidth(frameWidthCount * frameWidth)
       }
     }
 
@@ -1171,29 +1164,11 @@ ${tierElements.join('\n')}
         style={{ height: `calc(${100 - topHeight}% - 1.5rem)` }}
       >
         <div className="controls">
-          <button
-            onClick={() => {
-              setCurrentFrame(1)
-              updatePlayheadPosition(
-                timeBarRef.current?.getBoundingClientRect().left ?? 0
-              )
-            }}
-          >
+          <button onClick={() => setCurrentFrame(1)}>
             <img src="./skip_start.svg" alt="" />
           </button>
           <button
-            onClick={() => {
-              setCurrentFrame(currentFrame - 1)
-              const remInPixels = parseFloat(
-                getComputedStyle(document.documentElement).fontSize
-              )
-              const offset = 10 * remInPixels
-              updatePlayheadPosition(
-                (timeBarRef.current?.getBoundingClientRect().left ?? 0) +
-                  (currentFrame - 1 - 1) * frameWidth +
-                  offset
-              )
-            }}
+            onClick={() => setCurrentFrame((frame) => Math.max(1, frame - 1))}
           >
             <img src="./1f_left.svg" alt="< 1f" />
           </button>
@@ -1206,29 +1181,13 @@ ${tierElements.join('\n')}
           </button>
           {/* <button onClick={() => play(2)}><img src="./play_2x.svg" alt="×2" /></button> */}
           <button
-            onClick={() => {
-              setCurrentFrame(currentFrame + 1)
-              const remInPixels = parseFloat(
-                getComputedStyle(document.documentElement).fontSize
-              )
-              const offset = 10 * remInPixels
-              updatePlayheadPosition(
-                (timeBarRef.current?.getBoundingClientRect().left ?? 0) +
-                  (currentFrame + 1 - 1) * frameWidth +
-                  offset
-              )
-            }}
+            onClick={() =>
+              setCurrentFrame((frame) => Math.min(totalFrames, frame + 1))
+            }
           >
             <img src="./1f_right.svg" alt="1f >" />
           </button>
-          <button
-            onClick={() => {
-              setCurrentFrame(totalFrames)
-              updatePlayheadPosition(
-                timeBarRef.current?.getBoundingClientRect().right ?? 0
-              )
-            }}
-          >
+          <button onClick={() => setCurrentFrame(totalFrames)}>
             <img src="./skip_end.svg" alt="" />
           </button>
           <button
@@ -1437,7 +1396,7 @@ ${tierElements.join('\n')}
                             text={annotation.text}
                             handlePlayheadMoveDown={handlePlayheadMoveDown}
                             handlePlayheadMove={handlePlayheadMove}
-                            setPlayheadLeft={setPlayheadLeft}
+                            setCurrentFrame={setCurrentFrame}
                             timelineWidth={timelineWidth}
                             canUpdateAnnotation={(
                               id,
@@ -1473,7 +1432,6 @@ ${tierElements.join('\n')}
         <div className="zoom-controls">
           <button
             onClick={() => {
-              setFrameWidth(10 * defaultZoomLevel)
               setZoomLevel(defaultZoomLevel)
             }}
           >
@@ -1487,8 +1445,6 @@ ${tierElements.join('\n')}
             value={zoomLevel}
             onChange={(e) => {
               const newZoomLevel = parseFloat(e.target.value)
-              setFrameWidth(10 * newZoomLevel)
-              console.log(frameWidth)
               setZoomLevel(newZoomLevel)
             }}
           />

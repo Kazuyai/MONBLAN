@@ -20,7 +20,7 @@ interface AnnotationProps {
   text: string
   handlePlayheadMoveDown: (clientX: number) => void
   handlePlayheadMove: (clientX: number) => void
-  setPlayheadLeft: (left: number) => void
+  setCurrentFrame: (frame: number) => void
   timelineWidth: number
   canUpdateAnnotation: (
     id: string,
@@ -46,7 +46,7 @@ const Annotation: React.FC<AnnotationProps> = ({
   text: initialText,
   handlePlayheadMoveDown,
   handlePlayheadMove,
-  setPlayheadLeft,
+  setCurrentFrame,
   timelineWidth,
   canUpdateAnnotation
 }) => {
@@ -244,12 +244,7 @@ const Annotation: React.FC<AnnotationProps> = ({
       if (e.target !== leftHandle && e.target !== rightHandle) {
         setIsEditing(true)
         onEditing(true) // 編集状態の開始を通知
-        // playheadをオフセットを考慮してアノテーションの先頭に移動
-        const remInPixels = parseFloat(
-          getComputedStyle(document.documentElement).fontSize
-        )
-        const offset = 140 * remInPixels
-        setPlayheadLeft(offset + (currentStartFrame - 1) * frameWidth)
+        setCurrentFrame(currentStartFrame)
       }
     }
 
@@ -279,7 +274,7 @@ const Annotation: React.FC<AnnotationProps> = ({
     id,
     currentStartFrame,
     currentEndFrame,
-    setPlayheadLeft
+    setCurrentFrame
   ])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
