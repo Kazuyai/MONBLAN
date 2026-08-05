@@ -15,10 +15,10 @@ Handle them before broad architecture cleanup.
 
 | Issue | Area      | Recommended action                                                 |
 | ----- | --------- | ------------------------------------------------------------------ |
-| #19   | UX / undo | Push layer-name edits to undo only on edit commit.                 |
+| #19   | UX / undo | Fixed: layer-name edits enter undo history only on commit.         |
 | #16   | bug       | Merge duplicated partial-playback initialization effects.          |
 | #15   | bug       | Recompute playhead position from frame after zoom changes.         |
-| #14   | bug       | Define selectedLayerIndex behavior when all layers are removed.    |
+| #14   | bug       | Fixed: selected layer is clamped or cleared after layer changes.   |
 | #13   | bug       | Remove fragile class-name dependency from timeline click handling. |
 | #12   | bug       | Track annotation dragging at document/window level.                |
 | #11   | export    | Fixed: CSV cells escape commas, quotes, and newlines.              |
@@ -55,5 +55,4 @@ than verified user-facing bugs.
 
 ## Recommended next order
 
-1. Fix state/undo correctness: #14 and #19.
-2. Fix timeline zoom/playhead synchronization: #9, #15, and #17.
+1. Fix timeline zoom/playhead synchronization: #9, #15, and #17.

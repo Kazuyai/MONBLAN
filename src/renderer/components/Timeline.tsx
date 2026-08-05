@@ -113,6 +113,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [editingLayerIndex, setEditingLayerIndex] = useState<number | null>(
       null
     )
+    const [editingLayerName, setEditingLayerName] = useState('')
+    const cancelLayerNameEditRef = useRef(false)
     const [selectedLayerIndex, setSelectedLayerIndex] = useState<number | null>(
       0
     )
@@ -149,6 +151,27 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const updateContainerRefs = (layerNames: string[]) => {
       containerRefs.current = layerNames.map(() =>
         React.createRef<HTMLDivElement>()
+      )
+    }
+
+    const clampLayerIndex = (
+      index: number | null,
+      layerNames: string[]
+    ): number | null => {
+      if (layerNames.length === 0) {
+        return null
+      }
+      if (index === null) {
+        return 0
+      }
+      return Math.min(Math.max(index, 0), layerNames.length - 1)
+    }
+
+    const removeInvalidAnnotationSelection = (nextState: TimelineState) => {
+      const annotationIds = new Set(nextState.annotations.map(({ id }) => id))
+      setFocusedAnnotationId((id) => (id && annotationIds.has(id) ? id : null))
+      setSelectedAnnotationIds((ids) =>
+        ids.filter((id) => annotationIds.has(id))
       )
     }
 
@@ -262,6 +285,11 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         setUndoStack((prevStack) => prevStack.slice(0, prevStack.length - 1))
         setRedoStack((prevStack) => [...prevStack, deepCopyState(state)])
         setState(previousState)
+        setSelectedLayerIndex((index) =>
+          clampLayerIndex(index, previousState.layerNames)
+        )
+        setEditingLayerIndex(null)
+        removeInvalidAnnotationSelection(previousState)
         updateContainerRefs(previousState.layerNames)
       }
     }
@@ -273,77 +301,119 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         setRedoStack((prevStack) => prevStack.slice(0, prevStack.length - 1))
         setUndoStack((prevStack) => [...prevStack, deepCopyState(state)])
         setState(nextState)
+        setSelectedLayerIndex((index) =>
+          clampLayerIndex(index, nextState.layerNames)
+        )
+        setEditingLayerIndex(null)
+        removeInvalidAnnotationSelection(nextState)
         updateContainerRefs(nextState.layerNames)
       }
     }
 
     // 注釈層の追加
     const addLayer = () => {
-      setState((prevState) => {
-        pushToUndoStack(prevState) // Undoスタックに保存
-        return {
-          ...prevState,
-          layerNames: [
-            ...prevState.layerNames,
-            `レイヤー${prevState.layerNames.length + 1}`
-          ]
-        }
+      pushToUndoStack(state)
+      const newLayerNames = [
+        ...state.layerNames,
+        `レイヤー${state.layerNames.length + 1}`
+      ]
+      setState({
+        ...state,
+        layerNames: newLayerNames
       })
+      setSelectedLayerIndex(newLayerNames.length - 1)
+      setEditingLayerIndex(null)
     }
 
     // 注釈層の削除
     const deleteLayer = () => {
-      if (selectedLayerIndex !== null) {
-        setState((prevState) => {
-          pushToUndoStack(prevState) // Undoスタックに保存
-          const newLayerNames = prevState.layerNames.filter(
-            (_, index) => index !== selectedLayerIndex
-          )
-          const newAnnotations = prevState.annotations.filter(
-            (annotation) => annotation.layerIndex !== selectedLayerIndex
-          )
-          // レイヤーインデックスを更新
-          const updatedAnnotations = newAnnotations.map((annotation) => {
-            if (annotation.layerIndex > selectedLayerIndex) {
-              return { ...annotation, layerIndex: annotation.layerIndex - 1 }
-            }
-            return annotation
-          })
-          return {
-            layerNames: newLayerNames,
-            annotations: updatedAnnotations
-          }
-        })
-        setSelectedLayerIndex(0)
+      if (
+        selectedLayerIndex === null ||
+        selectedLayerIndex < 0 ||
+        selectedLayerIndex >= state.layerNames.length
+      ) {
+        return
       }
+
+      pushToUndoStack(state)
+      const targetLayerIndex = selectedLayerIndex
+      const newLayerNames = state.layerNames.filter(
+        (_, index) => index !== targetLayerIndex
+      )
+      const updatedAnnotations = state.annotations
+        .filter((annotation) => annotation.layerIndex !== targetLayerIndex)
+        .map((annotation) => {
+          if (annotation.layerIndex > targetLayerIndex) {
+            return { ...annotation, layerIndex: annotation.layerIndex - 1 }
+          }
+          return annotation
+        })
+      const nextState = {
+        layerNames: newLayerNames,
+        annotations: updatedAnnotations
+      }
+
+      setState(nextState)
+      setSelectedLayerIndex(clampLayerIndex(targetLayerIndex, newLayerNames))
+      setEditingLayerIndex(null)
+      removeInvalidAnnotationSelection(nextState)
     }
 
     // 注釈層名のダブルクリックで編集開始
     const handleLayerNameDoubleClick = (index: number) => {
       setEditingLayerIndex(index)
+      setEditingLayerName(layerNames[index] ?? '')
     }
 
     // 注釈層名の変更
-    const handleLayerNameChange = (index: number, newName: string) => {
-      setState((prevState) => {
-        pushToUndoStack(prevState) // Undoスタックに保存
-        const updatedLayerNames = [...prevState.layerNames]
-        updatedLayerNames[index] = newName
-        return {
-          ...prevState,
+    const handleLayerNameChange = (newName: string) => {
+      setEditingLayerName(newName)
+    }
+
+    const commitLayerNameEdit = () => {
+      if (cancelLayerNameEditRef.current) {
+        cancelLayerNameEditRef.current = false
+        setEditingLayerIndex(null)
+        return
+      }
+
+      if (
+        editingLayerIndex === null ||
+        editingLayerIndex < 0 ||
+        editingLayerIndex >= state.layerNames.length
+      ) {
+        setEditingLayerIndex(null)
+        return
+      }
+
+      const currentName = state.layerNames[editingLayerIndex]
+      if (editingLayerName !== currentName) {
+        pushToUndoStack(state)
+        const updatedLayerNames = [...state.layerNames]
+        updatedLayerNames[editingLayerIndex] = editingLayerName
+        setState({
+          ...state,
           layerNames: updatedLayerNames
-        }
-      })
+        })
+      }
+      setEditingLayerIndex(null)
+    }
+
+    const cancelLayerNameEdit = () => {
+      cancelLayerNameEditRef.current = true
+      setEditingLayerIndex(null)
     }
 
     // 編集終了処理
     const handleLayerNameBlur = () => {
-      setEditingLayerIndex(null)
+      commitLayerNameEdit()
     }
 
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
-        setEditingLayerIndex(null)
+        e.currentTarget.blur()
+      } else if (e.key === 'Escape') {
+        cancelLayerNameEdit()
       }
     }
 
@@ -648,7 +718,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       )
 
       if (!canInsertAnnotation(newAnnotation, layerAnnotations)) {
-        showTimelineNotice('選択されていないアノテーションと重なるため、結合できません。')
+        showTimelineNotice(
+          '選択されていないアノテーションと重なるため、結合できません。'
+        )
         return
       }
 
@@ -690,7 +762,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         )
 
         if (annotationsToSplit.length === 0) {
-          showTimelineNotice('プレイヘッドの位置に分割可能なアノテーションがありません。')
+          showTimelineNotice(
+            'プレイヘッドの位置に分割可能なアノテーションがありません。'
+          )
           return
         }
 
@@ -742,7 +816,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         )
 
         if (annotationsToSplit.length === 0) {
-          showTimelineNotice('選択範囲内に分割可能なアノテーションがありません。')
+          showTimelineNotice(
+            '選択範囲内に分割可能なアノテーションがありません。'
+          )
           return
         }
 
@@ -923,28 +999,36 @@ ${layerAnnotations.join('\n')}
       const storedFileNames = localStorage.getItem('videoFileNames')
       const actualFileNames = storedFileNames ? JSON.parse(storedFileNames) : []
 
-      const mediaDescriptors = videoSrcs.map((videoSrc, index) => {
-        // blob URLの場合はlocalStorageから実際のファイル名を使用、通常のパスの場合はそのまま使用
-        let fileName: string
-        let mediaUrl: string
+      const mediaDescriptors = videoSrcs
+        .map((videoSrc, index) => {
+          // blob URLの場合はlocalStorageから実際のファイル名を使用、通常のパスの場合はそのまま使用
+          let fileName: string
+          let mediaUrl: string
 
-        if (videoSrc.startsWith('blob:')) {
-          // blob URLの場合、localStorageから実際のファイル名を取得
-          fileName = actualFileNames[index] || `video${index + 1}.mp4`
-          // 相対パスとして設定（ELANで手動選択を想定）
-          mediaUrl = `./${fileName}`
-        } else {
-          // 通常のファイルパスの場合
-          fileName = videoSrc.split(/[/\\]/).pop() || `video${index + 1}.mp4`
-          mediaUrl = videoSrc.startsWith('file://') ? videoSrc : `file:///${videoSrc.replace(/\\/g, '/')}`
-        }
+          if (videoSrc.startsWith('blob:')) {
+            // blob URLの場合、localStorageから実際のファイル名を取得
+            fileName = actualFileNames[index] || `video${index + 1}.mp4`
+            // 相対パスとして設定（ELANで手動選択を想定）
+            mediaUrl = `./${fileName}`
+          } else {
+            // 通常のファイルパスの場合
+            fileName = videoSrc.split(/[/\\]/).pop() || `video${index + 1}.mp4`
+            mediaUrl = videoSrc.startsWith('file://')
+              ? videoSrc
+              : `file:///${videoSrc.replace(/\\/g, '/')}`
+          }
 
-        const mimeType = fileName.toLowerCase().endsWith('.mp4') ? 'video/mp4' :
-                        fileName.toLowerCase().endsWith('.webm') ? 'video/webm' :
-                        fileName.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4'
+          const mimeType = fileName.toLowerCase().endsWith('.mp4')
+            ? 'video/mp4'
+            : fileName.toLowerCase().endsWith('.webm')
+              ? 'video/webm'
+              : fileName.toLowerCase().endsWith('.mov')
+                ? 'video/quicktime'
+                : 'video/mp4'
 
-        return `    <MEDIA_DESCRIPTOR MEDIA_URL="${escapeXml(mediaUrl)}" MIME_TYPE="${mimeType}" RELATIVE_MEDIA_URL="${escapeXml(fileName)}"/>`
-      }).join('\n')
+          return `    <MEDIA_DESCRIPTOR MEDIA_URL="${escapeXml(mediaUrl)}" MIME_TYPE="${mimeType}" RELATIVE_MEDIA_URL="${escapeXml(fileName)}"/>`
+        })
+        .join('\n')
 
       return `<?xml version="1.0" encoding="UTF-8"?>
 <ANNOTATION_DOCUMENT AUTHOR="" DATE="${currentDate}" FORMAT="3.0" VERSION="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.mpi.nl/tools/elan/EAFv3.0.xsd">
@@ -1013,7 +1097,7 @@ ${tierElements.join('\n')}
 
       // レイヤー数に合わせて containerRefs を初期化
       updateContainerRefs(newLayerNames)
-      setSelectedLayerIndex(0)
+      setSelectedLayerIndex(clampLayerIndex(0, newLayerNames))
     }, [autoAnnotationResponseData])
 
     // ドキュメント全体でマウスイベントを監視
@@ -1299,9 +1383,9 @@ ${tierElements.join('\n')}
                         {editingLayerIndex === layerIndex ? (
                           <input
                             type="text"
-                            value={name}
+                            value={editingLayerName}
                             onChange={(e) =>
-                              handleLayerNameChange(layerIndex, e.target.value)
+                              handleLayerNameChange(e.target.value)
                             }
                             onBlur={handleLayerNameBlur}
                             onKeyDown={handleInputKeyDown}
