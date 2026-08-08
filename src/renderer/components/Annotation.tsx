@@ -250,15 +250,15 @@ const Annotation: React.FC<AnnotationProps> = ({
 
     // イベントリスナーを追加
     slider.addEventListener('mousedown', onMouseDown)
-    container.addEventListener('mousemove', onMouseMove)
-    container.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
     slider.addEventListener('dblclick', onDoubleClick)
 
     return () => {
       // クリーンアップ
       slider.removeEventListener('mousedown', onMouseDown)
-      container.removeEventListener('mousemove', onMouseMove)
-      container.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
       slider.removeEventListener('dblclick', onDoubleClick)
     }
   }, [
