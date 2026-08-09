@@ -19,7 +19,7 @@ Handle them before broad architecture cleanup.
 | #16   | bug       | Merge duplicated partial-playback initialization effects.          |
 | #15   | bug       | Fixed: playhead position is derived from frame after zoom changes. |
 | #14   | bug       | Fixed: selected layer is clamped or cleared after layer changes.   |
-| #13   | bug       | Remove fragile class-name dependency from timeline click handling. |
+| #13   | bug       | Fixed: timeline clicks ignore annotations via explicit data marker. |
 | #12   | bug       | Fixed: annotation drag and resize are tracked at document level.   |
 | #11   | export    | Fixed: CSV cells escape commas, quotes, and newlines.              |
 | #10   | export    | Fixed: EAF media descriptors are emitted inside HEADER.            |
@@ -55,4 +55,4 @@ than verified user-facing bugs.
 
 ## Recommended next order
 
-1. Continue with remaining must-fix timeline interaction bugs: #16 and #13.
+1. Continue with remaining must-fix timeline interaction bug: #16.

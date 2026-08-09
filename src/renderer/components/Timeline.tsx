@@ -570,9 +570,16 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       handleSelectionMouseDown(e.clientX)
     }
 
+    const isAnnotationEventTarget = (target: EventTarget | null): boolean => {
+      return (
+        target instanceof Element &&
+        target.closest('[data-annotation-id]') !== null
+      )
+    }
+
     // タイムラインでのマウスダウン処理
     const handleTimelineMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-      if ((e.target as HTMLElement).classList.contains('annotation')) {
+      if (isAnnotationEventTarget(e.target)) {
         return // Annotation 上でのクリックは無視
       }
       handlePlayheadMoveDown(e.clientX)

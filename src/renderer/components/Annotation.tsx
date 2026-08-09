@@ -115,6 +115,11 @@ const Annotation: React.FC<AnnotationProps> = ({
     }
 
     const onMouseMove = (e: MouseEvent) => {
+      if (draggingRef.current && e.buttons === 0) {
+        finishDragging()
+        return
+      }
+
       if (draggingRef.current) {
         const containerRect = container.getBoundingClientRect()
 
@@ -212,32 +217,38 @@ const Annotation: React.FC<AnnotationProps> = ({
       }
     }
 
-    const onMouseUp = () => {
+    const finishDragging = () => {
       // ドラッグ終了時にフレームを更新
-      if (draggingRef.current) {
-        const containerRect = container.getBoundingClientRect()
-        const sliderRect = slider.getBoundingClientRect()
-
-        const newLeft = sliderRect.left - containerRect.left
-        const newRight = containerRect.right - sliderRect.right
-
-        const newStartFrame = Math.round(newLeft / frameWidth) + 1
-        const newEndFrame =
-          Math.round((containerRect.width - newRight) / frameWidth) + 1
-
-        setCurrentStartFrame(newStartFrame)
-        setCurrentEndFrame(newEndFrame)
-
-        onChange(
-          {
-            startFrame: newStartFrame,
-            endFrame: newEndFrame,
-            text
-          },
-          true // shouldPushToUndoStack を true に設定
-        )
-        draggingRef.current = null
+      if (!draggingRef.current) {
+        return
       }
+
+      draggingRef.current = null
+      const containerRect = container.getBoundingClientRect()
+      const sliderRect = slider.getBoundingClientRect()
+
+      const newLeft = sliderRect.left - containerRect.left
+      const newRight = containerRect.right - sliderRect.right
+
+      const newStartFrame = Math.round(newLeft / frameWidth) + 1
+      const newEndFrame =
+        Math.round((containerRect.width - newRight) / frameWidth) + 1
+
+      setCurrentStartFrame(newStartFrame)
+      setCurrentEndFrame(newEndFrame)
+
+      onChange(
+        {
+          startFrame: newStartFrame,
+          endFrame: newEndFrame,
+          text
+        },
+        true // shouldPushToUndoStack を true に設定
+      )
+    }
+
+    const onMouseUp = () => {
+      finishDragging()
     }
 
     const onDoubleClick = (e: MouseEvent) => {
@@ -252,6 +263,7 @@ const Annotation: React.FC<AnnotationProps> = ({
     slider.addEventListener('mousedown', onMouseDown)
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('blur', onMouseUp)
     slider.addEventListener('dblclick', onDoubleClick)
 
     return () => {
@@ -259,6 +271,7 @@ const Annotation: React.FC<AnnotationProps> = ({
       slider.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
+      window.removeEventListener('blur', onMouseUp)
       slider.removeEventListener('dblclick', onDoubleClick)
     }
   }, [
@@ -368,6 +381,7 @@ const Annotation: React.FC<AnnotationProps> = ({
   return (
     <div
       className={`slider ${focused ? 'focused' : ''} ${selectedAnnotationIds.includes(id) ? 'selected' : ''}`}
+      data-annotation-id={id}
       ref={sliderRef}
       onClick={(e) => {
         handleSetSelectedAnnotationIds(e)
