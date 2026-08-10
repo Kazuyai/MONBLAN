@@ -16,7 +16,7 @@ Handle them before broad architecture cleanup.
 | Issue | Area      | Recommended action                                                 |
 | ----- | --------- | ------------------------------------------------------------------ |
 | #19   | UX / undo | Fixed: layer-name edits enter undo history only on commit.         |
-| #16   | bug       | Merge duplicated partial-playback initialization effects.          |
+| #16   | bug       | Fixed: partial-playback initialization effects are consolidated.   |
 | #15   | bug       | Fixed: playhead position is derived from frame after zoom changes. |
 | #14   | bug       | Fixed: selected layer is clamped or cleared after layer changes.   |
 | #13   | bug       | Fixed: timeline clicks ignore annotations via explicit data marker. |
@@ -55,4 +55,4 @@ than verified user-facing bugs.
 
 ## Recommended next order
 
-1. Continue with remaining must-fix timeline interaction bug: #16.
+1. Review remaining should-fix items and pick the next small UI/code cleanup.

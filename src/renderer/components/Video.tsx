@@ -1,10 +1,4 @@
-import React, {
-  useEffect,
-  useRef,
-  Dispatch,
-  SetStateAction,
-  useState
-} from 'react'
+import React, { useEffect, useRef, Dispatch, SetStateAction } from 'react'
 
 interface VideoProps {
   videoSrcs: string[]
@@ -45,7 +39,12 @@ export const Video: React.FC<VideoProps> = ({
   const animationFrameId = useRef<number>()
   const totalFrames = Math.ceil(videoDuration * frameRate)
 
-  const [selectionEndTime, setSelectionEndTime] = useState<number>(0)
+  const selectionEndTime =
+    Math.round(
+      ((selectionStartFrame + selectionFrameWidth - 1) / frameRate) * 1000
+    ) /
+      1000 +
+    0.001
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -115,18 +114,6 @@ export const Video: React.FC<VideoProps> = ({
     })
   }, [currentFrame, isPlaying, isPartiallyPlaying, frameRate])
 
-  useEffect(() => {
-    if (!isPartiallyPlaying) return
-    videoRefs.current.forEach((video) => {
-      if (video) {
-        const startTime = Math.round(
-          (((selectionStartFrame - 1) / frameRate) * 1000) / 1000 + 0.001
-        )
-        video.playbackRate = playSpeed || 1
-        video.currentTime = startTime
-      }
-    })
-  }, [isPartiallyPlaying])
 
   useEffect(() => {
     if (!isPartiallyPlaying) return
@@ -169,29 +156,6 @@ export const Video: React.FC<VideoProps> = ({
       }
     })
   }, [isPlaying, isPartiallyPlaying, playSpeed])
-
-  // playSpeedが変更されたときに再生中なら再生速度を変更する
-  useEffect(() => {
-    videoRefs.current.forEach((video) => {
-      if (video && isPlaying) {
-        video.playbackRate = playSpeed || 1
-      }
-    })
-  }, [playSpeed])
-
-  useEffect(() => {
-    console.log(
-      'selectionStartFrame, selectionEndFrame',
-      selectionStartFrame,
-      selectionFrameWidth
-    )
-    const endTime =
-      (((selectionStartFrame + selectionFrameWidth - 1) / frameRate) * 1000) /
-        1000 +
-      0.001
-    console.log('endTime : ' + endTime)
-    setSelectionEndTime(endTime)
-  }, [selectionStartFrame, selectionFrameWidth])
 
   // 部分再生中のフラグが立っているときに、選択範囲を再生する
   // useEffect(() => {
@@ -263,11 +227,6 @@ export const Video: React.FC<VideoProps> = ({
   // }, [currentFrame]);
 
   useEffect(() => {
-    const endTime =
-      (((selectionStartFrame + selectionFrameWidth - 1) / frameRate) * 1000) /
-        1000 +
-      0.001
-    setSelectionEndTime(endTime)
     const updateCurrentFrame = () => {
       videoRefs.current.forEach((video) => {
         if (video && !isEditing) {
@@ -300,7 +259,17 @@ export const Video: React.FC<VideoProps> = ({
         cancelAnimationFrame(animationFrameId.current)
       }
     }
-  }, [isPlaying, isPartiallyPlaying, isEditing, frameRate, setCurrentFrame])
+  }, [
+    isPlaying,
+    isPartiallyPlaying,
+    isEditing,
+    frameRate,
+    selectionEndTime,
+    totalFrames,
+    setCurrentFrame,
+    setIsPlaying,
+    setIsPartiallyPlaying
+  ])
 
   const getVideoStyle = (index: number) => {
     const totalVideos = videoSrcs.length
