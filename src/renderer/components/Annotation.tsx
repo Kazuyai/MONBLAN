@@ -337,8 +337,6 @@ const Annotation: React.FC<AnnotationProps> = ({
       setFocusedAnnotationId(id)
       setSelectedAnnotationIds([id])
     }
-    console.log('selectedAnnotationIds:', selectedAnnotationIds)
-    console.log('focused:', focused)
   }
 
   useEffect(() => {

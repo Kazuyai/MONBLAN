@@ -41,7 +41,6 @@ export const OpenFile: React.FC<SettingsProps> = ({
       setVideoSrcs(urls)
 
       const file = files[0]
-      console.log('Selected file:', file.name)
 
       try {
         // まずFastAPIサーバーに接続を試行
@@ -55,24 +54,19 @@ export const OpenFile: React.FC<SettingsProps> = ({
 
         if (response.ok) {
           const data = await response.json()
-          console.log('Frame rate from server:', data.frame_rate)
           setFrameRate(data.frame_rate)
         } else {
           throw new Error('Server response not ok')
         }
       } catch (error) {
-        console.log('FastAPI server not available, using local fallback')
-
         // サーバーが利用できない場合、ローカルでフレームレートを推定
         try {
           const frameRate = await getVideoFrameRate(urls[0])
-          console.log('Frame rate from local analysis:', frameRate)
           setFrameRate(frameRate)
         } catch (localError) {
           console.error('Local frame rate detection failed:', localError)
           // 最終的なフォールバック
           setFrameRate(30)
-          console.log('Using default frame rate: 30fps')
         }
       } finally {
         setIsProcessing(false)

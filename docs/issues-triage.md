@@ -35,8 +35,8 @@ or together with related work.
 | #41   | enhancement  | Show selection start/end time in timeline UX pass.                  |
 | #35   | code-quality | Fixed: duplicated containerRefs initialization is removed.          |
 | #34   | code-quality | Fixed: unused setTimelineContainerRef is removed.                   |
-| #31   | code-quality | Delete commented-out code while touching related files.             |
-| #30   | code-quality | Remove console.log or replace with logging.                         |
+| #31   | code-quality | Fixed: stale commented-out UI and playback code is removed.         |
+| #30   | code-quality | Fixed: debug console.log calls are removed or converted to logging. |
 | #20   | UX           | Fixed: blocking alerts are replaced by inline/floating notices.     |
 | #17   | latent-bug   | Fixed: frameWidth/timelineWidth are no longer duplicated state.     |
 

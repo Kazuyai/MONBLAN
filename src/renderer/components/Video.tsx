@@ -63,11 +63,6 @@ export const Video: React.FC<VideoProps> = ({
           case 'Space':
             if (isEditing) return
             event.preventDefault()
-            // if (video.paused) {
-            //   video.play();
-            // } else {
-            //   video.pause();
-            // }
             setIsPlaying?.((prev) => !prev)
             setPlaySpeed?.(1)
             break
@@ -108,8 +103,6 @@ export const Video: React.FC<VideoProps> = ({
         // 小数第1位までしか値がないときに、再生位置がずれる問題を解消するために、0.001を足している
         video.currentTime =
           Math.round(((currentFrame - 1) / frameRate) * 1000) / 1000 + 0.001
-        // console.log('currentFrame : ' + currentFrame);
-        // console.log('playPoint : ' + (currentFrame - 1) / frameRate);
       }
     })
   }, [currentFrame, isPlaying, isPartiallyPlaying, frameRate])
@@ -128,19 +121,6 @@ export const Video: React.FC<VideoProps> = ({
     })
   }, [isPartiallyPlaying, selectionStartFrame, frameRate, playSpeed])
 
-  // useEffect(() => {
-  //   videoRefs.current.forEach((video) => {
-  //     if (video) {
-  //       if (isPlaying || isPartiallyPlaying) {
-  //         video.playbackRate = playSpeed || 1;
-  //         video.play();
-  //       } else {
-  //         video.pause();
-  //       }
-  //     }
-  //   });
-  // }, [isPlaying, isPartiallyPlaying]);
-
   useEffect(() => {
     videoRefs.current.forEach((video) => {
       if (!video) return
@@ -157,89 +137,17 @@ export const Video: React.FC<VideoProps> = ({
     })
   }, [isPlaying, isPartiallyPlaying, playSpeed])
 
-  // 部分再生中のフラグが立っているときに、選択範囲を再生する
-  // useEffect(() => {
-  //   const startTime = (selectionStartFrame - 1) / frameRate;
-  //   const endTime = (selectionStartFrame + selectionFrameWidth - 1) / frameRate;
-
-  //   console.log("startFrame, width", selectionStartFrame, selectionFrameWidth);
-  //   console.log("startTime + startTime", startTime, endTime);
-
-  //   const cleanups: (() => void)[] = [];
-  //     videoRefs.current.forEach(video => {
-  //       if (!video) return;
-
-  //       video.currentTime  = startTime + 0.001;
-  //       video.play();
-
-  //       const handleTimeUpdate = () => {
-  //         console.log("currentTime : " + video.currentTime);
-  //         if (video.currentTime >= endTime + 0.001) {
-  //           video.pause();
-  //           video.currentTime = endTime + 0.001;
-  //           console.log("END");
-  //           setIsPlaying?.(false);
-  //           video.removeEventListener('timeupdate', handleTimeUpdate);
-  //         }
-  //       };
-
-  //       video.addEventListener('timeupdate', handleTimeUpdate);
-  //       cleanups.push(() => video.removeEventListener('timeupdate', handleTimeUpdate));
-  //     }
-  //   );
-
-  //   return () => {
-  //     cleanups.forEach(fn => fn());
-  //   };
-  // }, [isPartiallyPlaying]);
-
-  // useEffect(() => {
-  //   console.log("isPartiallyPlaying : " + isPartiallyPlaying);
-  //   if (!isPartiallyPlaying) return;
-
-  //   const startTime = (selectionStartFrame - 1) / frameRate;
-
-  //   videoRefs.current.forEach((video) => {
-  //     if (!video) return;
-
-  //     video.currentTime = startTime + 0.001;
-  //     video.play();
-  //   });
-  // }, [isPartiallyPlaying]);
-
-  // useEffect(() => {
-  //   console.log("isPartiallyPlaying : " + isPartiallyPlaying);
-  //   console.log("isPlaying : " + isPlaying);
-  //   if (!isPartiallyPlaying || !isPlaying) return;
-
-  //   const endTime = (selectionStartFrame + selectionFrameWidth - 1) / frameRate;
-
-  //   console.log("Looking for endTime : " + endTime);
-  //   videoRefs.current.forEach((video) => {
-  //     if (!video) return;
-
-  //     if (video.currentTime >= endTime + 0.001) {
-  //       video.pause();
-  //       video.currentTime = endTime + 0.001;
-  //       setIsPlaying?.(false);
-  //     }
-  //   });
-  // }, [currentFrame]);
-
   useEffect(() => {
     const updateCurrentFrame = () => {
       videoRefs.current.forEach((video) => {
         if (video && !isEditing) {
           const frame = Math.round(video.currentTime * frameRate)
-          // console.log('frame : ' + frame);
           setCurrentFrame(frame + 1)
           if (isPlaying) {
             if (frame == totalFrames) {
-              console.log('END')
               setIsPlaying?.(false)
             }
           } else if (isPartiallyPlaying) {
-            // const endTime = Math.round(((selectionStartFrame + selectionFrameWidth - 1) / frameRate * 1000) / 1000 + 0.001);
             if (video.currentTime > selectionEndTime) {
               video.currentTime = selectionEndTime
               setIsPartiallyPlaying?.(false)

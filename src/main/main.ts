@@ -28,9 +28,8 @@ setApiStatusListener((status) => {
   mainWindow?.webContents.send('api:status-changed', status)
 })
 
-ipcMain.on('ipc-example', async (event, arg) => {
+ipcMain.on('ipc-example', async (event) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`
-  console.log(msgTemplate(arg))
   event.reply('ipc-example', msgTemplate('pong'))
 })
 
@@ -63,7 +62,7 @@ const installExtensions = async () => {
       extensions.map((name: string) => installer[name]),
       forceDownload
     )
-    .catch(console.log)
+    .catch((error: unknown) => log.error('Failed to install extensions', error))
 }
 
 const createWindow = async () => {
@@ -158,10 +157,9 @@ app
       log.error('Failed to start API server', error)
     })
     createWindow()
-    console.log('mainWindow:', mainWindow)
     ipcMain.on('open-file', openFile)
     app.on('activate', () => {
       if (mainWindow === null) createWindow()
     })
   })
-  .catch(console.log)
+  .catch((error: unknown) => log.error('Failed to initialize app', error))

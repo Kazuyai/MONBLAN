@@ -92,7 +92,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
 
     // 総フレーム数を計算
     const totalFrames = Math.ceil(videoDuration * frameRate)
-    console.log('totalFrames : ' + videoDuration * frameRate)
 
     const defaultZoomLevel = 1
 
@@ -443,25 +442,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }
     }, [minZoomLevel]) // minZoomLevelの変更を監視
 
-    // minZoomLevelを動的に計算する
-    // useEffect(() => {
-    //   const calculateMinZoomLevel = () => {
-    //     // 1フレームの幅が10rem未満にならないようにする
-    //     const remInPixels = parseFloat(getComputedStyle(document.documentElement).fontSize);
-    //     const minFrameWidth = 10 * remInPixels;
-    //     const newMinZoomLevel = minFrameWidth / frameWidth;
-    //     setMinZoomLevel(newMinZoomLevel);
-    //   };
-
-    //   calculateMinZoomLevel(); // 初期計算
-
-    //   // ウィンドウサイズ変更時に再計算
-    //   window.addEventListener('resize', calculateMinZoomLevel);
-    //   return () => {
-    //     window.removeEventListener('resize', calculateMinZoomLevel);
-    //   };
-    // }, [totalFrames]);
-
     useEffect(() => {
       const remInPixels = parseFloat(
         getComputedStyle(document.documentElement).fontSize
@@ -488,9 +468,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     useEffect(() => {
       if (timelineContainerRef.current) {
         const container = timelineContainerRef.current
-        // console.log("container : " + container);
         if (container) {
-          // console.log(container.getBoundingClientRect().height);
           document.documentElement.style.setProperty(
             '--timeline-container-height',
             `${container.getBoundingClientRect().height}px`
@@ -513,10 +491,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
 
       const frameIndex = Math.round(relativeX / frameWidth) + 1
       const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
-      console.log('frameIndex : ' + frameIndex)
-      console.log('clampedFrameIndex : ' + clampedFrameIndex)
 
-      console.log('frameWidth : ' + frameWidth)
       const newPlayheadLeft = offset + (clampedFrameIndex - 1) * frameWidth
       setCurrentFrame(clampedFrameIndex)
       setPlayheadLeft(newPlayheadLeft)
@@ -1068,7 +1043,6 @@ ${tierElements.join('\n')}
 
     useEffect(() => {
       if (autoAnnotationResponseData?.length === 0) return
-      console.log(autoAnnotationResponseData)
       // autoAnnotationResponseDataの中にあるlayerNameでlayerNamesを書き換え
       const newLayerNames = [
         ...new Set(
@@ -1171,14 +1145,12 @@ ${tierElements.join('\n')}
           >
             <img src="./1f_left.svg" alt="< 1f" />
           </button>
-          {/* <button onClick={() => play(0.5)}><img src="./play_0_5x.svg" alt="×0.5" /></button> */}
           <button onClick={() => play()}>
             <img
               src={isPlaying ? './pause.svg' : './play.svg'}
               alt={isPlaying ? 'pause' : 'play'}
             />
           </button>
-          {/* <button onClick={() => play(2)}><img src="./play_2x.svg" alt="×2" /></button> */}
           <button
             onClick={() =>
               setCurrentFrame((frame) => Math.min(totalFrames, frame + 1))
@@ -1228,8 +1200,6 @@ ${tierElements.join('\n')}
             <></>
           ) : (
             <table ref={timelineContainerRef}>
-              {/* <div className="playhead" style={{ left: `${playheadLeft}px` }}></div> */}
-
               <tr className="timelines" ref={timelinesRef}>
                 <td></td>
                 <th

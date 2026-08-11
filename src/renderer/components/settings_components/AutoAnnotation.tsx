@@ -155,13 +155,10 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       ...autoAnnotationLayer,
       { index: index, layerName: layerName, humanId: humanId, points: points }
     ])
-    console.log('Add', autoAnnotationLayer.length)
-    console.log(autoAnnotationLayer)
     setSelectedLayerIndex(autoAnnotationLayer.length)
   }
 
   const deleteLayerParam = (index: number) => {
-    console.log('Delete Index Now', index)
     const newLayers = autoAnnotationLayer
       .filter((layer, i) => i !== index)
       .map((layer, i) => {
@@ -306,7 +303,6 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
           return
         }
         const data = await response.json()
-        console.log(data)
         setAutoAnnotationResponseData(data)
       } catch (error) {
         console.error('Error:', error)
