@@ -485,14 +485,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       setSelectionWidth(selectionFrameWidth * frameWidth)
     }, [frameWidth, selectionFrameWidth, selectionStartFrame])
 
-    const setTimelineContainerRef = (node: HTMLTableElement) => {
-      ;(timelineContainerRef.current as HTMLTableElement) = node
-    }
-
-    useEffect(() => {
-      updateContainerRefs(state.layerNames)
-    }, [state.layerNames])
-
     useEffect(() => {
       if (timelineContainerRef.current) {
         const container = timelineContainerRef.current
