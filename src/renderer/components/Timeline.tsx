@@ -132,6 +132,24 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
 
     const annotations = state.annotations
     const layerNames = state.layerNames
+    const hasSelectionRange = selectionFrameWidth > 0
+    const selectionEndFrame = selectionStartFrame + selectionFrameWidth - 1
+    const selectionStartTime = (selectionStartFrame - 1) / frameRate
+    const selectionEndTime = selectionEndFrame / frameRate
+    const selectionDuration = selectionFrameWidth / frameRate
+
+    const formatTimelineTime = (seconds: number) => {
+      const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0
+      const minutes = Math.floor(safeSeconds / 60)
+      const remainingSeconds = safeSeconds - minutes * 60
+      const secondText = remainingSeconds.toFixed(3).padStart(6, '0')
+
+      if (minutes === 0) {
+        return `${secondText}s`
+      }
+
+      return `${minutes}:${secondText}`
+    }
 
     // 状態の深いコピーを作成する関数
     const deepCopyState = (state: TimelineState): TimelineState => {
@@ -1282,14 +1300,22 @@ ${tierElements.join('\n')}
                   style={{ left: `${playheadLeft}px` }}
                 ></div>
                 {/* 選択範囲を表示 */}
-                {selectionWidth !== 0 && (
+                {hasSelectionRange && selectionWidth !== 0 && (
                   <div
                     className="selected-area"
                     style={{
                       left: `${selectionStart}px`,
                       width: `${selectionWidth}px`
                     }}
-                  ></div>
+                  >
+                    <div className="selection-range-label">
+                      <span>
+                        {formatTimelineTime(selectionStartTime)} –{' '}
+                        {formatTimelineTime(selectionEndTime)}
+                      </span>
+                      <span>{formatTimelineTime(selectionDuration)}</span>
+                    </div>
+                  </div>
                 )}
               </tr>
 

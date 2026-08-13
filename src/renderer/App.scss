@@ -774,6 +774,34 @@ button {
             background-color: rgba(0, 120, 215, 0.3);
             z-index: 8;
             pointer-events: none;
+            .selection-range-label {
+              position: absolute;
+              top: 6rem;
+              left: 50%;
+              display: flex;
+              flex-direction: row;
+              align-items: center;
+              gap: 8rem;
+              width: max-content;
+              max-width: 360rem;
+              padding: 4rem 8rem;
+              transform: translateX(-50%);
+              border: 1rem solid #8fc7ff;
+              border-radius: 999rem;
+              background: #102338e6;
+              color: #f4fbff;
+              box-shadow: 0 4rem 12rem #0008;
+              font-size: 12rem;
+              font-weight: 600;
+              line-height: 1.2;
+              white-space: nowrap;
+              span:last-child {
+                padding-left: 8rem;
+                border-left: 1rem solid #ffffff55;
+                color: #bfe3ff;
+                font-weight: 500;
+              }
+            }
           }
         }
       }

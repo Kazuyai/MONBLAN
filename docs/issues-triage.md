@@ -32,7 +32,7 @@ or together with related work.
 
 | Issue | Area         | Recommended action                                                  |
 | ----- | ------------ | ------------------------------------------------------------------- |
-| #41   | enhancement  | Show selection start/end time in timeline UX pass.                  |
+| #41   | enhancement  | Fixed: selection start, end, and duration are shown on timeline.    |
 | #35   | code-quality | Fixed: duplicated containerRefs initialization is removed.          |
 | #34   | code-quality | Fixed: unused setTimelineContainerRef is removed.                   |
 | #31   | code-quality | Fixed: stale commented-out UI and playback code is removed.         |
