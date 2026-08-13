@@ -60,6 +60,7 @@ AI 実行環境の診断結果を返します。Electron 側はこのレスポ�
 ### `POST /get_framerate/`
 
 動画ファイルを受け取り、OpenCV でフレームレートを返します。API疎通確認に使う最も軽い動画系エンドポイントです。
+Electronアプリからは、動画全体のアップロードを避けるため `POST /get_framerate_from_path/` を優先します。
 
 PowerShell例:
 
@@ -68,6 +69,28 @@ Invoke-RestMethod `
   -Uri http://127.0.0.1:8000/get_framerate/ `
   -Method Post `
   -Form @{ file = Get-Item "C:\\path\\to\\sample.mp4" }
+```
+
+レスポンス例:
+
+```json
+{
+  "frame_rate": 30.0
+}
+```
+
+### `POST /get_framerate_from_path/`
+
+ローカル動画ファイルのパスを受け取り、OpenCV でフレームレートを返します。Electronアプリ向けの高速経路です。
+
+PowerShell例:
+
+```powershell
+Invoke-RestMethod `
+  -Uri http://127.0.0.1:8000/get_framerate_from_path/ `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body '{"file_path":"C:\\path\\to\\sample.mp4"}'
 ```
 
 レスポンス例:
@@ -117,13 +140,14 @@ python -m uvicorn API.api:app --host 127.0.0.1 --port 8000
 Invoke-RestMethod http://127.0.0.1:8000/environment/
 ```
 
-必要に応じてサンプル動画でフレームレート取得を確認します。
+必要に応じてサンプル動画でフレームレート取得を確認します。Electronアプリと同じパス方式を優先します。
 
 ```powershell
 Invoke-RestMethod `
-  -Uri http://127.0.0.1:8000/get_framerate/ `
+  -Uri http://127.0.0.1:8000/get_framerate_from_path/ `
   -Method Post `
-  -Form @{ file = Get-Item "C:\\path\\to\\sample.mp4" }
+  -ContentType "application/json" `
+  -Body '{"file_path":"C:\\path\\to\\sample.mp4"}'
 ```
 
 ## 失敗時のログ
@@ -177,5 +201,5 @@ renderer側は preload 経由でAPI状態を受け取ります。
 
 - Electron起動時にFastAPIが自動起動する
 - `GET /environment/` が `200 OK` を返す
-- 動画ファイル選択時に `POST /get_framerate/` が `200 OK` を返す
+- 動画ファイル選択時に `POST /get_framerate_from_path/` が `200 OK` を返す
 - アプリの×ボタン終了後、Electronが起動したAPIプロセスが残らない

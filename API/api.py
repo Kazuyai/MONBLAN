@@ -13,6 +13,7 @@ from datetime import datetime
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 try:
     # 標準起動: リポジトリルートから `python -m uvicorn API.api:app` を実行する。
@@ -51,6 +52,10 @@ app.add_middleware(
 LOG_FILE = os.path.join(BASE_DIR, "api_log.txt")
 
 
+class VideoPathRequest(BaseModel):
+    file_path: str
+
+
 def log_api_call(api_name: str, start_time: float, end_time: float, additional_info: str = ""):
     """API呼び出しの処理時間と結果概要を記録する。"""
     duration = end_time - start_time
@@ -66,6 +71,14 @@ async def save_upload_to_temp(file: UploadFile) -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
         temp_file.write(contents)
         return temp_file.name
+
+
+def validate_local_video_path(file_path: str) -> str:
+    """Electronから受け取ったローカル動画パスをOpenCVに渡せる形に検証する。"""
+    resolved_path = os.path.abspath(os.path.expanduser(file_path))
+    if not os.path.isfile(resolved_path):
+        raise FileNotFoundError(f"Video file not found: {resolved_path}")
+    return resolved_path
 
 
 def _format_subprocess_error(error: subprocess.CalledProcessError, job_dir: str | None = None) -> dict:
@@ -109,6 +122,24 @@ async def get_framerate(file: UploadFile = File(...)):
     finally:
         if temp_filename and os.path.exists(temp_filename):
             os.remove(temp_filename)
+
+
+@app.post("/get_framerate_from_path/")
+async def get_framerate_from_path(request: VideoPathRequest):
+    """ローカル動画パスからフレームレートを取得する。Electronではアップロードを避けるためこちらを使う。"""
+    start_time = time.time()
+    try:
+        video_path = validate_local_video_path(request.file_path)
+        fps = get_video_framerate(video_path)
+
+        end_time = time.time()
+        log_api_call("get_framerate_from_path", start_time, end_time, "Retrieved frame rate")
+        return {"frame_rate": fps}
+
+    except Exception as error:
+        end_time = time.time()
+        log_api_call("get_framerate_from_path", start_time, end_time, f"Error: {str(error)}")
+        return JSONResponse(status_code=500, content={"message": "An error occurred", "error": str(error)})
 
 
 @app.post("/get_human_images/")

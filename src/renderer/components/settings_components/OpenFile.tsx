@@ -12,6 +12,10 @@ export const OpenFile: React.FC<SettingsProps> = ({
   setFrameRate
 }) => {
   const [hasSelectedFiles, setHasSelectedFiles] = useState(false)
+  const getElectronFilePath = (file: File) => {
+    const electronFile = file as File & { path?: string }
+    return electronFile.path || null
+  }
 
   const getVideoFrameRate = (videoUrl: string): Promise<number> => {
     return new Promise((resolve, reject) => {
@@ -24,6 +28,16 @@ export const OpenFile: React.FC<SettingsProps> = ({
       }
       video.onerror = () => reject(new Error('動画の読み込みに失敗しました'))
       video.src = videoUrl
+    })
+  }
+
+  const getUploadedFrameRate = (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    return fetch('http://127.0.0.1:8000/get_framerate/', {
+      method: 'POST',
+      body: formData
     })
   }
 
@@ -43,14 +57,21 @@ export const OpenFile: React.FC<SettingsProps> = ({
       const file = files[0]
 
       try {
-        // まずFastAPIサーバーに接続を試行
-        const formData = new FormData()
-        formData.append('file', file)
+        // Electronでは動画全体のアップロードを避け、ローカルファイルパスからFPSを取得する。
+        const filePath = getElectronFilePath(file)
+        let response = filePath
+          ? await fetch('http://127.0.0.1:8000/get_framerate_from_path/', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ file_path: filePath })
+            })
+          : await getUploadedFrameRate(file)
 
-        const response = await fetch('http://127.0.0.1:8000/get_framerate/', {
-          method: 'POST',
-          body: formData
-        })
+        if (filePath && !response.ok) {
+          response = await getUploadedFrameRate(file)
+        }
 
         if (response.ok) {
           const data = await response.json()
