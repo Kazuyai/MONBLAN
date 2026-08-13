@@ -51,6 +51,7 @@ let apiStatus: ApiStatus = {
   error: null
 }
 let statusListener: ((status: ApiStatus) => void) | null = null
+let environmentRefreshPromise: Promise<ApiStatus> | null = null
 
 export const setApiStatusListener = (listener: (status: ApiStatus) => void) => {
   statusListener = listener
@@ -98,7 +99,23 @@ const requestJson = <T>(url: string, timeoutMs = 3000): Promise<T> => {
   })
 }
 
-export const refreshApiEnvironment = async () => {
+export const refreshApiEnvironment = async (options = { force: false }) => {
+  if (!options.force && apiStatus.status === 'ready' && apiStatus.environment) {
+    return apiStatus
+  }
+
+  if (environmentRefreshPromise) {
+    return environmentRefreshPromise
+  }
+
+  environmentRefreshPromise = refreshApiEnvironmentRequest().finally(() => {
+    environmentRefreshPromise = null
+  })
+
+  return environmentRefreshPromise
+}
+
+const refreshApiEnvironmentRequest = async () => {
   const environment = await requestJson<ApiEnvironmentStatus>(
     `${API_BASE_URL}/environment/`
   )
