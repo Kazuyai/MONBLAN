@@ -229,6 +229,31 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   const isAiReady =
     apiStatus?.status === 'ready' && apiStatus.aiAvailable === true
 
+  const getElectronFilePath = (file: File) => {
+    const electronFile = file as File & { path?: string }
+    return electronFile.path || null
+  }
+
+  const getUploadedHumanImages = (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    return fetch('http://127.0.0.1:8000/get_human_images/', {
+      method: 'POST',
+      body: formData
+    })
+  }
+
+  const getHumanImagesFromPath = (filePath: string) => {
+    return fetch('http://127.0.0.1:8000/get_human_images_from_path/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ file_path: filePath })
+    })
+  }
+
   const getHumanImages = async () => {
     if (!isAiReady) {
       return
@@ -239,17 +264,17 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       setIsProcessing(true)
       setApiError(null)
       const file = files[0]
-      const formData = new FormData()
-      formData.append('file', file)
 
       try {
-        const response = await fetch(
-          'http://127.0.0.1:8000/get_human_images/',
-          {
-            method: 'POST',
-            body: formData
-          }
-        )
+        const filePath = getElectronFilePath(file)
+        let response = filePath
+          ? await getHumanImagesFromPath(filePath)
+          : await getUploadedHumanImages(file)
+
+        if (filePath && response.status === 404) {
+          response = await getUploadedHumanImages(file)
+        }
+
         if (!response.ok) {
           setApiError(await readApiError(response))
           return

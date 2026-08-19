@@ -183,6 +183,44 @@ async def get_human_images(file: UploadFile = File(...)):
                 log_api_call("get_human_images", 0, 0, f"Job directory preserved for debugging: {job_dir}")
 
 
+@app.post("/get_human_images_from_path/")
+async def get_human_images_from_path(request: VideoPathRequest):
+    """ローカル動画パスから人物画像を切り出す。Electronではアップロードを避けるためこちらを使う。"""
+    start_time = time.time()
+    job_dir = None
+    success = False
+    try:
+        video_path = validate_local_video_path(request.file_path)
+        job_dir = create_job_dir()
+
+        image_data_list = extract_human_images(video_path, job_dir)
+
+        end_time = time.time()
+        log_api_call("get_human_images_from_path", start_time, end_time, f"Extracted {len(image_data_list)} human images")
+        success = True
+        return JSONResponse(status_code=200, content={"images": image_data_list})
+
+    except subprocess.CalledProcessError as error:
+        end_time = time.time()
+        error_info = _format_subprocess_error(error, job_dir)
+        log_api_call("get_human_images_from_path", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
+        return JSONResponse(status_code=500, content=error_info)
+    except Exception as error:
+        end_time = time.time()
+        log_api_call("get_human_images_from_path", start_time, end_time, f"Error: {str(error)}")
+        content = {"message": "An error occurred", "error": str(error)}
+        if job_dir:
+            content["job_dir"] = job_dir
+        return JSONResponse(status_code=500, content=content)
+    finally:
+        if job_dir:
+            if success:
+                cleanup_job_dir(job_dir)
+            else:
+                # 失敗時は原因調査のため、stdout/stderrと中間ファイルを残す。
+                log_api_call("get_human_images_from_path", 0, 0, f"Job directory preserved for debugging: {job_dir}")
+
+
 @app.post("/items/")
 async def create_item(
     file: UploadFile = File(...),

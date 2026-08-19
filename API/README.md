@@ -104,6 +104,11 @@ Invoke-RestMethod `
 ### `POST /get_human_images/`
 
 AlphaPose を実行し、動画内人物の切り出し画像を Base64 文字列の配列として返します。AI環境が未セットアップの場合は失敗します。
+Electronアプリからは、動画全体のアップロードを避けるため `POST /get_human_images_from_path/` を優先します。
+
+### `POST /get_human_images_from_path/`
+
+ローカル動画ファイルのパスを受け取り、AlphaPose を実行して人物の切り出し画像を返します。Electronアプリ向けの高速経路です。
 
 ### `POST /items/`
 
