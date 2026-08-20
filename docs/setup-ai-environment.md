@@ -77,9 +77,17 @@ pip install -r API\requirements.txt
 
 `API\AlphaPose` にAlphaPoseを配置する。
 
+補助スクリプトを使う場合は以下を実行する。
+
+```powershell
+.\scripts\fetch-ai-repos.ps1 -SkipMotionBert
+```
+
+既に `API\AlphaPose` がある場合、既定では上書きしない。作り直す場合は `-Force` を付ける。
+
 ```powershell
 cd API
-git clone <AlphaPose公式リポジトリURL> AlphaPose
+git clone https://github.com/MVIG-SJTU/AlphaPose.git AlphaPose
 ```
 
 その後、AlphaPoseの公式手順に従って依存関係とモデルを用意する。Annotation Tool 側の環境診断では、少なくとも以下を確認する。
@@ -92,9 +100,17 @@ git clone <AlphaPose公式リポジトリURL> AlphaPose
 
 `API\MotionBERT` にMotionBERTを配置する。
 
+補助スクリプトを使う場合は以下を実行する。
+
+```powershell
+.\scripts\fetch-ai-repos.ps1 -SkipAlphaPose
+```
+
+既に `API\MotionBERT` がある場合、既定では上書きしない。作り直す場合は `-Force` を付ける。
+
 ```powershell
 cd API
-git clone <MotionBERT公式リポジトリURL> MotionBERT
+git clone https://github.com/Walter0807/MotionBERT.git MotionBERT
 ```
 
 MotionBERTの重みは以下に配置する。
@@ -202,5 +218,5 @@ Invoke-RestMethod `
 
 - `check-ai-environment.ps1`: 実装済み。現在の環境診断を実行して不足項目を表示する
 - `setup-python-env.ps1`: 実装済み。venv 作成と `requirements.txt` インストール
-- `fetch-ai-repos.ps1`: AlphaPose / MotionBERT の取得補助
+- `fetch-ai-repos.ps1`: 実装済み。AlphaPose / MotionBERT の取得補助
 - `verify-ai-pipeline.ps1`: サンプル動画で `/environment/` と軽量APIを確認する
