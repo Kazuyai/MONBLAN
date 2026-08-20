@@ -113,6 +113,11 @@ Electronアプリからは、動画全体のアップロードを避けるため
 ### `POST /items/`
 
 AlphaPose、MotionBERT、detect_movement の一連の自動アノテーションパイプラインを実行します。AI環境が未セットアップの場合は失敗します。
+Electronアプリからは、動画全体のアップロードを避けるため `POST /items_from_path/` を優先します。
+
+### `POST /items_from_path/`
+
+ローカル動画ファイルのパスと自動アノテーション設定を受け取り、AlphaPose、MotionBERT、detect_movement の一連の自動アノテーションパイプラインを実行します。Electronアプリ向けの高速経路です。
 
 ## 手動確認手順
 

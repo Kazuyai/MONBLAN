@@ -254,6 +254,30 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     })
   }
 
+  const getUploadedAutoAnnotation = (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('autoAnnotationLayer', JSON.stringify(autoAnnotationLayer))
+
+    return fetch('http://127.0.0.1:8000/items/', {
+      method: 'POST',
+      body: formData
+    })
+  }
+
+  const getAutoAnnotationFromPath = (filePath: string) => {
+    return fetch('http://127.0.0.1:8000/items_from_path/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        file_path: filePath,
+        autoAnnotationLayer
+      })
+    })
+  }
+
   const getHumanImages = async () => {
     if (!isAiReady) {
       return
@@ -310,19 +334,17 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       setIsProcessing(true)
       setApiError(null)
       const file = files[0]
-      const formData = new FormData()
-      formData.append('file', file)
-
-      formData.append(
-        'autoAnnotationLayer',
-        JSON.stringify(autoAnnotationLayer)
-      )
 
       try {
-        const response = await fetch('http://127.0.0.1:8000/items/', {
-          method: 'POST',
-          body: formData
-        })
+        const filePath = getElectronFilePath(file)
+        let response = filePath
+          ? await getAutoAnnotationFromPath(filePath)
+          : await getUploadedAutoAnnotation(file)
+
+        if (filePath && response.status === 404) {
+          response = await getUploadedAutoAnnotation(file)
+        }
+
         if (!response.ok) {
           setApiError(await readApiError(response))
           return

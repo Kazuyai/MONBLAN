@@ -56,6 +56,10 @@ class VideoPathRequest(BaseModel):
     file_path: str
 
 
+class ItemsPathRequest(VideoPathRequest):
+    autoAnnotationLayer: list[dict]
+
+
 def log_api_call(api_name: str, start_time: float, end_time: float, additional_info: str = ""):
     """API呼び出しの処理時間と結果概要を記録する。"""
     duration = end_time - start_time
@@ -263,3 +267,40 @@ async def create_item(
                 cleanup_job_dir(job_dir)
             else:
                 log_api_call("create_item", 0, 0, f"Job directory preserved for debugging: {job_dir}")
+
+
+@app.post("/items_from_path/")
+async def create_item_from_path(request: ItemsPathRequest):
+    """ローカル動画パスから自動アノテーションパイプラインを実行する。Electronではアップロードを避けるためこちらを使う。"""
+    start_time = time.time()
+    job_dir = None
+    success = False
+    try:
+        video_path = validate_local_video_path(request.file_path)
+        job_dir = create_job_dir()
+
+        motion_times = run_pose_pipeline(video_path, request.autoAnnotationLayer, job_dir)
+
+        end_time = time.time()
+        log_api_call("create_item_from_path", start_time, end_time, f"Processed {len(motion_times)} motion times")
+        success = True
+        return motion_times
+
+    except subprocess.CalledProcessError as error:
+        end_time = time.time()
+        error_info = _format_subprocess_error(error, job_dir)
+        log_api_call("create_item_from_path", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
+        return JSONResponse(status_code=500, content=error_info)
+    except Exception as error:
+        end_time = time.time()
+        log_api_call("create_item_from_path", start_time, end_time, f"Error: {str(error)}")
+        content = {"message": "An error occurred", "error": str(error)}
+        if job_dir:
+            content["job_dir"] = job_dir
+        return JSONResponse(status_code=500, content=content)
+    finally:
+        if job_dir:
+            if success:
+                cleanup_job_dir(job_dir)
+            else:
+                log_api_call("create_item_from_path", 0, 0, f"Job directory preserved for debugging: {job_dir}")
