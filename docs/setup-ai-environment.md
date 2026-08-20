@@ -188,6 +188,18 @@ python -c "from API.environment import check_environment; import json; print(jso
 python -m uvicorn API.api:app --host 127.0.0.1 --port 8000
 ```
 
+別のPowerShellで軽量検証を実行する。
+
+```powershell
+.\scripts\verify-ai-pipeline.ps1
+```
+
+サンプル動画でフレームレート取得まで確認する場合は以下を実行する。
+
+```powershell
+.\scripts\verify-ai-pipeline.ps1 -SampleVideoPath C:\path\to\sample.mp4
+```
+
 別のPowerShellで確認する。
 
 ```powershell
@@ -219,4 +231,4 @@ Invoke-RestMethod `
 - `check-ai-environment.ps1`: 実装済み。現在の環境診断を実行して不足項目を表示する
 - `setup-python-env.ps1`: 実装済み。venv 作成と `requirements.txt` インストール
 - `fetch-ai-repos.ps1`: 実装済み。AlphaPose / MotionBERT の取得補助
-- `verify-ai-pipeline.ps1`: サンプル動画で `/environment/` と軽量APIを確認する
+- `verify-ai-pipeline.ps1`: 実装済み。サンプル動画で `/environment/` と軽量APIを確認する
