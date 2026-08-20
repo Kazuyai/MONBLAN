@@ -102,6 +102,32 @@ Annotation Tool 側の環境診断では、少なくとも以下を確認する�
 
 Python環境を有効化した状態で、以下を実行する。
 
+まずは補助スクリプトを使う。
+
+```powershell
+.\scripts\check-ai-environment.ps1
+```
+
+既定では、Electronアプリと同じく `ANNOTATION_TOOL_PYTHON` があればそれを使い、なければ `python` を使う。`API\venv` を明示的に使う場合は以下を指定する。
+
+```powershell
+.\scripts\check-ai-environment.ps1 -UseVenv
+```
+
+別のPythonを明示する場合は以下のように指定する。
+
+```powershell
+.\scripts\check-ai-environment.ps1 -PythonPath C:\path\to\python.exe
+```
+
+JSONとして確認したい場合は以下を使う。
+
+```powershell
+.\scripts\check-ai-environment.ps1 -Json
+```
+
+Pythonから直接確認する場合は以下を実行する。
+
 ```powershell
 python -c "from API.environment import check_environment; import json; print(json.dumps(check_environment(), ensure_ascii=False, indent=2))"
 ```
@@ -154,7 +180,7 @@ Invoke-RestMethod `
 
 手順が安定した後、以下を分離してスクリプト化する。
 
-- `check-ai-environment.ps1`: 現在の環境診断を実行して不足項目を表示する
+- `check-ai-environment.ps1`: 実装済み。現在の環境診断を実行して不足項目を表示する
 - `setup-python-env.ps1`: venv 作成と `requirements.txt` インストール
 - `fetch-ai-repos.ps1`: AlphaPose / MotionBERT の取得補助
 - `verify-ai-pipeline.ps1`: サンプル動画で `/environment/` と軽量APIを確認する
