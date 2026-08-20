@@ -43,6 +43,26 @@ AlphaPose は非商用ライセンスのため、このリポジトリには同�
 
 リポジトリルートから作業する。
 
+補助スクリプトを使う場合は以下を実行する。
+
+```powershell
+.\scripts\setup-python-env.ps1
+```
+
+既存の `API\venv` を作り直す場合は `-Force` を付ける。
+
+```powershell
+.\scripts\setup-python-env.ps1 -Force
+```
+
+venv作成だけ確認し、依存インストールを後で行う場合は `-SkipInstall` を付ける。
+
+```powershell
+.\scripts\setup-python-env.ps1 -SkipInstall
+```
+
+手動で作業する場合は以下を実行する。
+
 ```powershell
 cd C:\ProgrammingPractice\GitHub\Annotation-Tool
 py -3.11 -m venv API\venv
@@ -181,6 +201,6 @@ Invoke-RestMethod `
 手順が安定した後、以下を分離してスクリプト化する。
 
 - `check-ai-environment.ps1`: 実装済み。現在の環境診断を実行して不足項目を表示する
-- `setup-python-env.ps1`: venv 作成と `requirements.txt` インストール
+- `setup-python-env.ps1`: 実装済み。venv 作成と `requirements.txt` インストール
 - `fetch-ai-repos.ps1`: AlphaPose / MotionBERT の取得補助
 - `verify-ai-pipeline.ps1`: サンプル動画で `/environment/` と軽量APIを確認する
