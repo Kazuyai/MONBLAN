@@ -2,6 +2,8 @@
 
 このドキュメントは、Annotation Tool のAI自動アノテーション機能をローカル環境で動かすための手順をまとめる。
 
+配布全体の方針は `distribution-policy.md` を参照する。
+
 ## 対象環境
 
 現時点では、以下の環境を優先対象とする。
@@ -11,6 +13,8 @@
 - CUDA 11.8 系
 - Python 3.11 または 3.12
 - PyTorch 2.3.0 + CUDA 11.8
+
+AI機能の正式対象は Windows + NVIDIA GPU + CUDA とする。macOS は現時点では手動アノテーション機能のみ対象であり、AI自動アノテーション機能は非対応扱いにする。
 
 Docker 前提にはしない。AlphaPose / MotionBERT / OpenMMLab 系の依存は環境差が大きいため、まずは手順を明文化し、安定してから必要に応じてスクリプト化する。
 

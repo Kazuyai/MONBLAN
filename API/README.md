@@ -1,6 +1,7 @@
 # Annotation Tool API
 
 AI環境のセットアップ手順は `../docs/setup-ai-environment.md` を参照してください。
+配布方針は `../docs/distribution-policy.md` を参照してください。
 
 Annotation Tool の FastAPI バックエンドです。Electron 連携では、この API をローカルプロセスとして起動し、AI 自動アノテーション機能だけが依存します。通常の手動アノテーション機能は API が利用できない場合でも動作可能にする方針です。
 
