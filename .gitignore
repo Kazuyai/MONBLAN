@@ -68,11 +68,18 @@ dist-electron/
 tmp/
 temp/
 
-# API関連
-API/AlphaPose
-API/MotionBERT
-API/out
-API/venv
+# API external assets and runtime outputs
+API/AlphaPose/
+API/MotionBERT/
+API/out/
+API/venv/
+API/api_log.txt
+API/**/*.pth
+API/**/*.pt
+API/**/*.bin
+API/**/*.onnx
+API/**/*.npy
+API/**/*.npz
 __pycache__
 *.pyc
 *.pyo
@@ -82,4 +89,3 @@ __pycache__
 *.spec
 API/build/
 API/dist/
-API/api_log.txt

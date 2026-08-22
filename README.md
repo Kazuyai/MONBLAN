@@ -1,238 +1,198 @@
-# Video Annotation Tool
+﻿# Annotation Tool
 
-動画アノテーション専用デスクトップアプリケーション（React + TypeScript + Electron）
+Annotation Tool は、動画に対してタイムラインベースでアノテーションを付与するデスクトップアプリケーションです。
+Electron + React + TypeScript による手動アノテーション機能と、ローカル FastAPI + AlphaPose + MotionBERT によるAI自動アノテーション機能を持ちます。
 
-## 機能
+研究用途を想定しています。商用利用は想定していません。
 
-- 🎥 動画ファイルの読み込み・再生
-- 🎯 フレーム単位でのアノテーション作成
-- 📝 タイムライン上でのアノテーション管理
-- 📊 CSV形式でのアノテーションデータエクスポート
-- ⚡ フレームレート設定・再生速度調整
-- 🔧 リサイズ可能なUI（動画表示領域とタイムライン）
+## 重要な注意
 
-## 開発環境セットアップ
+- すべての処理はローカル環境で完結します。クラウドAPIには依存しません。
+- 手動アノテーション機能は、AI環境が未セットアップでも利用できる方針です。
+- AI自動アノテーション機能を使うには、Python、CUDA、PyTorch、AlphaPose、MotionBERT、各checkpointの追加セットアップが必要です。
+- AlphaPose、MotionBERT、各checkpointはこのリポジトリに同梱しません。利用者が各公式配布元から取得してください。
+- このプロジェクト本体のライセンスと、外部AIリポジトリ・モデル重みのライセンスは別です。利用条件は各公式配布元で確認してください。
+- このREADMEと関連ドキュメントは技術的な利用方針を示すものであり、法的助言ではありません。
 
-### 前提条件
+## 対応方針
+
+| 機能 | 現時点の対象 |
+| --- | --- |
+| 手動アノテーション | Windowsを主対象。Electronアプリとして動作。 |
+| AI自動アノテーション | Windows + NVIDIA GPU + CUDA を正式対象。 |
+| macOS | 現時点では手動アノテーションのみ対象。AI機能は非対応扱い。 |
+| Linux | 将来的な候補。現時点では正式対象外。 |
+| Docker | 将来的なAI API安定化オプション。現時点では主経路にしない。 |
+
+配布方針の詳細は `docs/distribution-policy.md` を参照してください。
+AI環境の具体的なセットアップは `docs/setup-ai-environment.md` を参照してください。
+APIの起動方法とエンドポイントは `API/README.md` を参照してください。
+public化や配布前の確認項目は `docs/public-release-checklist.md` を参照してください。
+
+## 主な機能
+
+- 動画ファイルの読み込み・再生
+- フレーム単位のアノテーション作成
+- タイムライン上でのアノテーション編集、ドラッグ、リサイズ
+- レイヤー管理
+- 選択範囲の作成と範囲時間表示
+- 部分再生
+- 再生速度調整
+- CSVエクスポート
+- EAFエクスポート
+- AIによる人物候補画像の抽出
+- AIによる動作区間検出
+
+## 構成
+
+```text
+src/
+  main/                 Electronメインプロセス
+  renderer/             React UI
+API/
+  api.py                FastAPIエントリーポイント
+  pipeline.py           AlphaPose / MotionBERT / detect_movement 実行処理
+  environment.py        AI環境診断
+  detect_movement/      動作区間検出スクリプト
+scripts/
+  check-ai-environment.ps1
+  setup-python-env.ps1
+  fetch-ai-repos.ps1
+  verify-ai-pipeline.ps1
+docs/
+  distribution-policy.md
+  setup-ai-environment.md
+  issues-triage.md
+```
+
+## 同梱しないもの
+
+以下はリポジトリや配布パッケージに含めない方針です。
+
+- `API/AlphaPose/`
+- `API/MotionBERT/`
+- AlphaPose checkpoint
+- MotionBERT checkpoint
+- `API/venv/`
+- `release/`
+- `dist/`
+- 実行時に生成されるログ、ジョブディレクトリ、中間生成物
+
+理由は、外部ライセンス、ファイルサイズ、環境依存性、再現性確認の観点から、利用者環境で取得・配置する方が安全なためです。
+
+## 開発環境
+
+### フロントエンド
 
 - Node.js 18以上
 - Yarn 1.22以上
+- Electron 28
+- React 18
+- TypeScript
 
-### インストール
+### AI API
+
+- Python 3.11 または 3.12
+- FastAPI
+- PyTorch 2.3.0 + CUDA 11.8
+- NVIDIA GPU + CUDA実行環境
+- AlphaPose
+- MotionBERT
+
+AI APIの依存関係は重く、OpenMMLab系パッケージを含みます。まずは `docs/setup-ai-environment.md` の手順で環境を確認してください。
+
+## セットアップ
+
+### 1. Node.js依存関係
 
 ```bash
-# リポジトリクローン
-git clone <repository-url>
-cd Annotation-Tool
-
-# 依存関係のインストール
 yarn install
 ```
 
-### 開発サーバー起動
+### 2. 開発起動
 
 ```bash
-# 開発サーバー起動（推奨）
 yarn dev
 ```
 
-このコマンドで以下が同時に起動します：
-- **[VITE]** (青) - Reactアプリ開発サーバー (http://localhost:3001)
-- **[TS]** (黄) - TypeScriptコンパイラ（ウォッチモード）
-- **[ELECTRON]** (緑) - Electronアプリケーション
+このコマンドで以下を起動します。
 
-### 個別実行（デバッグ用）
+- React開発サーバー: `http://localhost:3001`
+- TypeScriptウォッチビルド
+- Electronアプリ
+- ElectronメインプロセスからのローカルFastAPI起動
 
-```bash
-# Reactのみ（http://localhost:3001）
-yarn dev:react
+AI環境が不足している場合でも、手動アノテーション機能は利用可能にする方針です。AI機能の可否はアプリ起動後に `/environment/` の診断結果で判定します。
 
-# TypeScriptコンパイルのみ
-yarn dev:main
+### 3. AI環境セットアップ
 
-# Electronのみ（上記2つが起動していること前提）
-yarn dev:electron
+AI機能を使う場合のみ実施します。
+
+```powershell
+.\scripts\setup-python-env.ps1
+.\scripts\fetch-ai-repos.ps1
+.\scripts\check-ai-environment.ps1
 ```
 
-## ビルド・パッケージ化
+checkpointの配置は利用者が各公式手順に従って行う必要があります。詳細は `docs/setup-ai-environment.md` を参照してください。
 
-### 本番用ビルド
+## API単体起動
+
+開発・デバッグ時にAPIだけ起動する場合は、リポジトリルートから実行します。
 
 ```bash
-# React + TypeScriptコンパイル
+python -m uvicorn API.api:app --host 127.0.0.1 --port 8000
+```
+
+環境診断:
+
+```bash
+curl http://127.0.0.1:8000/environment/
+```
+
+## ビルド
+
+```bash
 yarn build
 ```
 
-これにより以下が生成されます：
-- `dist/renderer/` - 最適化されたReactアプリ
-- `dist/main/` - コンパイルされたElectronメインプロセス
-
-### アプリケーションパッケージ化
+Windows向けインストーラー作成:
 
 ```bash
-# Windows用インストーラー作成（推奨）
 yarn dist
-
-# 実行可能ファイルのみ（ポータブル版）
-yarn dist:dir
 ```
 
-**作成されるファイル：**
-- `release/Annotation Tool Setup 1.0.0.exe` - インストーラー（約77MB）
-- `release/win-unpacked/Annotation Tool.exe` - 実行ファイル（約177MB）
+現時点のインストーラーは、AI環境を完全に同梱するものではありません。AI機能を使うには、インストール後に別途AI環境セットアップが必要です。
 
-### その他のビルドコマンド
+## 検証コマンド
 
 ```bash
-# パッケージ化（インストーラーなし）
-yarn pack
-```
-
-### リント・フォーマット
-
-```bash
-# ESLint チェック
-yarn lint
-
-# ESLint 自動修正
-yarn lint:fix
-
-# TypeScript型チェック
 yarn typecheck
-
-# Prettier フォーマット
-yarn prettier
-
-# Prettier チェック
+yarn lint
 yarn prettier:check
 ```
 
-## プロジェクト構造
+AI APIの疎通確認:
 
-```
-src/
-├── main/           # Electronメインプロセス
-│   ├── main.ts     # メインエントリーポイント
-│   ├── preload.ts  # プリロードスクリプト
-│   └── utils.ts    # ユーティリティ関数
-└── renderer/       # Reactアプリ（レンダラープロセス）
-    ├── components/ # Reactコンポーネント
-    ├── pages/      # ページコンポーネント
-    ├── styles/     # スタイルファイル
-    ├── types/      # 型定義
-    ├── utils/      # ユーティリティ関数
-    ├── App.tsx     # メインアプリコンポーネント
-    ├── main.tsx    # Reactエントリーポイント
-    └── index.html  # HTMLテンプレート
+```powershell
+.\scripts\verify-ai-pipeline.ps1
 ```
 
-## 設定ファイル
+## 公開前チェック
 
-- `package.json` - パッケージ設定・スクリプト
-- `tsconfig.json` - TypeScript設定（レンダラー用）
-- `tsconfig.main.json` - TypeScript設定（メイン用）
-- `vite.config.ts` - Vite設定
-- `.eslintrc.js` - ESLint設定
-- `.prettierrc` - Prettier設定
+public化や配布前には、最低限以下を確認します。
 
-## 開発時のポイント
+- `API/AlphaPose/` がGit管理されていない
+- `API/MotionBERT/` がGit管理されていない
+- checkpointファイルがGit管理されていない
+- `API/venv/` がGit管理されていない
+- `release/` と `dist/` がGit管理されていない
+- READMEでAI機能の追加セットアップが必要であることを明記している
+- 外部AIリポジトリ・モデル重みのライセンスを本体ライセンスと混同していない
+- 未検証OSを正式対応として記載していない
 
-### 停止方法
+## ライセンス
 
-```bash
-# 開発サーバー停止
-Ctrl + C  # 1回で全プロセス停止
-```
+`package.json` ではこのプロジェクト本体のライセンスを MIT としています。
 
-### ポート設定
-
-- **Vite**: http://localhost:3001
-- `--strictPort`により、ポートが使用中の場合はエラーで停止
-
-### ログの見方
-
-`yarn dev`実行時の色分けログ：
-- **[VITE]** (青) - React開発サーバー関連
-- **[TS]** (黄) - TypeScriptコンパイル関連
-- **[ELECTRON]** (緑) - Electronアプリ関連
-
-## トラブルシューティング
-
-### ポートエラーが発生する場合
-
-```bash
-# ポート3001を使用中のプロセスを確認
-netstat -ano | findstr :3001
-
-# プロセス強制終了（PowerShell）
-powershell "Stop-Process -Id <PID> -Force"
-```
-
-### TypeScriptエラーが発生する場合
-
-```bash
-# 型チェック
-yarn typecheck
-
-# ESLintチェック
-yarn lint
-```
-
-### 初回セットアップでエラーが発生する場合
-
-```bash
-# node_modules削除して再インストール
-rm -rf node_modules yarn.lock
-yarn install
-```
-
-## プロジェクト構造詳細
-
-```
-src/
-├── main/                    # Electronメインプロセス
-│   ├── main.ts             # メイン起動ファイル
-│   ├── preload.ts          # セキュアなIPC通信用
-│   └── utils.ts            # ユーティリティ関数
-└── renderer/               # Reactアプリ（UI）
-    ├── components/         # UIコンポーネント
-    │   ├── Video.tsx       # 動画プレイヤー
-    │   ├── Timeline.tsx    # タイムライン
-    │   ├── Settings.tsx    # 設定パネル
-    │   └── ...
-    ├── App.tsx            # メインアプリ
-    ├── App.scss           # スタイル
-    └── index.tsx          # エントリーポイント
-
-dist/                       # ビルド出力
-├── main/                  # コンパイル済みElectron
-└── renderer/              # ビルド済みReact
-
-release/                    # パッケージ出力
-├── win-unpacked/          # 実行ファイル
-└── *.exe                  # インストーラー
-```
-
-## カスタマイズ
-
-### アイコン変更
-
-`assets/`ディレクトリにアイコンファイルを配置：
-- `icon.ico` (Windows用、推奨サイズ: 256x256)
-- `icon.icns` (macOS用)
-- `icon.png` (Linux用、推奨サイズ: 512x512)
-
-### アプリ情報変更
-
-`package.json`の以下を編集：
-```json
-{
-  "name": "annotation-tool",
-  "productName": "Video Annotation Tool",
-  "version": "1.0.0",
-  "description": "...",
-  "build": {
-    "appId": "com.yourcompany.annotation-tool"
-  }
-}
-```
+ただし、AlphaPose、MotionBERT、各checkpoint、その他外部依存関係にはそれぞれ別のライセンスがあります。特にAI機能を使う場合は、利用者が各公式配布元のライセンスと利用条件を確認してください。
