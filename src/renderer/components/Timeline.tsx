@@ -9,6 +9,11 @@ import React, {
 } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import Annotation from './Annotation'
+import type {
+  SimilarMotionCandidate,
+  SelectedTimelineAnnotation,
+  TimelineAnnotationResult
+} from '../types'
 
 interface TimelineProps {
   videoSrcs: string[]
@@ -27,13 +32,12 @@ interface TimelineProps {
   isPartiallyPlaying: boolean
   setIsPartiallyPlaying: Dispatch<SetStateAction<boolean>>
   setPlaySpeed?: Dispatch<SetStateAction<number>>
-  autoAnnotationResponseData?: {
-    startFrame: number
-    endFrame: number
-    text: string
-    layerName: string
-    layerIndex: number
-  }[]
+  autoAnnotationResponseData?: TimelineAnnotationResult[]
+  similarMotionCandidates: SimilarMotionCandidate[]
+  setSimilarMotionCandidates: Dispatch<SetStateAction<SimilarMotionCandidate[]>>
+  setSelectedTimelineAnnotation: Dispatch<
+    SetStateAction<SelectedTimelineAnnotation | null>
+  >
   topHeight: number
 }
 
@@ -75,6 +79,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       setIsPartiallyPlaying,
       setPlaySpeed,
       autoAnnotationResponseData,
+      similarMotionCandidates,
+      setSimilarMotionCandidates,
+      setSelectedTimelineAnnotation,
       topHeight
     },
     ref
@@ -137,6 +144,37 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const selectionStartTime = (selectionStartFrame - 1) / frameRate
     const selectionEndTime = selectionEndFrame / frameRate
     const selectionDuration = selectionFrameWidth / frameRate
+
+    useEffect(() => {
+      if (selectedAnnotationIds.length !== 1) {
+        setSelectedTimelineAnnotation(null)
+        return
+      }
+
+      const selectedAnnotation = annotations.find(
+        (annotation) => annotation.id === selectedAnnotationIds[0]
+      )
+
+      setSelectedTimelineAnnotation(
+        selectedAnnotation
+          ? {
+              id: selectedAnnotation.id,
+              startFrame: selectedAnnotation.startFrame,
+              endFrame: selectedAnnotation.endFrame,
+              text: selectedAnnotation.text,
+              layerIndex: selectedAnnotation.layerIndex,
+              layerName:
+                layerNames[selectedAnnotation.layerIndex] ??
+                `レイヤー${selectedAnnotation.layerIndex + 1}`
+            }
+          : null
+      )
+    }, [
+      annotations,
+      layerNames,
+      selectedAnnotationIds,
+      setSelectedTimelineAnnotation
+    ])
 
     const formatTimelineTime = (seconds: number) => {
       const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0
@@ -218,6 +256,131 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         }
       }
       return true
+    }
+
+    const hasAnnotationConflict = (
+      candidate: SimilarMotionCandidate,
+      candidateLayerAnnotations = annotations.filter(
+        (annotation) => annotation.layerIndex === candidate.layerIndex
+      )
+    ) => {
+      return !canInsertAnnotation(
+        {
+          id: candidate.id,
+          startFrame: candidate.startFrame,
+          endFrame: candidate.endFrame,
+          text: candidate.text,
+          layerIndex: candidate.layerIndex
+        },
+        candidateLayerAnnotations
+      )
+    }
+
+    const isInsertedCandidateStillPresent = (
+      candidate: SimilarMotionCandidate
+    ) => {
+      return annotations.some(
+        (annotation) =>
+          annotation.id === candidate.id ||
+          (annotation.layerIndex === candidate.layerIndex &&
+            annotation.startFrame === candidate.startFrame &&
+            annotation.endFrame === candidate.endFrame &&
+            annotation.text === candidate.text)
+      )
+    }
+
+    const visibleSimilarMotionCandidates = similarMotionCandidates.filter(
+      (candidate) =>
+        candidate.status !== 'accepted' ||
+        !isInsertedCandidateStillPresent(candidate)
+    )
+
+    const removeSimilarMotionCandidate = (candidateId: string) => {
+      setSimilarMotionCandidates((current) =>
+        current.filter((candidate) => candidate.id !== candidateId)
+      )
+    }
+
+    const insertSimilarMotionCandidates = (
+      candidatesToInsert: SimilarMotionCandidate[]
+    ) => {
+      const annotationsByLayer = new Map<number, AnnotationType[]>()
+      annotations.forEach((annotation) => {
+        const layerAnnotations =
+          annotationsByLayer.get(annotation.layerIndex) ?? []
+        layerAnnotations.push(annotation)
+        annotationsByLayer.set(annotation.layerIndex, layerAnnotations)
+      })
+
+      const insertableCandidates: SimilarMotionCandidate[] = []
+      candidatesToInsert.forEach((candidate) => {
+        const layerAnnotations =
+          annotationsByLayer.get(candidate.layerIndex) ?? []
+        if (hasAnnotationConflict(candidate, layerAnnotations)) {
+          return
+        }
+        insertableCandidates.push(candidate)
+        annotationsByLayer.set(candidate.layerIndex, [
+          ...layerAnnotations,
+          {
+            id: candidate.id,
+            startFrame: candidate.startFrame,
+            endFrame: candidate.endFrame,
+            text: candidate.text,
+            layerIndex: candidate.layerIndex
+          }
+        ])
+      })
+
+      if (insertableCandidates.length === 0) {
+        showTimelineNotice('挿入できる類似候補がありません。')
+        return
+      }
+
+      pushToUndoStack(state)
+      const nextLayerNames = [...layerNames]
+      const nextAnnotations = [...annotations]
+
+      insertableCandidates.forEach((candidate) => {
+        while (nextLayerNames.length <= candidate.layerIndex) {
+          nextLayerNames.push(`レイヤー${nextLayerNames.length + 1}`)
+        }
+        if (candidate.layerName) {
+          nextLayerNames[candidate.layerIndex] = candidate.layerName
+        }
+        nextAnnotations.push({
+          id: candidate.id,
+          startFrame: candidate.startFrame,
+          endFrame: candidate.endFrame,
+          text: candidate.text,
+          layerIndex: candidate.layerIndex
+        })
+      })
+
+      setState({
+        annotations: nextAnnotations,
+        layerNames: nextLayerNames
+      })
+
+      setSimilarMotionCandidates((current) =>
+        current.map((candidate) =>
+          insertableCandidates.some((inserted) => inserted.id === candidate.id)
+            ? { ...candidate, status: 'accepted' }
+            : candidate
+        )
+      )
+      showTimelineNotice(`${insertableCandidates.length}件の類似候補を挿入しました。`)
+    }
+
+    const insertSimilarMotionCandidate = (
+      candidate: SimilarMotionCandidate
+    ) => {
+      insertSimilarMotionCandidates([candidate])
+    }
+
+    const clearSimilarMotionCandidates = () => {
+      setSimilarMotionCandidates([])
+      showTimelineNotice('類似候補を破棄しました。')
     }
 
     // 位置からフレームインデックスを計算する関数を追加
@@ -1199,6 +1362,20 @@ ${tierElements.join('\n')}
           <button onClick={redo} disabled={redoStack.length === 0}>
             進める
           </button>
+          {visibleSimilarMotionCandidates.length > 0 && (
+            <>
+              <button
+                onClick={() =>
+                  insertSimilarMotionCandidates(visibleSimilarMotionCandidates)
+                }
+              >
+                類似候補をすべて挿入
+              </button>
+              <button onClick={clearSimilarMotionCandidates}>
+                類似候補を破棄
+              </button>
+            </>
+          )}
         </div>
         {timelineNotice && (
           <div className="timeline-notice">
@@ -1322,103 +1499,163 @@ ${tierElements.join('\n')}
               {layerNames.map((name, layerIndex) => {
                 // 各レイヤーに対応する containerRef を取得
                 const containerRef = containerRefs.current[layerIndex]
+                const layerCandidates = visibleSimilarMotionCandidates.filter(
+                  (candidate) => candidate.layerIndex === layerIndex
+                )
                 return (
-                  <tr
-                    key={layerIndex}
-                    className={`layer ${selectedLayerIndex === layerIndex ? 'selected' : ''}`}
-                  >
-                    <th
-                      onClick={() => handleLayerClick(layerIndex)}
-                      onDoubleClick={() =>
-                        handleLayerNameDoubleClick(layerIndex)
-                      }
+                  <React.Fragment key={layerIndex}>
+                    <tr
+                      className={`layer ${selectedLayerIndex === layerIndex ? 'selected' : ''} ${layerCandidates.length > 0 ? 'has-similarity-candidates' : ''}`}
                     >
-                      <div key={layerIndex} className={`layer-name`}>
-                        {editingLayerIndex === layerIndex ? (
-                          <input
-                            type="text"
-                            value={editingLayerName}
-                            onChange={(e) =>
-                              handleLayerNameChange(e.target.value)
-                            }
-                            onBlur={handleLayerNameBlur}
-                            onKeyDown={handleInputKeyDown}
-                            autoFocus
-                          />
-                        ) : (
-                          <div>{name}</div>
-                        )}
-                      </div>
-                    </th>
-                    <div
-                      className="timeline"
-                      ref={containerRef} // 各レイヤーの containerRef を割り当て
-                      style={{
-                        width: `${timelineWidth}px`,
-                        position: 'relative'
-                      }}
-                      onMouseDown={handleTimelineMouseDown}
-                    >
-                      {annotations
-                        .filter(
-                          (annotation) => annotation.layerIndex === layerIndex
-                        )
-                        .map((annotation) => (
-                          <Annotation
-                            key={annotation.id}
-                            id={annotation.id}
-                            containerRef={containerRef}
-                            layerIndex={annotation.layerIndex}
-                            frameWidth={frameWidth}
-                            startFrame={annotation.startFrame}
-                            endFrame={annotation.endFrame}
-                            focused={annotation.id === focusedAnnotationId}
-                            setFocusedAnnotationId={setFocusedAnnotationId}
-                            selectedAnnotationIds={selectedAnnotationIds}
-                            setSelectedAnnotationIds={setSelectedAnnotationIds}
-                            setSelectedLayerIndex={setSelectedLayerIndex}
-                            onEditing={setIsEditing}
-                            onChange={(
-                              updatedAnnotation,
-                              shouldPushToUndoStack
-                            ) =>
-                              handleAnnotationChange(
-                                annotation.id,
+                      <th
+                        onClick={() => handleLayerClick(layerIndex)}
+                        onDoubleClick={() =>
+                          handleLayerNameDoubleClick(layerIndex)
+                        }
+                      >
+                        <div key={layerIndex} className={`layer-name`}>
+                          {editingLayerIndex === layerIndex ? (
+                            <input
+                              type="text"
+                              value={editingLayerName}
+                              onChange={(e) =>
+                                handleLayerNameChange(e.target.value)
+                              }
+                              onBlur={handleLayerNameBlur}
+                              onKeyDown={handleInputKeyDown}
+                              autoFocus
+                            />
+                          ) : (
+                            <div>{name}</div>
+                          )}
+                        </div>
+                      </th>
+                      <div
+                        className="timeline"
+                        ref={containerRef} // 各レイヤーの containerRef を割り当て
+                        style={{
+                          width: `${timelineWidth}px`,
+                          position: 'relative'
+                        }}
+                        onMouseDown={handleTimelineMouseDown}
+                      >
+                        {annotations
+                          .filter(
+                            (annotation) => annotation.layerIndex === layerIndex
+                          )
+                          .map((annotation) => (
+                            <Annotation
+                              key={annotation.id}
+                              id={annotation.id}
+                              containerRef={containerRef}
+                              layerIndex={annotation.layerIndex}
+                              frameWidth={frameWidth}
+                              startFrame={annotation.startFrame}
+                              endFrame={annotation.endFrame}
+                              focused={annotation.id === focusedAnnotationId}
+                              setFocusedAnnotationId={setFocusedAnnotationId}
+                              selectedAnnotationIds={selectedAnnotationIds}
+                              setSelectedAnnotationIds={setSelectedAnnotationIds}
+                              setSelectedLayerIndex={setSelectedLayerIndex}
+                              onEditing={setIsEditing}
+                              onChange={(
                                 updatedAnnotation,
                                 shouldPushToUndoStack
-                              )
-                            }
-                            text={annotation.text}
-                            handlePlayheadMoveDown={handlePlayheadMoveDown}
-                            handlePlayheadMove={handlePlayheadMove}
-                            setCurrentFrame={setCurrentFrame}
-                            timelineWidth={timelineWidth}
-                            canUpdateAnnotation={(
-                              id,
-                              newStartFrame,
-                              newEndFrame
-                            ) => {
-                              const layerAnnotations = annotations.filter(
-                                (a) =>
-                                  a.layerIndex === annotation.layerIndex &&
-                                  a.id !== id
-                              )
-                              const newAnnotation = {
-                                id,
-                                startFrame: newStartFrame,
-                                endFrame: newEndFrame,
-                                text: annotation.text,
-                                layerIndex: annotation.layerIndex
+                              ) =>
+                                handleAnnotationChange(
+                                  annotation.id,
+                                  updatedAnnotation,
+                                  shouldPushToUndoStack
+                                )
                               }
-                              return canInsertAnnotation(
-                                newAnnotation,
-                                layerAnnotations
-                              )
-                            }}
-                          />
-                        ))}
-                    </div>
-                  </tr>
+                              text={annotation.text}
+                              handlePlayheadMoveDown={handlePlayheadMoveDown}
+                              handlePlayheadMove={handlePlayheadMove}
+                              setCurrentFrame={setCurrentFrame}
+                              timelineWidth={timelineWidth}
+                              canUpdateAnnotation={(
+                                id,
+                                newStartFrame,
+                                newEndFrame
+                              ) => {
+                                const layerAnnotations = annotations.filter(
+                                  (a) =>
+                                    a.layerIndex === annotation.layerIndex &&
+                                    a.id !== id
+                                )
+                                const newAnnotation = {
+                                  id,
+                                  startFrame: newStartFrame,
+                                  endFrame: newEndFrame,
+                                  text: annotation.text,
+                                  layerIndex: annotation.layerIndex
+                                }
+                                return canInsertAnnotation(
+                                  newAnnotation,
+                                  layerAnnotations
+                                )
+                              }}
+                            />
+                          ))}
+                      </div>
+                    </tr>
+                    {layerCandidates.length > 0 && (
+                      <tr className="layer similarity-candidate-layer">
+                        <th>
+                          <div className="layer-name">
+                            <div>{`候補: ${name}`}</div>
+                          </div>
+                        </th>
+                        <div
+                          className="timeline similarity-candidate-timeline"
+                          style={{
+                            width: `${timelineWidth}px`,
+                            position: 'relative'
+                          }}
+                        >
+                          {layerCandidates.map((candidate) => {
+                            const hasConflict = hasAnnotationConflict(candidate)
+                            return (
+                              <div
+                                key={candidate.id}
+                                className={`similarity-candidate ${hasConflict ? 'conflict' : ''}`}
+                                style={{
+                                  left: `${(candidate.startFrame - 1) * frameWidth}px`,
+                                  right: `${timelineWidth - (candidate.endFrame - 1) * frameWidth}px`
+                                }}
+                                title={`類似度: ${candidate.similarity.toFixed(3)}`}
+                              >
+                                <span>{candidate.text}</span>
+                                <span>{candidate.similarity.toFixed(2)}</span>
+                                <div className="similarity-candidate-actions">
+                                  {hasConflict ? (
+                                    <span>重複</span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        insertSimilarMotionCandidate(candidate)
+                                      }
+                                    >
+                                      挿入
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      removeSimilarMotionCandidate(candidate.id)
+                                    }
+                                  >
+                                    削除
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 )
               })}
             </table>

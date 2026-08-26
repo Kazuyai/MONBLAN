@@ -1,10 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react'
 import type { ApiStatus } from '../../main/preload'
+import type {
+  SimilarMotionCandidate,
+  SelectedTimelineAnnotation,
+  TimelineAnnotationResult
+} from '../types'
 import {
   OpenFile,
   AutoAnnotation,
   AudioVideoControls,
-  ExportFile
+  ExportFile,
+  SimilarityCompletion
 } from './settings_components'
 import Processing from './Processing'
 
@@ -18,16 +24,11 @@ interface SettingsProps {
   setPlaySpeed: (playSpeed: number) => void
   onExportCSV: () => void
   onExportEAF: () => void
-  setAutoAnnotationResponseData: (
-    data: {
-      startFrame: number
-      endFrame: number
-      text: string
-      layerName: string
-      layerIndex: number
-    }[]
-  ) => void
+  setAutoAnnotationResponseData: (data: TimelineAnnotationResult[]) => void
+  setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void
   apiStatus: ApiStatus | null
+  frameRate: number
+  selectedTimelineAnnotation: SelectedTimelineAnnotation | null
 }
 
 export const Settings: React.FC<SettingsProps> = ({
@@ -41,7 +42,10 @@ export const Settings: React.FC<SettingsProps> = ({
   onExportCSV,
   onExportEAF,
   setAutoAnnotationResponseData,
-  apiStatus
+  setSimilarMotionCandidates,
+  apiStatus,
+  frameRate,
+  selectedTimelineAnnotation
 }) => {
   const [selectedTabIndex, setSelectedTabIndex] = useState(0)
   const tabHeaderRef = useRef<HTMLDivElement>(null)
@@ -65,6 +69,18 @@ export const Settings: React.FC<SettingsProps> = ({
           setIsEditing={setIsEditing}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
           apiStatus={apiStatus}
+        />
+      )
+    },
+    {
+      label: '注釈補完',
+      component: () => (
+        <SimilarityCompletion
+          setIsProcessing={setIsProcessing}
+          setSimilarMotionCandidates={setSimilarMotionCandidates}
+          apiStatus={apiStatus}
+          frameRate={frameRate}
+          selectedTimelineAnnotation={selectedTimelineAnnotation}
         />
       )
     },

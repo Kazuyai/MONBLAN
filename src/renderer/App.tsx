@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ApiStatus } from '../main/preload'
+import type {
+  SimilarMotionCandidate,
+  SelectedTimelineAnnotation,
+  TimelineAnnotationResult
+} from './types'
 import { Video, Settings, Timeline, Processing } from './components'
 import './App.scss'
 
@@ -19,14 +24,13 @@ const App = () => {
   const [selectionFrameWidth, setSelectionFrameWidth] = useState<number>(0)
 
   const [autoAnnotationResponseData, setAutoAnnotationResponseData] = useState<
-    {
-      startFrame: number
-      endFrame: number
-      text: string
-      layerName: string
-      layerIndex: number
-    }[]
+    TimelineAnnotationResult[]
   >([])
+  const [similarMotionCandidates, setSimilarMotionCandidates] = useState<
+    SimilarMotionCandidate[]
+  >([])
+  const [selectedTimelineAnnotation, setSelectedTimelineAnnotation] =
+    useState<SelectedTimelineAnnotation | null>(null)
 
   const timelineRef = useRef<{ exportCSV: () => void; exportEAF: () => void }>(
     null
@@ -115,7 +119,10 @@ const App = () => {
           onExportCSV={handleExportCSV}
           onExportEAF={handleExportEAF}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
+          setSimilarMotionCandidates={setSimilarMotionCandidates}
           apiStatus={apiStatus}
+          frameRate={frameRate}
+          selectedTimelineAnnotation={selectedTimelineAnnotation}
         />
       </div>
       <div id="divider" onMouseDown={startVerticalResizing}></div>
@@ -138,6 +145,9 @@ const App = () => {
         setIsPartiallyPlaying={setIsPartiallyPlaying}
         setPlaySpeed={setPlaySpeed}
         autoAnnotationResponseData={autoAnnotationResponseData}
+        similarMotionCandidates={similarMotionCandidates}
+        setSimilarMotionCandidates={setSimilarMotionCandidates}
+        setSelectedTimelineAnnotation={setSelectedTimelineAnnotation}
         topHeight={topHeight}
       />
       {isProcessing && <Processing />}

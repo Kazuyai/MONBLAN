@@ -51,3 +51,26 @@ export interface AppConfig {
   autoSave: boolean
   defaultLabels: Label[]
 }
+
+export interface TimelineAnnotationResult {
+  startFrame: number
+  endFrame: number
+  text: string
+  layerName: string
+  layerIndex: number
+}
+
+export interface SelectedTimelineAnnotation extends TimelineAnnotationResult {
+  id: string
+}
+
+export interface SimilarMotionCandidate extends TimelineAnnotationResult {
+  id: string
+  humanId: number
+  similarity: number
+  dtwSimilarity: number
+  templateId: number
+  windowScale: number
+  windowLength: number
+  status: 'pending' | 'accepted' | 'rejected'
+}
