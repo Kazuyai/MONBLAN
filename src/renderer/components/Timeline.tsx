@@ -116,6 +116,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       string[]
     >([])
     const [timelineNotice, setTimelineNotice] = useState<string | null>(null)
+    const timelineNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+      null
+    )
     const [editingLayerIndex, setEditingLayerIndex] = useState<number | null>(
       null
     )
@@ -128,8 +131,23 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [isDragging, setIsDragging] = useState<boolean>(false)
 
     const showTimelineNotice = (message: string) => {
+      if (timelineNoticeTimeoutRef.current) {
+        clearTimeout(timelineNoticeTimeoutRef.current)
+      }
       setTimelineNotice(message)
+      timelineNoticeTimeoutRef.current = setTimeout(() => {
+        setTimelineNotice(null)
+        timelineNoticeTimeoutRef.current = null
+      }, 3500)
     }
+
+    useEffect(() => {
+      return () => {
+        if (timelineNoticeTimeoutRef.current) {
+          clearTimeout(timelineNoticeTimeoutRef.current)
+        }
+      }
+    }, [])
 
     // 選択範囲の状態を追加
     const [isSelecting, setIsSelecting] = useState<boolean>(false)
@@ -294,6 +312,10 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         candidate.status !== 'accepted' ||
         !isInsertedCandidateStillPresent(candidate)
     )
+    const insertableSimilarMotionCandidates =
+      visibleSimilarMotionCandidates.filter(
+        (candidate) => !hasAnnotationConflict(candidate)
+      )
 
     const removeSimilarMotionCandidate = (candidateId: string) => {
       setSimilarMotionCandidates((current) =>
@@ -376,11 +398,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       candidate: SimilarMotionCandidate
     ) => {
       insertSimilarMotionCandidates([candidate])
-    }
-
-    const clearSimilarMotionCandidates = () => {
-      setSimilarMotionCandidates([])
-      showTimelineNotice('類似候補を破棄しました。')
     }
 
     // 位置からフレームインデックスを計算する関数を追加
@@ -1362,20 +1379,6 @@ ${tierElements.join('\n')}
           <button onClick={redo} disabled={redoStack.length === 0}>
             進める
           </button>
-          {visibleSimilarMotionCandidates.length > 0 && (
-            <>
-              <button
-                onClick={() =>
-                  insertSimilarMotionCandidates(visibleSimilarMotionCandidates)
-                }
-              >
-                類似候補をすべて挿入
-              </button>
-              <button onClick={clearSimilarMotionCandidates}>
-                類似候補を破棄
-              </button>
-            </>
-          )}
         </div>
         {timelineNotice && (
           <div className="timeline-notice">
@@ -1384,10 +1387,38 @@ ${tierElements.join('\n')}
               type="button"
               aria-label="通知を閉じる"
               title="通知を閉じる"
-              onClick={() => setTimelineNotice(null)}
+              onClick={() => {
+                if (timelineNoticeTimeoutRef.current) {
+                  clearTimeout(timelineNoticeTimeoutRef.current)
+                  timelineNoticeTimeoutRef.current = null
+                }
+                setTimelineNotice(null)
+              }}
             >
               &times;
             </button>
+          </div>
+        )}
+        {visibleSimilarMotionCandidates.length > 0 && (
+          <div className="similarity-candidate-toolbar">
+            <div className="similarity-candidate-toolbar-summary">
+              <span>{`類似候補: ${visibleSimilarMotionCandidates.length}件`}</span>
+              <span>{`挿入可能: ${insertableSimilarMotionCandidates.length}件`}</span>
+            </div>
+            <div className="similarity-candidate-toolbar-actions">
+              <button
+                type="button"
+                disabled={insertableSimilarMotionCandidates.length === 0}
+                onClick={() =>
+                  insertSimilarMotionCandidates(insertableSimilarMotionCandidates)
+                }
+              >
+                すべて挿入
+              </button>
+              <button type="button" onClick={() => setSimilarMotionCandidates([])}>
+                候補を破棄
+              </button>
+            </div>
           </div>
         )}
         <div className="timeline-container">
@@ -1602,8 +1633,11 @@ ${tierElements.join('\n')}
                     {layerCandidates.length > 0 && (
                       <tr className="layer similarity-candidate-layer">
                         <th>
-                          <div className="layer-name">
-                            <div>{`候補: ${name}`}</div>
+                          <div className="layer-name similarity-candidate-header">
+                            <div className="similarity-candidate-title">
+                              <span>{'候補: '}{name}</span>
+                              <span>{layerCandidates.length}{'件'}</span>
+                            </div>
                           </div>
                         </th>
                         <div
