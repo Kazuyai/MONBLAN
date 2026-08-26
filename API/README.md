@@ -147,6 +147,16 @@ Electronアプリからは、動画全体のアップロードを避けるため
 - レスポンスの`startFrame`と`endFrame`も1始まりであり、既存の自動動作検出と同じ規約である。
 - レスポンスの`candidates`は仮注釈候補である。UI側で利用者が確認してから正式な注釈として追加する。
 
+## AlphaPose結果の再利用
+
+Electronアプリが利用する `*_from_path` 系エンドポイントでは、動画パス・ファイルサイズ・更新時刻をキーにして AlphaPose の `alphapose-results.json` を一時ディレクトリへキャッシュします。
+
+- `/get_human_images_from_path/` で人物画像取得を行った後、同じ動画に対して `/items_from_path/` または `/similar_motion_from_path/` を実行した場合、AlphaPose は再実行せず既存結果を再利用します。
+- 通常のアップロード系エンドポイント `/get_human_images/` と `/items/` は、一時アップロードファイルを使うためキャッシュ対象外です。
+- 動画ファイルが更新されると、サイズまたは更新時刻が変わるため別キャッシュとして扱います。
+- キャッシュはOSの一時ディレクトリ配下 `annotation-tool-alphapose-cache` に保存され、APIプロセス終了時には自動削除されません。不要になった場合は手動削除できます。
+- ログには `alphapose_cache_hit=True/False` が出力され、再利用されたか確認できます。
+
 ## 手動確認手順
 
 ### 1. 構文と import の確認

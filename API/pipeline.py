@@ -6,6 +6,7 @@ subprocess.run(cwd=...) で各外部スクリプトの作業ディレクトリ�
 """
 
 import base64
+import hashlib
 import importlib.util
 import json
 import logging
@@ -14,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import uuid
 
 import cv2
@@ -28,6 +30,9 @@ logger = logging.getLogger(__name__)
 _SIMILARITY_DETECTOR_CLASS = None
 # Existing detect_movement.py returns one-based, inclusive frame ranges.
 ANNOTATION_FRAME_INDEX_BASE = 1
+ALPHAPOSE_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "annotation-tool-alphapose-cache")
+_ALPHAPOSE_CACHE_LOCK = threading.Lock()
+_ALPHAPOSE_CACHE_LOCKS: dict[str, threading.Lock] = {}
 
 
 def create_job_dir() -> str:
@@ -42,6 +47,40 @@ def cleanup_job_dir(job_dir: str):
     """成功時に不要になったジョブディレクトリを削除する。"""
     if os.path.exists(job_dir):
         shutil.rmtree(job_dir, ignore_errors=True)
+
+
+def _get_alphapose_cache_key(video_file_path: str) -> str:
+    """Create a stable cache key for a local video path and its current file state."""
+    resolved_path = os.path.abspath(video_file_path)
+    stat = os.stat(resolved_path)
+    payload = f"{resolved_path}|{stat.st_size}|{stat.st_mtime_ns}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _get_cache_lock(cache_key: str) -> threading.Lock:
+    with _ALPHAPOSE_CACHE_LOCK:
+        if cache_key not in _ALPHAPOSE_CACHE_LOCKS:
+            _ALPHAPOSE_CACHE_LOCKS[cache_key] = threading.Lock()
+        return _ALPHAPOSE_CACHE_LOCKS[cache_key]
+
+
+def get_cached_alphapose_results(video_file_path: str) -> tuple[str, bool]:
+    """Run AlphaPose once per unchanged local video and return alphapose-results.json."""
+    cache_key = _get_alphapose_cache_key(video_file_path)
+    cache_dir = os.path.join(ALPHAPOSE_CACHE_ROOT, cache_key)
+    results_path = os.path.join(cache_dir, "alphapose-results.json")
+
+    cache_lock = _get_cache_lock(cache_key)
+    with cache_lock:
+        if os.path.isfile(results_path):
+            logger.info("Reusing AlphaPose cache: %s", cache_dir)
+            return results_path, True
+
+        os.makedirs(cache_dir, exist_ok=True)
+        run_alphapose(video_file_path, cache_dir)
+        if not os.path.isfile(results_path):
+            raise FileNotFoundError(f"AlphaPose output was not found: {results_path}")
+        return results_path, False
 
 
 def _save_subprocess_log(job_dir: str, step_name: str, stdout: str, stderr: str):
@@ -302,12 +341,17 @@ def _read_frame(video_file_path: str, frame_id: int):
         cap.release()
 
 
-def extract_human_images(video_file_path: str, job_dir: str) -> list[str]:
+def extract_human_images(
+    video_file_path: str,
+    job_dir: str,
+    alphapose_results_path: str | None = None,
+) -> list[str]:
     """AlphaPose結果から人物領域を切り出し、JPEGのBase64文字列リストとして返す。"""
-    run_alphapose(video_file_path, job_dir)
+    if alphapose_results_path is None:
+        run_alphapose(video_file_path, job_dir)
+        alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
 
-    results_path = os.path.join(job_dir, "alphapose-results.json")
-    with open(results_path, "r", encoding="utf-8") as file:
+    with open(alphapose_results_path, "r", encoding="utf-8") as file:
         alphapose_results = json.load(file)
 
     image_data_list = []
@@ -342,6 +386,7 @@ def run_pose_pipeline(
     video_file_path: str,
     auto_annotation_layer: list[dict],
     job_dir: str | None = None,
+    alphapose_results_path: str | None = None,
 ) -> list[dict]:
     """自動アノテーション用の全パイプラインを実行し、検出された動作区間を返す。"""
     owns_job_dir = job_dir is None
@@ -349,8 +394,9 @@ def run_pose_pipeline(
         job_dir = create_job_dir()
     success = False
     try:
-        run_alphapose(video_file_path, job_dir)
-        alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
+        if alphapose_results_path is None:
+            run_alphapose(video_file_path, job_dir)
+            alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
 
         # MotionBERTは対象人物をfocusで指定するため、humanIdごとにレイヤーを処理する。
         grouped_by_human_id: dict[int, list[dict]] = {}
@@ -393,6 +439,7 @@ def run_similarity_pipeline(
     layer_name: str,
     layer_index: int,
     job_dir: str | None = None,
+    alphapose_results_path: str | None = None,
 ) -> dict:
     """人物・関節・テンプレート区間を指定して、類似動作候補を返す。"""
     owns_job_dir = job_dir is None
@@ -400,8 +447,9 @@ def run_similarity_pipeline(
         job_dir = create_job_dir()
     success = False
     try:
-        run_alphapose(video_file_path, job_dir)
-        alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
+        if alphapose_results_path is None:
+            run_alphapose(video_file_path, job_dir)
+            alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
         run_motionbert(video_file_path, alphapose_results_path, job_dir, str(human_id + 1))
 
         pose_file_path = os.path.join(job_dir, "X3D.npy")

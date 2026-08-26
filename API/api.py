@@ -23,6 +23,7 @@ try:
         cleanup_job_dir,
         create_job_dir,
         extract_human_images,
+        get_cached_alphapose_results,
         get_video_framerate,
         run_pose_pipeline,
         run_similarity_pipeline,
@@ -35,6 +36,7 @@ except ImportError:
         cleanup_job_dir,
         create_job_dir,
         extract_human_images,
+        get_cached_alphapose_results,
         get_video_framerate,
         run_pose_pipeline,
         run_similarity_pipeline,
@@ -211,13 +213,20 @@ async def get_human_images_from_path(request: VideoPathRequest):
     try:
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
+        alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
 
-        image_data_list = extract_human_images(video_path, job_dir)
+        image_data_list = extract_human_images(video_path, job_dir, alphapose_results_path)
 
         end_time = time.time()
-        log_api_call("get_human_images_from_path", start_time, end_time, f"Extracted {len(image_data_list)} human images")
+        log_api_call("get_human_images_from_path", start_time, end_time, f"Extracted {len(image_data_list)} human images, alphapose_cache_hit={alphapose_cache_hit}")
         success = True
-        return JSONResponse(status_code=200, content={"images": image_data_list})
+        return JSONResponse(
+            status_code=200,
+            content={
+                "images": image_data_list,
+                "alphaposeCache": {"hit": alphapose_cache_hit},
+            },
+        )
 
     except subprocess.CalledProcessError as error:
         end_time = time.time()
@@ -293,11 +302,12 @@ async def create_item_from_path(request: ItemsPathRequest):
     try:
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
+        alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
 
-        motion_times = run_pose_pipeline(video_path, request.autoAnnotationLayer, job_dir)
+        motion_times = run_pose_pipeline(video_path, request.autoAnnotationLayer, job_dir, alphapose_results_path)
 
         end_time = time.time()
-        log_api_call("create_item_from_path", start_time, end_time, f"Processed {len(motion_times)} motion times")
+        log_api_call("create_item_from_path", start_time, end_time, f"Processed {len(motion_times)} motion times, alphapose_cache_hit={alphapose_cache_hit}")
         success = True
         return motion_times
 
@@ -333,6 +343,7 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
 
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
+        alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
         template_segments = [
             segment.model_dump() if hasattr(segment, "model_dump") else segment.dict()
             for segment in request.templateSegments
@@ -345,6 +356,7 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             layer_name=request.layerName,
             layer_index=request.layerIndex,
             job_dir=job_dir,
+            alphapose_results_path=alphapose_results_path,
         )
 
         end_time = time.time()
@@ -352,9 +364,10 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             "similar_motion_from_path",
             start_time,
             end_time,
-            f"Processed {len(result['candidates'])} similar motion candidates",
+            f"Processed {len(result['candidates'])} similar motion candidates, alphapose_cache_hit={alphapose_cache_hit}",
         )
         success = True
+        result["alphaposeCache"] = {"hit": alphapose_cache_hit}
         return result
 
     except subprocess.CalledProcessError as error:
