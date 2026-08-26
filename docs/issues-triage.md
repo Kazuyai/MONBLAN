@@ -51,7 +51,7 @@ than verified user-facing bugs.
 | #36, #33, #32                | code-quality              |
 | #29, #28, #27, #26, #25, #24 | performance               |
 | #23, #22, #21                | UX / feature completeness |
-| #8, #7, #6, #5, #4, #3, #1   | enhancements              |
+| #42, #8, #7, #6, #5, #4, #3, #1 | enhancements / AI completion |
 
 ## Recommended next order
 

@@ -25,6 +25,7 @@ try:
         extract_human_images,
         get_video_framerate,
         run_pose_pipeline,
+        run_similarity_pipeline,
     )
 except ImportError:
     # 互換用: APIディレクトリ内から `uvicorn api:app` で起動した場合も動かす。
@@ -36,6 +37,7 @@ except ImportError:
         extract_human_images,
         get_video_framerate,
         run_pose_pipeline,
+        run_similarity_pipeline,
     )
 
 app = FastAPI()
@@ -58,6 +60,19 @@ class VideoPathRequest(BaseModel):
 
 class ItemsPathRequest(VideoPathRequest):
     autoAnnotationLayer: list[dict]
+
+
+class SimilarMotionTemplate(BaseModel):
+    startFrame: int
+    endFrame: int
+
+
+class SimilarMotionPathRequest(VideoPathRequest):
+    humanId: int
+    selectedJoints: list[int]
+    templateSegments: list[SimilarMotionTemplate]
+    layerName: str
+    layerIndex: int
 
 
 def log_api_call(api_name: str, start_time: float, end_time: float, additional_info: str = ""):
@@ -304,3 +319,63 @@ async def create_item_from_path(request: ItemsPathRequest):
                 cleanup_job_dir(job_dir)
             else:
                 log_api_call("create_item_from_path", 0, 0, f"Job directory preserved for debugging: {job_dir}")
+
+
+@app.post("/similar_motion_from_path/")
+async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
+    """指定人物・関節・テンプレート区間を基に、v40で類似動作候補を検索する。"""
+    start_time = time.time()
+    job_dir = None
+    success = False
+    try:
+        if not request.templateSegments:
+            raise ValueError("templateSegments must contain at least one interval")
+
+        video_path = validate_local_video_path(request.file_path)
+        job_dir = create_job_dir()
+        template_segments = [
+            segment.model_dump() if hasattr(segment, "model_dump") else segment.dict()
+            for segment in request.templateSegments
+        ]
+        result = run_similarity_pipeline(
+            video_file_path=video_path,
+            human_id=request.humanId,
+            selected_joints=request.selectedJoints,
+            template_segments=template_segments,
+            layer_name=request.layerName,
+            layer_index=request.layerIndex,
+            job_dir=job_dir,
+        )
+
+        end_time = time.time()
+        log_api_call(
+            "similar_motion_from_path",
+            start_time,
+            end_time,
+            f"Processed {len(result['candidates'])} similar motion candidates",
+        )
+        success = True
+        return result
+
+    except subprocess.CalledProcessError as error:
+        end_time = time.time()
+        error_info = _format_subprocess_error(error, job_dir)
+        log_api_call("similar_motion_from_path", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
+        return JSONResponse(status_code=500, content=error_info)
+    except ValueError as error:
+        end_time = time.time()
+        log_api_call("similar_motion_from_path", start_time, end_time, f"Invalid request: {str(error)}")
+        return JSONResponse(status_code=422, content={"message": "Invalid request", "error": str(error)})
+    except Exception as error:
+        end_time = time.time()
+        log_api_call("similar_motion_from_path", start_time, end_time, f"Error: {str(error)}")
+        content = {"message": "An error occurred", "error": str(error)}
+        if job_dir:
+            content["job_dir"] = job_dir
+        return JSONResponse(status_code=500, content=content)
+    finally:
+        if job_dir:
+            if success:
+                cleanup_job_dir(job_dir)
+            else:
+                log_api_call("similar_motion_from_path", 0, 0, f"Job directory preserved for debugging: {job_dir}")

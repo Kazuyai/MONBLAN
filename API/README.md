@@ -122,6 +122,31 @@ Electronアプリからは、動画全体のアップロードを避けるため
 
 ローカル動画ファイルのパスと自動アノテーション設定を受け取り、AlphaPose、MotionBERT、detect_movement の一連の自動アノテーションパイプラインを実行します。Electronアプリ向けの高速経路です。
 
+### `POST /similar_motion_from_path/`
+
+利用者が選択した人物、関節、テンプレート区間を基に、v40のDTW類似動作検出を実行します。AlphaPoseとMotionBERTで選択人物の3次元姿勢を生成し、`detect_movement/similarity_detection.py` の検出器へ渡します。既存の自動動作検出とは異なり、CSV変換・外積CSV計算・`detect_movement.py` は実行しません。
+
+リクエスト例:
+
+```json
+{
+  "file_path": "C:\\path\\to\\video.mp4",
+  "humanId": 0,
+  "selectedJoints": [14, 15],
+  "templateSegments": [
+    {"startFrame": 153, "endFrame": 177}
+  ],
+  "layerName": "右 右腕の動き",
+  "layerIndex": 2
+}
+```
+
+- `humanId` は人物選択UIの0始まりのIDである。MotionBERTへは内部で1始まりの`focus`として渡す。
+- `selectedJoints` は選択可能な10関節のIDを指定する。
+- `templateSegments` はタイムライン上のテンプレート区間であり、開始・終了フレームをともに含む。既存の自動動作検出に合わせてフレーム番号は1始まりである。
+- レスポンスの`startFrame`と`endFrame`も1始まりであり、既存の自動動作検出と同じ規約である。
+- レスポンスの`candidates`は仮注釈候補である。UI側で利用者が確認してから正式な注釈として追加する。
+
 ## 手動確認手順
 
 ### 1. 構文と import の確認

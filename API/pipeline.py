@@ -6,6 +6,7 @@ subprocess.run(cwd=...) で各外部スクリプトの作業ディレクトリ�
 """
 
 import base64
+import importlib.util
 import json
 import logging
 import os
@@ -23,6 +24,10 @@ except ImportError:
     from paths import ALPHAPOSE_DIR, DETECT_MOVEMENT_DIR, MOTIONBERT_CHECKPOINT, MOTIONBERT_DIR
 
 logger = logging.getLogger(__name__)
+
+_SIMILARITY_DETECTOR_CLASS = None
+# Existing detect_movement.py returns one-based, inclusive frame ranges.
+ANNOTATION_FRAME_INDEX_BASE = 1
 
 
 def create_job_dir() -> str:
@@ -161,6 +166,109 @@ def run_detect_movement_script(video_file_path: str, annotation_file: str, job_d
     )
 
 
+def _load_similarity_detector_class():
+    """v40検出器を必要なときだけ読み込む。FastAPI起動時の重い依存読み込みを避ける。"""
+    global _SIMILARITY_DETECTOR_CLASS
+    if _SIMILARITY_DETECTOR_CLASS is not None:
+        return _SIMILARITY_DETECTOR_CLASS
+
+    detector_path = os.path.join(DETECT_MOVEMENT_DIR, "similarity_detection.py")
+    spec = importlib.util.spec_from_file_location("annotation_tool_similarity_detection", detector_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load similarity detector: {detector_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    _SIMILARITY_DETECTOR_CLASS = module.DTWPureGreedy3DDetector
+    return _SIMILARITY_DETECTOR_CLASS
+
+
+def run_similarity_detection(
+    pose_file_path: str,
+    human_id: int,
+    selected_joints: list[int],
+    template_segments: list[dict],
+    fps: float,
+    layer_name: str,
+    layer_index: int,
+) -> dict:
+    """v40を実行し、UIで扱う注釈候補と検出メタデータを返す。"""
+    if fps <= 0:
+        raise ValueError("Frame rate must be greater than zero")
+    if human_id < 0:
+        raise ValueError("humanId must be zero or greater")
+    if not selected_joints:
+        raise ValueError("selectedJoints must contain at least one joint")
+    if not template_segments:
+        raise ValueError("templateSegments must contain at least one interval")
+
+    template_times: list[tuple[float, float]] = []
+    for index, segment in enumerate(template_segments):
+        try:
+            start_frame = int(segment["startFrame"])
+            end_frame = int(segment["endFrame"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"Invalid template segment at index {index}") from error
+        if end_frame < start_frame:
+            raise ValueError(f"Template segment {index} ends before it starts")
+        if start_frame < ANNOTATION_FRAME_INDEX_BASE:
+            raise ValueError(f"Template segment {index} starts before frame one")
+        template_times.append(
+            (
+                (start_frame - ANNOTATION_FRAME_INDEX_BASE) / fps,
+                (end_frame - ANNOTATION_FRAME_INDEX_BASE) / fps,
+            )
+        )
+
+    detector_class = _load_similarity_detector_class()
+    detector = detector_class(fps=fps)
+    result = detector.detect(pose_file_path, list(dict.fromkeys(selected_joints)), template_times)
+    if "error" in result:
+        raise RuntimeError(result["error"])
+
+    candidates = []
+    for candidate_index, segment in enumerate(result["segments"], start=1):
+        candidates.append(
+            {
+                # startFrame/endFrame are compatible with existing annotation results.
+                "startFrame": int(segment.start_frame) + ANNOTATION_FRAME_INDEX_BASE,
+                "endFrame": int(segment.end_frame) + ANNOTATION_FRAME_INDEX_BASE,
+                "startTime": float(segment.start_time),
+                "endTime": float(segment.end_time),
+                "text": f"類似候補 {candidate_index}",
+                "layerName": layer_name,
+                "layerIndex": layer_index,
+                "humanId": human_id,
+                "similarity": float(segment.final_score),
+                "dtwSimilarity": float(segment.dtw_similarity),
+                "templateId": int(segment.template_id),
+                "windowScale": float(segment.window_scale),
+                "windowLength": int(segment.window_length),
+            }
+        )
+
+    stats = result["stats"]
+    return {
+        "candidates": candidates,
+        "stats": {
+            "templates": int(stats["templates"]),
+            "initialCandidates": int(stats["initial_candidates"]),
+            "thresholdPassedCandidates": int(stats["threshold_passed_candidates"]),
+            "postUnionCandidates": int(stats["post_union_candidates"]),
+            "finalResults": int(stats["final_results"]),
+            "averageFinalScore": float(stats["avg_final_score"]),
+        },
+        "parameters": {
+            "algorithm": "v40_dtw_pure_refined",
+            "fps": float(fps),
+            "selectedJoints": list(dict.fromkeys(selected_joints)),
+            "selectedJointNames": result["params"]["selected_joint_names"],
+            "featureType": result["params"]["feature_type"],
+        },
+    }
+
+
 def _largest_person_per_frame(alphapose_results: list[dict]) -> list[dict]:
     """AlphaPose結果をフレームごとにまとめ、各フレームで面積最大の人物を代表として選ぶ。"""
     grouped_by_idx: dict[object, list[dict]] = {}
@@ -275,6 +383,47 @@ def run_pose_pipeline(
             cleanup_job_dir(job_dir)
         elif not success:
             logger.warning("Job failed. Preserving job directory for debugging: %s", job_dir)
+
+
+def run_similarity_pipeline(
+    video_file_path: str,
+    human_id: int,
+    selected_joints: list[int],
+    template_segments: list[dict],
+    layer_name: str,
+    layer_index: int,
+    job_dir: str | None = None,
+) -> dict:
+    """人物・関節・テンプレート区間を指定して、類似動作候補を返す。"""
+    owns_job_dir = job_dir is None
+    if job_dir is None:
+        job_dir = create_job_dir()
+    success = False
+    try:
+        run_alphapose(video_file_path, job_dir)
+        alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
+        run_motionbert(video_file_path, alphapose_results_path, job_dir, str(human_id + 1))
+
+        pose_file_path = os.path.join(job_dir, "X3D.npy")
+        if not os.path.isfile(pose_file_path):
+            raise FileNotFoundError(f"MotionBERT output was not found: {pose_file_path}")
+
+        result = run_similarity_detection(
+            pose_file_path=pose_file_path,
+            human_id=human_id,
+            selected_joints=selected_joints,
+            template_segments=template_segments,
+            fps=get_video_framerate(video_file_path),
+            layer_name=layer_name,
+            layer_index=layer_index,
+        )
+        success = True
+        return result
+    finally:
+        if success and owns_job_dir:
+            cleanup_job_dir(job_dir)
+        elif not success:
+            logger.warning("Similarity job failed. Preserving job directory for debugging: %s", job_dir)
 
 
 def get_video_framerate(video_file_path: str) -> float:
