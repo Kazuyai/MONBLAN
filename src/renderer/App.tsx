@@ -109,7 +109,6 @@ const App = () => {
           selectionFrameWidth={selectionFrameWidth}
         />
         <Settings
-          isProcessing={isProcessing}
           setIsProcessing={setIsProcessing}
           setVideoSrcs={setVideoSrcs}
           setIsEditing={setIsEditing}

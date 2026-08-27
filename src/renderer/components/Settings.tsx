@@ -12,10 +12,8 @@ import {
   ExportFile,
   SimilarityCompletion
 } from './settings_components'
-import Processing from './Processing'
 
 interface SettingsProps {
-  isProcessing: boolean
   setIsProcessing: (isProcessing: boolean) => void
   setVideoSrcs: (srcs: string[]) => void
   setIsEditing: (isEditing: boolean) => void
@@ -32,7 +30,6 @@ interface SettingsProps {
 }
 
 export const Settings: React.FC<SettingsProps> = ({
-  isProcessing,
   setIsProcessing,
   setVideoSrcs,
   setIsEditing,
@@ -169,7 +166,6 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         ))}
       </div>
-      {isProcessing && <Processing />}
     </section>
   )
 }

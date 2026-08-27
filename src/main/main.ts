@@ -46,7 +46,7 @@ const isDebug =
 
 if (isDebug) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  require('electron-debug')()
+  require('electron-debug')({ showDevTools: false })
 }
 
 const openFile = (_event: unknown, url: string) => {
