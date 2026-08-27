@@ -97,6 +97,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const timelineContainerRef = useRef<HTMLTableElement>(null)
     const timelinesRef = useRef<HTMLTableRowElement>(null)
     const timeBarRef = useRef<HTMLTableCellElement>(null)
+    const playheadRef = useRef<HTMLDivElement>(null)
 
     // 状態を統合
     const [state, setState] = useState<TimelineState>({
@@ -654,12 +655,23 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }
     }, [minZoomLevel]) // minZoomLevelの変更を監視
 
-    useEffect(() => {
+    const syncPlayheadToFrame = (frame: number) => {
       const remInPixels = parseFloat(
         getComputedStyle(document.documentElement).fontSize
       )
       const offset = 140 * remInPixels
-      setPlayheadLeft(offset + (currentFrame - 1) * frameWidth)
+      const clampedFrame = Math.max(1, Math.min(totalFrames, frame))
+      const nextPlayheadLeft = offset + (clampedFrame - 1) * frameWidth
+
+      setCurrentFrame(clampedFrame)
+      setPlayheadLeft(nextPlayheadLeft)
+      if (playheadRef.current) {
+        playheadRef.current.style.left = `${nextPlayheadLeft}px`
+      }
+    }
+
+    useEffect(() => {
+      syncPlayheadToFrame(currentFrame)
     }, [currentFrame, frameWidth])
 
     useEffect(() => {
@@ -704,9 +716,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const frameIndex = Math.round(relativeX / frameWidth) + 1
       const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
 
-      const newPlayheadLeft = offset + (clampedFrameIndex - 1) * frameWidth
-      setCurrentFrame(clampedFrameIndex)
-      setPlayheadLeft(newPlayheadLeft)
+      syncPlayheadToFrame(clampedFrameIndex)
     }
 
     const handlePlayheadMoveDown = (clientX: number) => {
@@ -738,6 +748,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       setSelectionStart((clampedFrameIndex - 1) * frameWidth + offset)
       setSelectionFrameWidth(0)
       setSelectionWidth(0)
+      syncPlayheadToFrame(clampedFrameIndex)
     }
 
     // タイムバーでのマウスダウン処理
@@ -786,6 +797,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         setSelectionStart((startFrame - 1) * frameWidth + offset)
         setSelectionFrameWidth(frameWidthCount)
         setSelectionWidth(frameWidthCount * frameWidth)
+        syncPlayheadToFrame(clampedFrameIndex)
       }
     }
 
@@ -1524,6 +1536,7 @@ ${tierElements.join('\n')}
                   })()}
                 </th>
                 <div
+                  ref={playheadRef}
                   className="playhead"
                   style={{ left: `${playheadLeft}px` }}
                 ></div>
@@ -1620,9 +1633,7 @@ ${tierElements.join('\n')}
                                 )
                               }
                               text={annotation.text}
-                              handlePlayheadMoveDown={handlePlayheadMoveDown}
-                              handlePlayheadMove={handlePlayheadMove}
-                              setCurrentFrame={setCurrentFrame}
+                              setCurrentFrame={syncPlayheadToFrame}
                               timelineWidth={timelineWidth}
                               canUpdateAnnotation={(
                                 id,
@@ -1651,7 +1662,7 @@ ${tierElements.join('\n')}
                                 setSelectionFrameWidth(
                                   Math.max(0, endFrame - startFrame)
                                 )
-                                setCurrentFrame(startFrame)
+                                syncPlayheadToFrame(startFrame)
                               }}
                             />
                           ))}

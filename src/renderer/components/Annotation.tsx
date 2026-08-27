@@ -18,8 +18,6 @@ interface AnnotationProps {
     shouldPushToUndoStack?: boolean
   ) => void
   text: string
-  handlePlayheadMoveDown: (clientX: number) => void
-  handlePlayheadMove: (clientX: number) => void
   setCurrentFrame: (frame: number) => void
   timelineWidth: number
   canUpdateAnnotation: (
@@ -45,8 +43,6 @@ const Annotation: React.FC<AnnotationProps> = ({
   onEditing,
   onChange,
   text: initialText,
-  handlePlayheadMoveDown,
-  handlePlayheadMove,
   setCurrentFrame,
   timelineWidth,
   canUpdateAnnotation,
@@ -111,7 +107,9 @@ const Annotation: React.FC<AnnotationProps> = ({
           (e.target === leftHandle ? sliderRect.left : sliderRect.right)
         initialLeftRef.current = sliderRect.left - containerRect.left
         initialRightRef.current = containerRect.right - sliderRect.right
-        handlePlayheadMoveDown(e.clientX)
+        setCurrentFrame(
+          e.target === leftHandle ? currentStartFrame : currentEndFrame
+        )
       } else if (e.target === slider && !isEditing) {
         clickStartRef.current = { x: e.clientX, y: e.clientY }
         shouldSelectRangeOnClickRef.current = true
@@ -180,7 +178,7 @@ const Annotation: React.FC<AnnotationProps> = ({
           // スナップ処理
           newLeft = snapToFrame(newLeft, frameWidth)
 
-          const proposedStartFrame = Math.round(newLeft / frameWidth)
+          const proposedStartFrame = Math.round(newLeft / frameWidth) + 1
           const proposedEndFrame = currentEndFrame
 
           if (
@@ -197,7 +195,7 @@ const Annotation: React.FC<AnnotationProps> = ({
             )
 
             slider.style.left = newLeft + 'px'
-            handlePlayheadMoveDown(e.clientX)
+            setCurrentFrame(Math.round(newLeft / frameWidth) + 1)
           }
         } else if (draggingRef.current === rightHandle) {
           // 右ハンドルを移動
@@ -229,7 +227,9 @@ const Annotation: React.FC<AnnotationProps> = ({
             )
 
             slider.style.right = newRight + 'px'
-            handlePlayheadMoveDown(e.clientX)
+            setCurrentFrame(
+              Math.round((containerRect.width - newRight) / frameWidth) + 1
+            )
           }
         }
       }
@@ -300,8 +300,6 @@ const Annotation: React.FC<AnnotationProps> = ({
   }, [
     containerRef,
     frameWidth,
-    handlePlayheadMove,
-    handlePlayheadMoveDown,
     isEditing,
     onChange,
     onEditing,
