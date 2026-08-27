@@ -59,6 +59,13 @@ interface TimelineState {
   layerNames: string[]
 }
 
+type TimelineNoticeType = 'success' | 'warning' | 'error'
+
+interface TimelineNotice {
+  message: string
+  type: TimelineNoticeType
+}
+
 const Timeline = forwardRef<TimelineHandle, TimelineProps>(
   (
     {
@@ -115,7 +122,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<
       string[]
     >([])
-    const [timelineNotice, setTimelineNotice] = useState<string | null>(null)
+    const [timelineNotice, setTimelineNotice] =
+      useState<TimelineNotice | null>(null)
     const timelineNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
       null
     )
@@ -130,11 +138,14 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [playheadLeft, setPlayheadLeft] = useState(0)
     const [isDragging, setIsDragging] = useState<boolean>(false)
 
-    const showTimelineNotice = (message: string) => {
+    const showTimelineNotice = (
+      message: string,
+      type: TimelineNoticeType = 'warning'
+    ) => {
       if (timelineNoticeTimeoutRef.current) {
         clearTimeout(timelineNoticeTimeoutRef.current)
       }
-      setTimelineNotice(message)
+      setTimelineNotice({ message, type })
       timelineNoticeTimeoutRef.current = setTimeout(() => {
         setTimelineNotice(null)
         timelineNoticeTimeoutRef.current = null
@@ -391,7 +402,10 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
             : candidate
         )
       )
-      showTimelineNotice(`${insertableCandidates.length}件の類似候補を挿入しました。`)
+      showTimelineNotice(
+        `${insertableCandidates.length}件の類似候補を挿入しました。`,
+        'success'
+      )
     }
 
     const insertSimilarMotionCandidate = (
@@ -1381,8 +1395,8 @@ ${tierElements.join('\n')}
           </button>
         </div>
         {timelineNotice && (
-          <div className="timeline-notice">
-            <span>{timelineNotice}</span>
+          <div className={`timeline-notice ${timelineNotice.type}`}>
+            <span>{timelineNotice.message}</span>
             <button
               type="button"
               aria-label="通知を閉じる"
@@ -1415,7 +1429,13 @@ ${tierElements.join('\n')}
               >
                 すべて挿入
               </button>
-              <button type="button" onClick={() => setSimilarMotionCandidates([])}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSimilarMotionCandidates([])
+                  showTimelineNotice('類似候補を破棄しました。', 'success')
+                }}
+              >
                 候補を破棄
               </button>
             </div>
