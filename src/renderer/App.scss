@@ -825,6 +825,30 @@ button {
         // height: 250rem;
         // overflow: hidden;
         overflow: auto;
+        scrollbar-color: #6f6f6f #2b2b2b;
+        scrollbar-width: thin;
+        &::-webkit-scrollbar {
+          width: 12rem;
+          height: 12rem;
+        }
+        &::-webkit-scrollbar-track {
+          background: #2b2b2b;
+          border-radius: 999rem;
+        }
+        &::-webkit-scrollbar-thumb {
+          border: 3rem solid #2b2b2b;
+          border-radius: 999rem;
+          background: #6f6f6f;
+          &:hover {
+            background: #8a8a8a;
+          }
+          &:active {
+            background: #a0a0a0;
+          }
+        }
+        &::-webkit-scrollbar-corner {
+          background: #232323;
+        }
         table {
           position: relative;
           border-collapse: collapse;
