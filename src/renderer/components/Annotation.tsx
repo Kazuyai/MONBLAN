@@ -27,6 +27,7 @@ interface AnnotationProps {
     newStartFrame: number,
     newEndFrame: number
   ) => boolean
+  onSelectRange: (startFrame: number, endFrame: number) => void
 }
 
 const Annotation: React.FC<AnnotationProps> = ({
@@ -48,7 +49,8 @@ const Annotation: React.FC<AnnotationProps> = ({
   handlePlayheadMove,
   setCurrentFrame,
   timelineWidth,
-  canUpdateAnnotation
+  canUpdateAnnotation,
+  onSelectRange
 }) => {
   const sliderRef = useRef<HTMLDivElement>(null)
   const [currentStartFrame, setCurrentStartFrame] = useState(startFrame)
@@ -60,6 +62,8 @@ const Annotation: React.FC<AnnotationProps> = ({
   // ドラッグ中の情報を保持するための変数
   const draggingRef = useRef<HTMLElement | null>(null)
   const dragOffsetRef = useRef<number>(0)
+  const clickStartRef = useRef<{ x: number; y: number } | null>(null)
+  const shouldSelectRangeOnClickRef = useRef(false)
 
   // 初期の位置と幅を保持
   const initialLeftRef = useRef<number>(0)
@@ -99,6 +103,8 @@ const Annotation: React.FC<AnnotationProps> = ({
       const containerRect = container.getBoundingClientRect()
 
       if (e.target === leftHandle || e.target === rightHandle) {
+        clickStartRef.current = null
+        shouldSelectRangeOnClickRef.current = false
         draggingRef.current = e.target as HTMLElement
         dragOffsetRef.current =
           e.clientX -
@@ -107,6 +113,8 @@ const Annotation: React.FC<AnnotationProps> = ({
         initialRightRef.current = containerRect.right - sliderRect.right
         handlePlayheadMoveDown(e.clientX)
       } else if (e.target === slider && !isEditing) {
+        clickStartRef.current = { x: e.clientX, y: e.clientY }
+        shouldSelectRangeOnClickRef.current = true
         draggingRef.current = slider
         dragOffsetRef.current = e.clientX - sliderRect.left
         initialLeftRef.current = sliderRect.left - containerRect.left
@@ -121,6 +129,16 @@ const Annotation: React.FC<AnnotationProps> = ({
       }
 
       if (draggingRef.current) {
+        if (clickStartRef.current) {
+          const moveDistance = Math.hypot(
+            e.clientX - clickStartRef.current.x,
+            e.clientY - clickStartRef.current.y
+          )
+          if (moveDistance > 4) {
+            shouldSelectRangeOnClickRef.current = false
+          }
+        }
+
         const containerRect = container.getBoundingClientRect()
 
         if (draggingRef.current === slider) {
@@ -237,14 +255,19 @@ const Annotation: React.FC<AnnotationProps> = ({
       setCurrentStartFrame(newStartFrame)
       setCurrentEndFrame(newEndFrame)
 
-      onChange(
-        {
-          startFrame: newStartFrame,
-          endFrame: newEndFrame,
-          text
-        },
-        true // shouldPushToUndoStack を true に設定
-      )
+      if (
+        newStartFrame !== startFrame ||
+        newEndFrame !== endFrame
+      ) {
+        onChange(
+          {
+            startFrame: newStartFrame,
+            endFrame: newEndFrame,
+            text
+          },
+          true
+        )
+      }
     }
 
     const onMouseUp = () => {
@@ -285,9 +308,12 @@ const Annotation: React.FC<AnnotationProps> = ({
     text,
     canUpdateAnnotation,
     id,
+    startFrame,
+    endFrame,
     currentStartFrame,
     currentEndFrame,
-    setCurrentFrame
+    setCurrentFrame,
+    onSelectRange
   ])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -384,6 +410,11 @@ const Annotation: React.FC<AnnotationProps> = ({
       onClick={(e) => {
         handleSetSelectedAnnotationIds(e)
         setSelectedLayerIndex(layerIndex)
+        if (shouldSelectRangeOnClickRef.current) {
+          onSelectRange(currentStartFrame, currentEndFrame)
+        }
+        clickStartRef.current = null
+        shouldSelectRangeOnClickRef.current = false
       }}
       style={{
         left: `${(currentStartFrame - 1) * frameWidth}px`,

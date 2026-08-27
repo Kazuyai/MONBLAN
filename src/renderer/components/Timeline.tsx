@@ -1646,6 +1646,13 @@ ${tierElements.join('\n')}
                                   layerAnnotations
                                 )
                               }}
+                              onSelectRange={(startFrame, endFrame) => {
+                                setSelectionStartFrame(startFrame)
+                                setSelectionFrameWidth(
+                                  Math.max(0, endFrame - startFrame)
+                                )
+                                setCurrentFrame(startFrame)
+                              }}
                             />
                           ))}
                       </div>
