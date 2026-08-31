@@ -49,6 +49,26 @@ interface SimilarMotionResponse {
   candidates: SimilarMotionApiCandidate[]
 }
 
+const getApiStatusMessage = (apiStatus: ApiStatus | null) => {
+  if (!apiStatus || apiStatus.status === 'starting') {
+    return 'AI自動アノテーション環境を確認中です。'
+  }
+
+  if (apiStatus.status === 'failed') {
+    return `AI APIの起動に失敗しました。${apiStatus.error ? ` ${apiStatus.error}` : ''}`
+  }
+
+  if (apiStatus.status === 'stopped' || apiStatus.status === 'unavailable') {
+    return 'AI APIが起動していません。アプリを再起動するか、APIを手動で起動してください。'
+  }
+
+  if (apiStatus.aiAvailable === false) {
+    return 'AI自動アノテーション環境が未セットアップです。'
+  }
+
+  return 'AI自動アノテーション環境を確認中です。'
+}
+
 const selectableKeyPoints: KeyPoint[] = [
   { name: '右腰', number: 1, x: 51, y: 176 },
   { name: '右ひざ', number: 2, x: 51, y: 230 },
@@ -280,7 +300,14 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     <div id="similarity-completion">
       {!isAiReady && (
         <div className="api-status-message">
-          AI自動アノテーション環境を確認中、または未セットアップです。
+          {getApiStatusMessage(apiStatus)}
+          {apiStatus?.environment?.missing?.length ? (
+            <ul>
+              {apiStatus.environment.missing.map((item) => (
+                <li key={item.name}>{item.name}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       )}
       {apiError && (

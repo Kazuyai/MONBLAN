@@ -40,6 +40,26 @@ interface ApiErrorPayload {
   job_dir?: string
 }
 
+const getApiStatusMessage = (apiStatus: ApiStatus | null) => {
+  if (!apiStatus || apiStatus.status === 'starting') {
+    return 'AI自動アノテーション環境を確認中です。'
+  }
+
+  if (apiStatus.status === 'failed') {
+    return `AI APIの起動に失敗しました。${apiStatus.error ? ` ${apiStatus.error}` : ''}`
+  }
+
+  if (apiStatus.status === 'stopped' || apiStatus.status === 'unavailable') {
+    return 'AI APIが起動していません。アプリを再起動するか、APIを手動で起動してください。'
+  }
+
+  if (apiStatus.aiAvailable === false) {
+    return 'AI自動アノテーション環境が未セットアップです。'
+  }
+
+  return 'AI自動アノテーション環境を確認中です。'
+}
+
 export const AutoAnnotation: React.FC<SettingsProps> = ({
   setIsProcessing,
   setIsEditing,
@@ -369,7 +389,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     <div id="auto-annotation">
       {!isAiReady && (
         <div className="api-status-message">
-          AI自動アノテーション環境を確認中、または未セットアップです。
+          {getApiStatusMessage(apiStatus)}
           {apiStatus?.environment?.missing?.length ? (
             <ul>
               {apiStatus.environment.missing.map((item) => (

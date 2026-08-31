@@ -43,13 +43,31 @@ const App = () => {
   const [isResizing, setIsResizing] = useState<boolean>(false)
 
   useEffect(() => {
-    window.electronAPI
-      ?.getApiStatus()
-      .then(setApiStatus)
-      .catch((error) => console.error('Failed to get API status:', error))
-
+    let isMounted = true
     const unsubscribe = window.electronAPI?.onApiStatusChanged(setApiStatus)
+
+    const loadApiStatus = async () => {
+      try {
+        const status = await window.electronAPI?.getApiStatus()
+        if (!isMounted || !status) return
+
+        setApiStatus(status)
+
+        if (status.status === 'starting' || status.aiAvailable === null) {
+          const refreshedStatus = await window.electronAPI?.refreshApiStatus()
+          if (isMounted && refreshedStatus) {
+            setApiStatus(refreshedStatus)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to get API status:', error)
+      }
+    }
+
+    loadApiStatus()
+
     return () => {
+      isMounted = false
       unsubscribe?.()
     }
   }, [])

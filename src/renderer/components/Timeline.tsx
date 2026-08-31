@@ -1455,7 +1455,21 @@ ${tierElements.join('\n')}
         )}
         <div className="timeline-container">
           {videoSrcs.length == 0 ? (
-            <></>
+            <div className="empty-timeline-guide">
+              <div className="empty-timeline-guide-card">
+                <p className="empty-timeline-guide-title">
+                  動画ファイルを開いてください
+                </p>
+                <p>
+                  画面上部の「ファイルを開く」タブで動画を選択すると、タイムライン操作を開始できます。
+                </p>
+                <ol>
+                  <li>動画を選択します。</li>
+                  <li>必要に応じてレイヤーや注釈を追加します。</li>
+                  <li>AI機能を使う場合は、動作範囲検出または注釈補完を実行します。</li>
+                </ol>
+              </div>
+            </div>
           ) : (
             <table ref={timelineContainerRef}>
               <tr className="timelines" ref={timelinesRef}>

@@ -708,7 +708,10 @@ button {
       // border-top: 3rem solid #000;
       opacity: 1;
       &.hide {
-        opacity: 0;
+        .controls,
+        .similarity-candidate-toolbar {
+          display: none;
+        }
       }
       .timeline-notice {
         position: fixed;
@@ -867,6 +870,37 @@ button {
         }
         &::-webkit-scrollbar-corner {
           background: #232323;
+        }
+        .empty-timeline-guide {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          min-height: 180rem;
+          color: #d9efff;
+          .empty-timeline-guide-card {
+            max-width: 560rem;
+            padding: 22rem 26rem;
+            border: 1rem solid #456a88;
+            border-radius: 10rem;
+            background: #1b2c3d;
+            box-shadow: 0 8rem 24rem #0006;
+            font-size: 14rem;
+            line-height: 1.7;
+            .empty-timeline-guide-title {
+              margin: 0 0 8rem;
+              color: #fff;
+              font-size: 18rem;
+              font-weight: 700;
+            }
+            p {
+              margin: 0 0 12rem;
+            }
+            ol {
+              margin: 0;
+              padding-left: 20rem;
+            }
+          }
         }
         table {
           position: relative;
