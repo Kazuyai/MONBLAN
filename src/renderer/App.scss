@@ -132,6 +132,37 @@ button {
                 width: 60%;
                 height: 60rem;
               }
+              .frame-rate-warning {
+                width: 100%;
+                padding: 12rem;
+                border: 1rem solid #8a6d3b;
+                border-radius: 6rem;
+                background: #3a3121;
+                color: #f8e7bd;
+                font-size: 14rem;
+                line-height: 1.5;
+                p {
+                  margin: 0 0 10rem;
+                }
+                .manual-frame-rate {
+                  display: flex;
+                  align-items: center;
+                  gap: 8rem;
+                  label {
+                    font-weight: 700;
+                  }
+                  input {
+                    width: 120rem;
+                    height: 32rem;
+                    cursor: text;
+                  }
+                  button {
+                    width: auto;
+                    height: 32rem;
+                    padding: 0 14rem;
+                  }
+                }
+              }
             }
             #auto-annotation {
               height: 100%;
