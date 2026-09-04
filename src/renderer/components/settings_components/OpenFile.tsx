@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
+import type { AnnotationProject } from '../../types'
 
 interface SettingsProps {
   setIsProcessing: (isProcessing: boolean) => void
   setVideoSrcs: (srcs: string[]) => void
   setFrameRate: (frameRate: number) => void
+  onImportProjectJson: (project: AnnotationProject) => void
 }
 
 const FALLBACK_FRAME_RATE = 30
@@ -11,10 +13,13 @@ const FALLBACK_FRAME_RATE = 30
 export const OpenFile: React.FC<SettingsProps> = ({
   setIsProcessing,
   setVideoSrcs,
-  setFrameRate
+  setFrameRate,
+  onImportProjectJson
 }) => {
   const [hasSelectedFiles, setHasSelectedFiles] = useState(false)
   const [frameRateWarning, setFrameRateWarning] = useState<string | null>(null)
+  const [showManualFrameRateInput, setShowManualFrameRateInput] =
+    useState(false)
   const [manualFrameRate, setManualFrameRate] = useState(
     String(FALLBACK_FRAME_RATE)
   )
@@ -45,11 +50,78 @@ export const OpenFile: React.FC<SettingsProps> = ({
     const parsedFrameRate = Number(manualFrameRate)
     if (!Number.isFinite(parsedFrameRate) || parsedFrameRate <= 0) {
       setFrameRateWarning('フレームレートには0より大きい数値を入力してください。')
+      setShowManualFrameRateInput(true)
       return
     }
 
     setFrameRate(parsedFrameRate)
     setFrameRateWarning(`フレームレートを ${parsedFrameRate}fps に設定しました。`)
+    setShowManualFrameRateInput(false)
+  }
+
+  const isAnnotationProject = (value: unknown): value is AnnotationProject => {
+    if (!value || typeof value !== 'object') return false
+
+    const project = value as Partial<AnnotationProject>
+    const videos = project.videos as unknown[] | undefined
+    const layerNames = project.layerNames as unknown[] | undefined
+    const annotations = project.annotations as unknown[] | undefined
+
+    return (
+      project.version === 1 &&
+      typeof project.frameRate === 'number' &&
+      Number.isFinite(project.frameRate) &&
+      project.frameRate > 0 &&
+      typeof project.videoDuration === 'number' &&
+      Number.isFinite(project.videoDuration) &&
+      project.videoDuration >= 0 &&
+      Array.isArray(videos) &&
+      videos.every(
+        (video) =>
+          Boolean(video) &&
+          typeof video === 'object' &&
+          typeof (video as { name?: unknown }).name === 'string' &&
+          ((video as { path?: unknown }).path === undefined ||
+            typeof (video as { path?: unknown }).path === 'string')
+      ) &&
+      Array.isArray(layerNames) &&
+      layerNames.every((layerName) => typeof layerName === 'string') &&
+      Array.isArray(annotations) &&
+      annotations.every(
+        (annotation) =>
+          Boolean(annotation) &&
+          typeof annotation === 'object' &&
+          typeof (annotation as { id?: unknown }).id === 'string' &&
+          typeof (annotation as { startFrame?: unknown }).startFrame ===
+            'number' &&
+          typeof (annotation as { endFrame?: unknown }).endFrame === 'number' &&
+          typeof (annotation as { text?: unknown }).text === 'string' &&
+          typeof (annotation as { layerIndex?: unknown }).layerIndex ===
+            'number'
+      )
+    )
+  }
+
+  const importProjectJson = async (file: File) => {
+    setFrameRateWarning(null)
+    setShowManualFrameRateInput(false)
+    try {
+      const text = await file.text()
+      const project = JSON.parse(text)
+      if (!isAnnotationProject(project)) {
+        throw new Error('Unsupported project file format')
+      }
+
+      onImportProjectJson(project)
+      setManualFrameRate(String(project.frameRate))
+      setFrameRateWarning(
+        'プロジェクトを読み込みました。動画が表示されない場合は、動画ファイルを開き直してください。'
+      )
+    } catch (error) {
+      console.error('Project import failed:', error)
+      setFrameRateWarning('プロジェクトファイルの読み込みに失敗しました。')
+      setShowManualFrameRateInput(false)
+    }
   }
 
   const getUploadedFrameRate = (file: File) => {
@@ -68,11 +140,16 @@ export const OpenFile: React.FC<SettingsProps> = ({
     if (files && files.length > 0) {
       setIsProcessing(true)
       setFrameRateWarning(null)
+      setShowManualFrameRateInput(false)
       const urls = Array.from(files).map((file) => URL.createObjectURL(file))
 
       // ファイル名を保存（EAFエクスポート用）
       const fileNames = Array.from(files).map((file) => file.name)
+      const filePaths = Array.from(files).map(
+        (file) => getElectronFilePath(file) ?? ''
+      )
       localStorage.setItem('videoFileNames', JSON.stringify(fileNames))
+      localStorage.setItem('videoFilePaths', JSON.stringify(filePaths))
 
       setVideoSrcs(urls)
 
@@ -118,6 +195,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
         setFrameRateWarning(
           `${FALLBACK_FRAME_RATE}fpsとして仮読み込みしました。実際のfpsと異なる場合は手動で修正してください。`
         )
+        setShowManualFrameRateInput(true)
       } finally {
         setIsProcessing(false)
       }
@@ -138,23 +216,40 @@ export const OpenFile: React.FC<SettingsProps> = ({
       <button disabled={!hasSelectedFiles} onClick={() => openFile()}>
         開く
       </button>
+      <div className="project-file-actions">
+        <label htmlFor="project-input">プロジェクトを読み込む</label>
+        <input
+          type="file"
+          id="project-input"
+          accept="application/json,.json"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0]
+            if (file) {
+              importProjectJson(file)
+            }
+            event.currentTarget.value = ''
+          }}
+        />
+      </div>
       {frameRateWarning && (
         <div className="frame-rate-warning">
           <p>{frameRateWarning}</p>
-          <div className="manual-frame-rate">
-            <label htmlFor="manual-frame-rate">fps</label>
-            <input
-              id="manual-frame-rate"
-              type="number"
-              min="0.001"
-              step="0.001"
-              value={manualFrameRate}
-              onChange={(event) => setManualFrameRate(event.target.value)}
-            />
-            <button type="button" onClick={applyManualFrameRate}>
-              適用
-            </button>
-          </div>
+          {showManualFrameRateInput && (
+            <div className="manual-frame-rate">
+              <label htmlFor="manual-frame-rate">fps</label>
+              <input
+                id="manual-frame-rate"
+                type="number"
+                min="0.001"
+                step="0.001"
+                value={manualFrameRate}
+                onChange={(event) => setManualFrameRate(event.target.value)}
+              />
+              <button type="button" onClick={applyManualFrameRate}>
+                適用
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

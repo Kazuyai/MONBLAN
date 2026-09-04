@@ -37,6 +37,7 @@ or together with related work.
 | #34   | code-quality | Fixed: unused setTimelineContainerRef is removed.                   |
 | #31   | code-quality | Fixed: stale commented-out UI and playback code is removed.         |
 | #30   | code-quality | Fixed: debug console.log calls are removed or converted to logging. |
+| #23   | feature      | Fixed: project JSON save/load is available for editing sessions.    |
 | #22   | UX           | Fixed: fallback fps is explicit and manually adjustable.            |
 | #21   | UX           | Fixed: guidance is shown before loading a video.                    |
 | #20   | UX           | Fixed: blocking alerts are replaced by inline/floating notices.     |
@@ -52,7 +53,6 @@ than verified user-facing bugs.
 | #40, #39, #38, #37           | architecture              |
 | #36, #33, #32                | code-quality              |
 | #29, #28, #27, #26, #25, #24 | performance               |
-| #23                          | UX / feature completeness |
 | #42, #8, #7, #6, #5, #4, #3, #1 | enhancements / AI completion |
 
 ## Recommended next order

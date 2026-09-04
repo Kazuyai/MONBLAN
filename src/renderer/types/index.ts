@@ -74,3 +74,27 @@ export interface SimilarMotionCandidate extends TimelineAnnotationResult {
   windowLength: number
   status: 'pending' | 'accepted' | 'rejected'
 }
+
+export interface ProjectVideo {
+  name: string
+  path?: string
+}
+
+export interface ProjectAnnotation {
+  id: string
+  startFrame: number
+  endFrame: number
+  text: string
+  layerIndex: number
+}
+
+export interface AnnotationProject {
+  version: 1
+  createdAt?: string
+  updatedAt: string
+  videos: ProjectVideo[]
+  frameRate: number
+  videoDuration: number
+  layerNames: string[]
+  annotations: ProjectAnnotation[]
+}

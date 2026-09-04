@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import type { ApiStatus } from '../../main/preload'
 import type {
+  AnnotationProject,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
   TimelineAnnotationResult
@@ -22,6 +23,8 @@ interface SettingsProps {
   setPlaySpeed: (playSpeed: number) => void
   onExportCSV: () => void
   onExportEAF: () => void
+  onExportProjectJson: () => void
+  onImportProjectJson: (project: AnnotationProject) => void
   setAutoAnnotationResponseData: (data: TimelineAnnotationResult[]) => void
   setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void
   apiStatus: ApiStatus | null
@@ -38,6 +41,8 @@ export const Settings: React.FC<SettingsProps> = ({
   setPlaySpeed,
   onExportCSV,
   onExportEAF,
+  onExportProjectJson,
+  onImportProjectJson,
   setAutoAnnotationResponseData,
   setSimilarMotionCandidates,
   apiStatus,
@@ -55,6 +60,7 @@ export const Settings: React.FC<SettingsProps> = ({
           setIsProcessing={setIsProcessing}
           setVideoSrcs={setVideoSrcs}
           setFrameRate={setFrameRate}
+          onImportProjectJson={onImportProjectJson}
         />
       )
     },
@@ -90,7 +96,11 @@ export const Settings: React.FC<SettingsProps> = ({
     {
       label: 'ファイルをエクスポート',
       component: () => (
-        <ExportFile onExportCSV={onExportCSV} onExportEAF={onExportEAF} />
+        <ExportFile
+          onExportCSV={onExportCSV}
+          onExportEAF={onExportEAF}
+          onExportProjectJson={onExportProjectJson}
+        />
       )
     }
   ]

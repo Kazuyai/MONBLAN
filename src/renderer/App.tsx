@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ApiStatus } from '../main/preload'
 import type {
+  AnnotationProject,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
   TimelineAnnotationResult
@@ -32,9 +33,12 @@ const App = () => {
   const [selectedTimelineAnnotation, setSelectedTimelineAnnotation] =
     useState<SelectedTimelineAnnotation | null>(null)
 
-  const timelineRef = useRef<{ exportCSV: () => void; exportEAF: () => void }>(
-    null
-  )
+  const timelineRef = useRef<{
+    exportCSV: () => void
+    exportEAF: () => void
+    exportProjectJson: () => void
+    importProjectJson: (project: AnnotationProject) => void
+  }>(null)
 
   const MAX_HEIGHT = 80
 
@@ -82,6 +86,44 @@ const App = () => {
     if (timelineRef.current) {
       timelineRef.current.exportEAF()
     }
+  }
+
+  const handleExportProjectJson = () => {
+    if (timelineRef.current) {
+      timelineRef.current.exportProjectJson()
+    }
+  }
+
+  const handleImportProjectJson = (project: AnnotationProject) => {
+    if (!timelineRef.current) return
+
+    setFrameRate(project.frameRate)
+    setVideoDuration(project.videoDuration)
+    setCurrentFrame(1)
+    setIsPlaying(false)
+    setIsPartiallyPlaying(false)
+    setSelectionStartFrame(0)
+    setSelectionFrameWidth(0)
+    setAutoAnnotationResponseData([])
+    setSimilarMotionCandidates([])
+    setSelectedTimelineAnnotation(null)
+
+    localStorage.setItem(
+      'videoFileNames',
+      JSON.stringify(project.videos.map((video) => video.name))
+    )
+    localStorage.setItem(
+      'videoFilePaths',
+      JSON.stringify(project.videos.map((video) => video.path ?? ''))
+    )
+    setVideoSrcs(
+      project.videos
+        .map((video) => video.path)
+        .filter((path): path is string => Boolean(path))
+        .map((path) => `file:///${encodeURI(path.replace(/\\/g, '/'))}`)
+    )
+
+    timelineRef.current.importProjectJson(project)
   }
 
   const startVerticalResizing = (e: React.MouseEvent) => {
@@ -135,6 +177,8 @@ const App = () => {
           setPlaySpeed={setPlaySpeed}
           onExportCSV={handleExportCSV}
           onExportEAF={handleExportEAF}
+          onExportProjectJson={handleExportProjectJson}
+          onImportProjectJson={handleImportProjectJson}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
           setSimilarMotionCandidates={setSimilarMotionCandidates}
           apiStatus={apiStatus}

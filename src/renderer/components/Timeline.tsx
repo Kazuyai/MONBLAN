@@ -10,6 +10,7 @@ import React, {
 import { v4 as uuidv4 } from 'uuid'
 import Annotation from './Annotation'
 import type {
+  AnnotationProject,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
   TimelineAnnotationResult
@@ -44,6 +45,8 @@ interface TimelineProps {
 interface TimelineHandle {
   exportCSV: () => void
   exportEAF: () => void
+  exportProjectJson: () => void
+  importProjectJson: (project: AnnotationProject) => void
 }
 
 interface AnnotationType {
@@ -174,6 +177,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const selectionStartTime = (selectionStartFrame - 1) / frameRate
     const selectionEndTime = selectionEndFrame / frameRate
     const selectionDuration = selectionFrameWidth / frameRate
+    const hasTimelineContent =
+      videoSrcs.length > 0 || annotations.length > 0 || videoDuration > 0
 
     useEffect(() => {
       if (selectedAnnotationIds.length !== 1) {
@@ -1132,6 +1137,98 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       document.body.removeChild(link)
     }
 
+    const readStoredVideoMetadata = () => {
+      const parseStringArray = (value: string | null): string[] => {
+        if (!value) return []
+        try {
+          const parsed = JSON.parse(value)
+          return Array.isArray(parsed)
+            ? parsed.filter((item): item is string => typeof item === 'string')
+            : []
+        } catch {
+          return []
+        }
+      }
+
+      const fileNames = parseStringArray(localStorage.getItem('videoFileNames'))
+      const filePaths = parseStringArray(localStorage.getItem('videoFilePaths'))
+
+      return videoSrcs.map((videoSrc, index) => ({
+        name:
+          fileNames[index] ||
+          videoSrc.split(/[/\\]/).pop()?.replace(/^file:/, '') ||
+          `video${index + 1}`,
+        path:
+          filePaths[index] ||
+          (videoSrc.startsWith('file:///')
+            ? decodeURIComponent(videoSrc.replace('file:///', '')).replace(
+                /\//g,
+                '\\'
+              )
+            : undefined)
+      }))
+    }
+
+    const exportProjectJson = () => {
+      const now = new Date().toISOString()
+      const project: AnnotationProject = {
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+        videos: readStoredVideoMetadata(),
+        frameRate,
+        videoDuration,
+        layerNames,
+        annotations
+      }
+      const jsonContent = JSON.stringify(project, null, 2)
+      const blob = new Blob([jsonContent], {
+        type: 'application/json;charset=utf-8;'
+      })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.setAttribute('download', 'annotation-project.json')
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(link.href)
+    }
+
+    const importProjectJson = (project: AnnotationProject) => {
+      const importedLayerNames =
+        project.layerNames.length > 0 ? project.layerNames : ['レイヤー1']
+      const importedAnnotations = project.annotations
+        .filter(
+          (annotation) =>
+            Number.isFinite(annotation.startFrame) &&
+            Number.isFinite(annotation.endFrame) &&
+            annotation.endFrame > annotation.startFrame &&
+            annotation.layerIndex >= 0 &&
+            annotation.layerIndex < importedLayerNames.length
+        )
+        .map((annotation) => ({
+          ...annotation,
+          id: annotation.id || uuidv4(),
+          text: annotation.text ?? ''
+        }))
+
+      setState({
+        layerNames: importedLayerNames,
+        annotations: importedAnnotations
+      })
+      setUndoStack([])
+      setRedoStack([])
+      setFocusedAnnotationId(null)
+      setSelectedAnnotationIds([])
+      setSelectedLayerIndex(importedLayerNames.length > 0 ? 0 : null)
+      setSelectionStartFrame(0)
+      setSelectionFrameWidth(0)
+      setSelectionStart(0)
+      setSelectionWidth(0)
+      setSimilarMotionCandidates([])
+      showTimelineNotice('プロジェクトを読み込みました。', 'success')
+    }
+
     const generateEAFContent = (): string => {
       const currentDate = new Date().toISOString()
 
@@ -1344,7 +1441,9 @@ ${tierElements.join('\n')}
     // useImperativeHandleを使用してexportCSVとexportEAFを公開
     useImperativeHandle(ref, () => ({
       exportCSV,
-      exportEAF
+      exportEAF,
+      exportProjectJson,
+      importProjectJson
     }))
 
     // レイヤー数に合わせて containerRefs を初期化
@@ -1357,7 +1456,7 @@ ${tierElements.join('\n')}
     return (
       <section
         id="editor"
-        className={`${videoSrcs.length == 0 ? 'hide' : ''}`}
+        className={`${!hasTimelineContent ? 'hide' : ''}`}
         style={{ height: `calc(${100 - topHeight}% - 1.5rem)` }}
       >
         <div className="controls">
@@ -1454,7 +1553,7 @@ ${tierElements.join('\n')}
           </div>
         )}
         <div className="timeline-container">
-          {videoSrcs.length == 0 ? (
+          {!hasTimelineContent ? (
             <div className="empty-timeline-guide">
               <div className="empty-timeline-guide-card">
                 <p className="empty-timeline-guide-title">
