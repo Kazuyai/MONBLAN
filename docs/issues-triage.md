@@ -59,4 +59,5 @@ than verified user-facing bugs.
 
 ## Recommended next order
 
-1. Review remaining should-fix items and pick the next small UI/code cleanup.
+1. Continue #42 similarity-completion integration and verify the full workflow.
+2. Keep #8 as the partial-analysis scope for both motion detection and similarity detection.

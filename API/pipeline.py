@@ -231,6 +231,8 @@ def run_similarity_detection(
     fps: float,
     layer_name: str,
     layer_index: int,
+    search_start_frame: int | None = None,
+    search_end_frame: int | None = None,
 ) -> dict:
     """v40を実行し、UIで扱う注釈候補と検出メタデータを返す。"""
     if fps <= 0:
@@ -241,8 +243,19 @@ def run_similarity_detection(
         raise ValueError("selectedJoints must contain at least one joint")
     if not template_segments:
         raise ValueError("templateSegments must contain at least one interval")
+    if search_start_frame is not None and search_start_frame < ANNOTATION_FRAME_INDEX_BASE:
+        raise ValueError("searchStartFrame must be frame one or greater")
+    if search_end_frame is not None and search_end_frame < ANNOTATION_FRAME_INDEX_BASE:
+        raise ValueError("searchEndFrame must be frame one or greater")
+    if (
+        search_start_frame is not None
+        and search_end_frame is not None
+        and search_end_frame < search_start_frame
+    ):
+        raise ValueError("searchEndFrame must be greater than or equal to searchStartFrame")
 
     template_times: list[tuple[float, float]] = []
+    template_frame_ranges: list[tuple[int, int]] = []
     for index, segment in enumerate(template_segments):
         try:
             start_frame = int(segment["startFrame"])
@@ -253,6 +266,7 @@ def run_similarity_detection(
             raise ValueError(f"Template segment {index} ends before it starts")
         if start_frame < ANNOTATION_FRAME_INDEX_BASE:
             raise ValueError(f"Template segment {index} starts before frame one")
+        template_frame_ranges.append((start_frame, end_frame))
         template_times.append(
             (
                 (start_frame - ANNOTATION_FRAME_INDEX_BASE) / fps,
@@ -266,16 +280,31 @@ def run_similarity_detection(
     if "error" in result:
         raise RuntimeError(result["error"])
 
-    candidates = []
-    for candidate_index, segment in enumerate(result["segments"], start=1):
-        candidates.append(
+    def overlaps_template(candidate_start_frame: int, candidate_end_frame: int) -> bool:
+        return any(
+            candidate_start_frame <= template_end_frame
+            and template_start_frame <= candidate_end_frame
+            for template_start_frame, template_end_frame in template_frame_ranges
+        )
+
+    all_candidates = []
+    for segment in result["segments"]:
+        # startFrame/endFrame are compatible with existing annotation results.
+        start_frame = int(segment.start_frame) + ANNOTATION_FRAME_INDEX_BASE
+        end_frame = int(segment.end_frame) + ANNOTATION_FRAME_INDEX_BASE
+        if overlaps_template(start_frame, end_frame):
+            continue
+        if search_start_frame is not None and start_frame < search_start_frame:
+            continue
+        if search_end_frame is not None and end_frame > search_end_frame:
+            continue
+        all_candidates.append(
             {
-                # startFrame/endFrame are compatible with existing annotation results.
-                "startFrame": int(segment.start_frame) + ANNOTATION_FRAME_INDEX_BASE,
-                "endFrame": int(segment.end_frame) + ANNOTATION_FRAME_INDEX_BASE,
+                "startFrame": start_frame,
+                "endFrame": end_frame,
                 "startTime": float(segment.start_time),
                 "endTime": float(segment.end_time),
-                "text": f"類似候補 {candidate_index}",
+                "text": "",
                 "layerName": layer_name,
                 "layerIndex": layer_index,
                 "humanId": human_id,
@@ -287,6 +316,14 @@ def run_similarity_detection(
             }
         )
 
+    candidates = [
+        {
+            **candidate,
+            "text": f"類似候補 {candidate_index}",
+        }
+        for candidate_index, candidate in enumerate(all_candidates, start=1)
+    ]
+
     stats = result["stats"]
     return {
         "candidates": candidates,
@@ -296,6 +333,7 @@ def run_similarity_detection(
             "thresholdPassedCandidates": int(stats["threshold_passed_candidates"]),
             "postUnionCandidates": int(stats["post_union_candidates"]),
             "finalResults": int(stats["final_results"]),
+            "filteredResults": len(candidates),
             "averageFinalScore": float(stats["avg_final_score"]),
         },
         "parameters": {
@@ -304,6 +342,8 @@ def run_similarity_detection(
             "selectedJoints": list(dict.fromkeys(selected_joints)),
             "selectedJointNames": result["params"]["selected_joint_names"],
             "featureType": result["params"]["feature_type"],
+            "searchStartFrame": search_start_frame,
+            "searchEndFrame": search_end_frame,
         },
     }
 
@@ -438,6 +478,8 @@ def run_similarity_pipeline(
     template_segments: list[dict],
     layer_name: str,
     layer_index: int,
+    search_start_frame: int | None = None,
+    search_end_frame: int | None = None,
     job_dir: str | None = None,
     alphapose_results_path: str | None = None,
 ) -> dict:
@@ -462,6 +504,8 @@ def run_similarity_pipeline(
             selected_joints=selected_joints,
             template_segments=template_segments,
             fps=get_video_framerate(video_file_path),
+            search_start_frame=search_start_frame,
+            search_end_frame=search_end_frame,
             layer_name=layer_name,
             layer_index=layer_index,
         )

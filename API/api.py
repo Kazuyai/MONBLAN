@@ -73,6 +73,8 @@ class SimilarMotionPathRequest(VideoPathRequest):
     humanId: int
     selectedJoints: list[int]
     templateSegments: list[SimilarMotionTemplate]
+    searchStartFrame: int | None = None
+    searchEndFrame: int | None = None
     layerName: str
     layerIndex: int
 
@@ -353,6 +355,8 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             human_id=request.humanId,
             selected_joints=request.selectedJoints,
             template_segments=template_segments,
+            search_start_frame=request.searchStartFrame,
+            search_end_frame=request.searchEndFrame,
             layer_name=request.layerName,
             layer_index=request.layerIndex,
             job_dir=job_dir,
