@@ -42,6 +42,8 @@ or together with related work.
 | #21   | UX           | Fixed: guidance is shown before loading a video.                    |
 | #20   | UX           | Fixed: blocking alerts are replaced by inline/floating notices.     |
 | #17   | latent-bug   | Fixed: frameWidth/timelineWidth are no longer duplicated state.     |
+| #6    | AI completion | Superseded by #42 similarity completion integration scope.         |
+| #5    | AI pipeline  | Fixed: local motion-detection pipeline is available through API.    |
 
 ## defer
 
@@ -53,7 +55,7 @@ than verified user-facing bugs.
 | #40, #39, #38, #37           | architecture              |
 | #36, #33, #32                | code-quality              |
 | #29, #28, #27, #26, #25, #24 | performance               |
-| #42, #8, #7, #6, #5, #4, #3, #1 | enhancements / AI completion |
+| #42, #8, #7, #4, #3, #1 | enhancements / AI completion |
 
 ## Recommended next order
 
