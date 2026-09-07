@@ -141,6 +141,37 @@ Electronアプリからは、動画全体のアップロードを避けるため
 }
 ```
 
+レスポンス例:
+
+```json
+{
+  "candidates": [
+    {
+      "startFrame": 240,
+      "endFrame": 264,
+      "text": "類似候補 1",
+      "layerName": "右 右腕の動き",
+      "layerIndex": 2,
+      "humanId": 0,
+      "similarity": 0.92,
+      "dtwSimilarity": 0.88,
+      "templateId": 0,
+      "windowScale": 1.0,
+      "windowLength": 24
+    }
+  ],
+  "stats": {
+    "templates": 1,
+    "filteredResults": 1
+  },
+  "parameters": {
+    "algorithm": "v40_dtw_pure_refined",
+    "searchStartFrame": null,
+    "searchEndFrame": null
+  }
+}
+```
+
 - `humanId` は人物選択UIの0始まりのIDである。MotionBERTへは内部で1始まりの`focus`として渡す。
 - `selectedJoints` は選択可能な10関節のIDを指定する。
 - `templateSegments` はタイムライン上のテンプレート区間であり、開始・終了フレームをともに含む。既存の自動動作検出に合わせてフレーム番号は1始まりである。
@@ -199,6 +230,14 @@ Invoke-RestMethod `
   -ContentType "application/json" `
   -Body '{"file_path":"C:\\path\\to\\sample.mp4"}'
 ```
+
+類似動作検出はElectron UIから確認します。
+
+- 動画を開き、テンプレートにする既存注釈を1つ選択する。
+- 「注釈補完」タブで人物・関節を選択し、類似候補を検出する。
+- テンプレート区間と重なる候補が表示されないことを確認する。
+- 候補の個別挿入・削除、一括挿入、Undo/Redoが動作することを確認する。
+- 先に `/get_human_images_from_path/` を実行していた場合、APIログに `alphapose_cache_hit=True` が出ることを確認する。
 
 ## 失敗時のログ
 
