@@ -275,8 +275,15 @@ def run_similarity_detection(
         )
 
     detector_class = _load_similarity_detector_class()
+    unique_selected_joints = list(dict.fromkeys(selected_joints))
+    invalid_joints = [
+        joint for joint in unique_selected_joints if joint not in detector_class.JOINT_RELATIONS
+    ]
+    if invalid_joints:
+        raise ValueError(f"selectedJoints contains unsupported joints: {invalid_joints}")
+
     detector = detector_class(fps=fps)
-    result = detector.detect(pose_file_path, list(dict.fromkeys(selected_joints)), template_times)
+    result = detector.detect(pose_file_path, unique_selected_joints, template_times)
     if "error" in result:
         raise RuntimeError(result["error"])
 
@@ -339,7 +346,7 @@ def run_similarity_detection(
         "parameters": {
             "algorithm": "v40_dtw_pure_refined",
             "fps": float(fps),
-            "selectedJoints": list(dict.fromkeys(selected_joints)),
+            "selectedJoints": unique_selected_joints,
             "selectedJointNames": result["params"]["selected_joint_names"],
             "featureType": result["params"]["feature_type"],
             "searchStartFrame": search_start_frame,
