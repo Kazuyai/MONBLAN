@@ -171,6 +171,7 @@ const App = () => {
         <Settings
           setIsProcessing={setIsProcessing}
           setVideoSrcs={setVideoSrcs}
+          videoSrcs={videoSrcs}
           setIsEditing={setIsEditing}
           setFrameRate={setFrameRate}
           playSpeed={playSpeed}

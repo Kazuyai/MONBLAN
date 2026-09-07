@@ -14,6 +14,7 @@ interface SettingsProps {
     }[]
   ) => void
   apiStatus: ApiStatus | null
+  videoSrcs: string[]
 }
 
 interface KeyPoint {
@@ -64,7 +65,8 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   setIsProcessing,
   setIsEditing,
   setAutoAnnotationResponseData,
-  apiStatus
+  apiStatus,
+  videoSrcs
 }) => {
   // 画像サイズ
   //   width : 170rem
@@ -254,6 +256,29 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     return electronFile.path || null
   }
 
+  const getStoredVideoPath = () => {
+    if (videoSrcs.length === 0) {
+      return null
+    }
+
+    try {
+      const storedPaths = JSON.parse(
+        localStorage.getItem('videoFilePaths') || '[]'
+      )
+      if (!Array.isArray(storedPaths)) {
+        return null
+      }
+
+      const filePath = storedPaths.find(
+        (storedPath): storedPath is string =>
+          typeof storedPath === 'string' && storedPath.length > 0
+      )
+      return filePath || null
+    } catch {
+      return null
+    }
+  }
+
   const getUploadedHumanImages = (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -304,7 +329,39 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     }
     const input = document.getElementById('input') as HTMLInputElement
     const files = input.files
-    if (files) {
+    const storedVideoPath = getStoredVideoPath()
+    if ((!files || files.length === 0) && storedVideoPath) {
+      setIsProcessing(true)
+      setApiError(null)
+
+      try {
+        const response = await getHumanImagesFromPath(storedVideoPath)
+
+        if (!response.ok) {
+          setApiError(await readApiError(response))
+          return
+        }
+        const data = await response.json()
+        if (data.images) {
+          const imageUrls = data.images.map(
+            (base64String: string) => `data:image/jpeg;base64,${base64String}`
+          )
+          setHumanImageUrls(imageUrls)
+        }
+      } catch (error) {
+        console.error('Error:', error)
+        setApiError({
+          message:
+            error instanceof Error
+              ? error.message
+              : 'APIとの通信に失敗しました。'
+        })
+      } finally {
+        setIsProcessing(false)
+      }
+      return
+    }
+    if (files?.[0]) {
       setIsProcessing(true)
       setApiError(null)
       const file = files[0]
@@ -341,7 +398,12 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       } finally {
         setIsProcessing(false)
       }
+      return
     }
+
+    setApiError({
+      message: '動画を開くか、動画パスを含むプロジェクトを読み込んでください。'
+    })
   }
 
   const autoAnnotation = async () => {
@@ -350,7 +412,34 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     }
     const input = document.getElementById('input') as HTMLInputElement
     const files = input.files
-    if (files) {
+    const storedVideoPath = getStoredVideoPath()
+    if ((!files || files.length === 0) && storedVideoPath) {
+      setIsProcessing(true)
+      setApiError(null)
+
+      try {
+        const response = await getAutoAnnotationFromPath(storedVideoPath)
+
+        if (!response.ok) {
+          setApiError(await readApiError(response))
+          return
+        }
+        const data = await response.json()
+        setAutoAnnotationResponseData(data)
+      } catch (error) {
+        console.error('Error:', error)
+        setApiError({
+          message:
+            error instanceof Error
+              ? error.message
+              : 'APIとの通信に失敗しました。'
+        })
+      } finally {
+        setIsProcessing(false)
+      }
+      return
+    }
+    if (files?.[0]) {
       setIsProcessing(true)
       setApiError(null)
       const file = files[0]
@@ -382,7 +471,12 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       } finally {
         setIsProcessing(false)
       }
+      return
     }
+
+    setApiError({
+      message: '動画を開くか、動画パスを含むプロジェクトを読み込んでください。'
+    })
   }
 
   return (

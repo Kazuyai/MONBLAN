@@ -12,6 +12,7 @@ interface SimilarityCompletionProps {
   apiStatus: ApiStatus | null
   frameRate: number
   selectedTimelineAnnotation: SelectedTimelineAnnotation | null
+  videoSrcs: string[]
 }
 
 interface KeyPoint {
@@ -87,7 +88,8 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   setSimilarMotionCandidates,
   apiStatus,
   frameRate,
-  selectedTimelineAnnotation
+  selectedTimelineAnnotation,
+  videoSrcs
 }) => {
   const [isHumanCountSingle, setIsHumanCountSingle] = useState<boolean | null>(
     null
@@ -109,9 +111,37 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     return electronFile.path || null
   }
 
+  const getStoredVideoPath = () => {
+    if (videoSrcs.length === 0) {
+      return null
+    }
+
+    try {
+      const storedPaths = JSON.parse(
+        localStorage.getItem('videoFilePaths') || '[]'
+      )
+      if (!Array.isArray(storedPaths)) {
+        return null
+      }
+
+      const filePath = storedPaths.find(
+        (storedPath): storedPath is string =>
+          typeof storedPath === 'string' && storedPath.length > 0
+      )
+      return filePath || null
+    } catch {
+      return null
+    }
+  }
+
   const getCurrentVideoFile = () => {
     const input = document.getElementById('input') as HTMLInputElement | null
     return input?.files?.[0] ?? null
+  }
+
+  const getCurrentVideoPath = () => {
+    const file = getCurrentVideoFile()
+    return file ? getElectronFilePath(file) : getStoredVideoPath()
   }
 
   const readApiError = async (response: Response): Promise<ApiErrorPayload> => {
@@ -174,7 +204,8 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     }
 
     const file = getCurrentVideoFile()
-    if (!file) {
+    const filePath = getCurrentVideoPath()
+    if (!file && !filePath) {
       setApiError({
         message: '動画を開いてから人物画像を取得してください。'
       })
@@ -185,12 +216,11 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     setApiError(null)
 
     try {
-      const filePath = getElectronFilePath(file)
       let response = filePath
         ? await getHumanImagesFromPath(filePath)
-        : await getUploadedHumanImages(file)
+        : await getUploadedHumanImages(file as File)
 
-      if (filePath && response.status === 404) {
+      if (file && filePath && response.status === 404) {
         response = await getUploadedHumanImages(file)
       }
 
@@ -222,8 +252,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       return
     }
 
-    const file = getCurrentVideoFile()
-    const filePath = file ? getElectronFilePath(file) : null
+    const filePath = getCurrentVideoPath()
 
     if (!filePath) {
       setApiError({

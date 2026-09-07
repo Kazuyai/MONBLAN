@@ -17,6 +17,7 @@ import {
 interface SettingsProps {
   setIsProcessing: (isProcessing: boolean) => void
   setVideoSrcs: (srcs: string[]) => void
+  videoSrcs: string[]
   setIsEditing: (isEditing: boolean) => void
   setFrameRate: (frameRate: number) => void
   playSpeed: number
@@ -35,6 +36,7 @@ interface SettingsProps {
 export const Settings: React.FC<SettingsProps> = ({
   setIsProcessing,
   setVideoSrcs,
+  videoSrcs,
   setIsEditing,
   setFrameRate,
   playSpeed,
@@ -72,6 +74,7 @@ export const Settings: React.FC<SettingsProps> = ({
           setIsEditing={setIsEditing}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
           apiStatus={apiStatus}
+          videoSrcs={videoSrcs}
         />
       )
     },
@@ -84,6 +87,7 @@ export const Settings: React.FC<SettingsProps> = ({
           apiStatus={apiStatus}
           frameRate={frameRate}
           selectedTimelineAnnotation={selectedTimelineAnnotation}
+          videoSrcs={videoSrcs}
         />
       )
     },
