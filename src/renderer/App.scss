@@ -33,6 +33,51 @@ root {
   }
 }
 
+@mixin app-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rem;
+  min-height: 34rem;
+  padding: 6rem 14rem;
+  border: 1rem solid #8a8a8a;
+  border-radius: 6rem;
+  background: linear-gradient(#f7f7f7, #dddddd);
+  color: #151515;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+  &:not(:disabled):hover {
+    border-color: #b7d7f2;
+    background: linear-gradient(#ffffff, #e8f3ff);
+    box-shadow: 0 0 0 2rem #66aeea33;
+  }
+  &:not(:disabled):active {
+    background: linear-gradient(#d4e9ff, #f4f9ff);
+    box-shadow: inset 0 1rem 3rem #0003;
+  }
+  &:focus-visible {
+    outline: 2rem solid #66aeea;
+    outline-offset: 2rem;
+  }
+  &:disabled {
+    border-color: #6b6b6b;
+    background: #727272;
+    color: #4b4b4b;
+    box-shadow: none;
+    cursor: not-allowed;
+    opacity: 0.75;
+  }
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -49,7 +94,7 @@ body {
 }
 
 button {
-  cursor: pointer;
+  @include app-button;
 }
 
 .no-spin::-webkit-inner-spin-button,
@@ -119,8 +164,12 @@ button {
             display: none;
           }
           .tab-button {
+            min-height: auto;
             padding: 5rem 15rem 8rem 15rem;
+            border-bottom: none;
             background: #232323;
+            color: #fff;
+            font-weight: 500;
             white-space: nowrap;
             border-radius: 10rem 10rem 0 0;
             border-top: solid 3rem #666;
@@ -149,40 +198,116 @@ button {
               display: flex;
               flex-direction: column;
               align-items: center;
-              justify-content: space-between;
+              justify-content: flex-start;
+              gap: 18rem;
               height: 100%;
-              input {
+              overflow-y: auto;
+              @include app-scrollbar;
+              .file-open-card {
+                display: flex;
+                flex-direction: column;
+                gap: 14rem;
                 width: 100%;
-                cursor: pointer;
+                padding: 18rem;
+                border: 1rem solid #555;
+                border-radius: 10rem;
+                background: #292929;
+                box-shadow: 0 4rem 14rem #0004;
+                .file-open-card-text {
+                  display: flex;
+                  flex-direction: column;
+                  gap: 6rem;
+                  h2 {
+                    color: #fff;
+                    font-size: 18rem;
+                  }
+                  p {
+                    color: #bbb;
+                    font-size: 14rem;
+                    line-height: 1.5;
+                  }
+                }
               }
-              button {
-                width: 60%;
-                height: 60rem;
+              .file-input-hidden {
+                position: absolute;
+                width: 1rem;
+                height: 1rem;
+                overflow: hidden;
+                clip: rect(0 0 0 0);
+                clip-path: inset(50%);
+                white-space: nowrap;
               }
-              .project-file-actions {
+              .file-open-actions {
+                display: flex;
+                justify-content: flex-end;
+              }
+              .file-open-button {
+                min-width: 180rem;
+                min-height: 42rem;
+                font-size: 15rem;
+              }
+              .file-drop-zone {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
+                justify-content: center;
                 gap: 8rem;
-                width: 100%;
-                label {
+                min-height: 112rem;
+                padding: 20rem;
+                border: 2rem dashed #777;
+                border-radius: 10rem;
+                background: #242424;
+                color: #e6e6e6;
+                text-align: center;
+                cursor: pointer;
+                transition:
+                  border-color 0.12s ease,
+                  background 0.12s ease,
+                  box-shadow 0.12s ease;
+                &:hover {
+                  border-color: #aaa;
+                  background: #2d2d2d;
+                  box-shadow: 0 0 0 2rem #66aeea33;
+                }
+                &.drag-active {
+                  border-color: #66aeea;
+                  background: #203143;
+                  box-shadow: 0 0 0 3rem #66aeea44;
+                }
+                .file-drop-zone-icon {
                   display: flex;
                   align-items: center;
                   justify-content: center;
-                  width: 60%;
-                  min-height: 42rem;
-                  border: 2rem solid #aaa;
-                  border-radius: 6rem;
-                  background: #2a2a2a;
+                  width: 32rem;
+                  height: 32rem;
+                  border: 1rem solid #777;
+                  border-radius: 999rem;
+                  background: #303030;
                   color: #fff;
-                  font-size: 15rem;
-                  cursor: pointer;
-                  &:hover {
-                    background: #3a3a3a;
-                  }
+                  font-size: 22rem;
+                  line-height: 1;
                 }
-                input {
-                  display: none;
+                .file-drop-zone-title {
+                  font-size: 16rem;
+                  font-weight: 700;
+                }
+                .file-drop-zone-subtitle {
+                  color: #b7b7b7;
+                  font-size: 13rem;
+                }
+              }
+              .file-selection-summary {
+                min-height: 22rem;
+                padding: 6rem 8rem;
+                border-radius: 6rem;
+                background: #202020;
+                color: #9f9f9f;
+                font-size: 13rem;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                &.selected {
+                  color: #d9efff;
                 }
               }
               .frame-rate-warning {
@@ -223,6 +348,7 @@ button {
               gap: 12rem;
               height: 100%;
               overflow-y: auto;
+              font-size: 14rem;
               @include app-scrollbar;
               .api-status-message {
                 padding: 12rem;
@@ -260,6 +386,8 @@ button {
                     right: 12rem;
                     width: 24rem;
                     height: 24rem;
+                    min-height: 0;
+                    padding: 0;
                     border: none;
                     border-radius: 999rem;
                     background: transparent;
@@ -282,6 +410,9 @@ button {
                 gap: 20rem;
                 width: 100%;
                 min-height: 180rem;
+                p {
+                  font-size: 16rem;
+                }
                 .button-container {
                   display: flex;
                   flex-direction: row;
@@ -291,6 +422,7 @@ button {
                   button {
                     flex: 1;
                     height: min(30%, 50rem);
+                    font-size: 16rem;
                   }
                 }
               }
@@ -510,7 +642,7 @@ button {
                     width: 60%;
                     height: 60rem;
                     margin: 0 auto;
-                    font-size: 20rem;
+                    font-size: 16rem;
                     border-radius: 5rem;
                     cursor: pointer;
                   }
@@ -607,6 +739,8 @@ button {
                   button {
                     width: 24rem;
                     height: 24rem;
+                    min-height: 0;
+                    padding: 0;
                     border: none;
                     border-radius: 999rem;
                     background: transparent;
@@ -662,6 +796,9 @@ button {
                 gap: 20rem;
                 width: 100%;
                 min-height: 180rem;
+                p {
+                  font-size: 16rem;
+                }
                 .button-container {
                   display: flex;
                   flex-direction: row;
@@ -671,6 +808,7 @@ button {
                   button {
                     flex: 1;
                     height: min(30%, 50rem);
+                    font-size: 16rem;
                   }
                 }
               }
@@ -828,7 +966,7 @@ button {
                 button {
                   min-height: 36rem;
                   padding: 0 14rem;
-                  font-size: 14rem;
+                  font-size: 16rem;
                   cursor: pointer;
                 }
               }
@@ -904,6 +1042,8 @@ button {
         button {
           width: 22rem;
           height: 22rem;
+          min-height: 0;
+          padding: 0;
           border: none;
           border-radius: 999rem;
           background: transparent;
@@ -1317,6 +1457,7 @@ button {
                   button,
                   span {
                     min-width: 36rem;
+                    min-height: 0;
                     padding: 3rem 6rem;
                     border: 1rem solid #777;
                     border-radius: 4rem;

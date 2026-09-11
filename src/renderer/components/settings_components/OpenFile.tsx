@@ -9,6 +9,7 @@ interface SettingsProps {
 }
 
 const FALLBACK_FRAME_RATE = 30
+const NO_VIDEO_SELECTED_MESSAGE = '動画ファイルが選択されていません'
 
 export const OpenFile: React.FC<SettingsProps> = ({
   setIsProcessing,
@@ -16,7 +17,13 @@ export const OpenFile: React.FC<SettingsProps> = ({
   setFrameRate,
   onImportProjectJson
 }) => {
+  const [selectedVideoFiles, setSelectedVideoFiles] = useState<File[]>([])
   const [hasSelectedFiles, setHasSelectedFiles] = useState(false)
+  const [selectedFileSummary, setSelectedFileSummary] = useState(
+    NO_VIDEO_SELECTED_MESSAGE
+  )
+  const [isVideoDragActive, setIsVideoDragActive] = useState(false)
+  const [isProjectDragActive, setIsProjectDragActive] = useState(false)
   const [frameRateWarning, setFrameRateWarning] = useState<string | null>(null)
   const [showManualFrameRateInput, setShowManualFrameRateInput] =
     useState(false)
@@ -134,91 +141,188 @@ export const OpenFile: React.FC<SettingsProps> = ({
     })
   }
 
-  const openFile = async () => {
-    const input = document.getElementById('input') as HTMLInputElement
-    const files = input.files
-    if (files && files.length > 0) {
-      setIsProcessing(true)
-      setFrameRateWarning(null)
-      setShowManualFrameRateInput(false)
-      const urls = Array.from(files).map((file) => URL.createObjectURL(file))
+  const updateSelectedVideoFiles = (files: File[]) => {
+    setSelectedVideoFiles(files)
+    setHasSelectedFiles(files.length > 0)
 
-      // ファイル名を保存（EAFエクスポート用）
-      const fileNames = Array.from(files).map((file) => file.name)
-      const filePaths = Array.from(files).map(
-        (file) => getElectronFilePath(file) ?? ''
-      )
-      localStorage.setItem('videoFileNames', JSON.stringify(fileNames))
-      localStorage.setItem('videoFilePaths', JSON.stringify(filePaths))
-
-      setVideoSrcs(urls)
-
-      const file = files[0]
-
-      try {
-        // Electronでは動画全体のアップロードを避け、ローカルファイルパスからFPSを取得する。
-        const filePath = getElectronFilePath(file)
-        let response = filePath
-          ? await fetch('http://127.0.0.1:8000/get_framerate_from_path/', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ file_path: filePath })
-            })
-          : await getUploadedFrameRate(file)
-
-        if (filePath && !response.ok) {
-          response = await getUploadedFrameRate(file)
-        }
-
-        if (response.ok) {
-          const data = await response.json()
-          const detectedFrameRate = Number(data.frame_rate)
-          if (!Number.isFinite(detectedFrameRate) || detectedFrameRate <= 0) {
-            throw new Error(`Invalid frame rate: ${data.frame_rate}`)
-          }
-          applyFrameRate(detectedFrameRate)
-        } else {
-          throw new Error('Server response not ok')
-        }
-      } catch (error) {
-        // ブラウザのmetadataからはfpsを信頼して取得できないため、推定値は明示して扱う。
-        try {
-          await waitForVideoMetadata(urls[0])
-        } catch (localError) {
-          console.error('Local frame rate detection failed:', localError)
-        }
-
-        console.error('Frame rate detection failed:', error)
-        applyFrameRate(FALLBACK_FRAME_RATE)
-        setFrameRateWarning(
-          `${FALLBACK_FRAME_RATE}fpsとして仮読み込みしました。実際のfpsと異なる場合は手動で修正してください。`
-        )
-        setShowManualFrameRateInput(true)
-      } finally {
-        setIsProcessing(false)
-      }
+    if (files.length === 0) {
+      setSelectedFileSummary(NO_VIDEO_SELECTED_MESSAGE)
+      return
     }
+
+    const firstFileName = files[0].name
+    setSelectedFileSummary(
+      files.length === 1
+        ? firstFileName
+        : `${firstFileName} ほか ${files.length - 1}件`
+    )
+  }
+
+  const setInputFiles = (inputId: string, files: File[]) => {
+    const input = document.getElementById(inputId) as HTMLInputElement | null
+    if (!input || files.length === 0) return
+
+    const dataTransfer = new DataTransfer()
+    files.forEach((file) => dataTransfer.items.add(file))
+    input.files = dataTransfer.files
+  }
+
+  const getDroppedFiles = (event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    return Array.from(event.dataTransfer.files)
+  }
+
+  const openFile = async () => {
+    const input = document.getElementById('input') as HTMLInputElement | null
+    const files =
+      selectedVideoFiles.length > 0
+        ? selectedVideoFiles
+        : Array.from(input?.files ?? [])
+    if (files.length === 0) return
+
+    setIsProcessing(true)
+    setFrameRateWarning(null)
+    setShowManualFrameRateInput(false)
+    const urls = files.map((file) => URL.createObjectURL(file))
+
+    const fileNames = files.map((file) => file.name)
+    const filePaths = files.map((file) => getElectronFilePath(file) ?? '')
+    localStorage.setItem('videoFileNames', JSON.stringify(fileNames))
+    localStorage.setItem('videoFilePaths', JSON.stringify(filePaths))
+
+    setVideoSrcs(urls)
+
+    const file = files[0]
+
+    try {
+      const filePath = getElectronFilePath(file)
+      let response = filePath
+        ? await fetch('http://127.0.0.1:8000/get_framerate_from_path/', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ file_path: filePath })
+          })
+        : await getUploadedFrameRate(file)
+
+      if (filePath && !response.ok) {
+        response = await getUploadedFrameRate(file)
+      }
+
+      if (response.ok) {
+        const data = await response.json()
+        const detectedFrameRate = Number(data.frame_rate)
+        if (!Number.isFinite(detectedFrameRate) || detectedFrameRate <= 0) {
+          throw new Error(`Invalid frame rate: ${data.frame_rate}`)
+        }
+        applyFrameRate(detectedFrameRate)
+      } else {
+        throw new Error('Server response not ok')
+      }
+    } catch (error) {
+      try {
+        await waitForVideoMetadata(urls[0])
+      } catch (localError) {
+        console.error('Local frame rate detection failed:', localError)
+      }
+
+      console.error('Frame rate detection failed:', error)
+      applyFrameRate(FALLBACK_FRAME_RATE)
+      setFrameRateWarning(
+        `${FALLBACK_FRAME_RATE}fpsとして仮読み込みしました。実際のfpsと異なる場合は手動で修正してください。`
+      )
+      setShowManualFrameRateInput(true)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleVideoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.currentTarget.files ?? [])
+    updateSelectedVideoFiles(files)
+  }
+
+  const handleVideoDrop = (event: React.DragEvent<HTMLElement>) => {
+    const files = getDroppedFiles(event).filter((file) =>
+      file.type.startsWith('video/')
+    )
+    setIsVideoDragActive(false)
+    updateSelectedVideoFiles(files)
+    setInputFiles('input', files)
+  }
+
+  const handleProjectDrop = (event: React.DragEvent<HTMLElement>) => {
+    const file = getDroppedFiles(event)[0]
+    setIsProjectDragActive(false)
+    if (!file) return
+
+    setInputFiles('project-input', [file])
+    importProjectJson(file)
   }
 
   return (
     <div id="open-file">
-      <input
-        type="file"
-        id="input"
-        accept="video/*"
-        multiple
-        onChange={(event) =>
-          setHasSelectedFiles((event.currentTarget.files?.length ?? 0) > 0)
-        }
-      />
-      <button disabled={!hasSelectedFiles} onClick={() => openFile()}>
-        開く
-      </button>
-      <div className="project-file-actions">
-        <label htmlFor="project-input">プロジェクトを読み込む</label>
+      <section className="file-open-card">
+        <div className="file-open-card-text">
+          <h2>動画を開く</h2>
+          <p>アノテーション対象の動画ファイルを選択して開きます。</p>
+        </div>
         <input
+          className="file-input-hidden"
+          type="file"
+          id="input"
+          accept="video/*"
+          multiple
+          onChange={handleVideoFileChange}
+        />
+        <label
+          className={`file-drop-zone ${isVideoDragActive ? 'drag-active' : ''}`}
+          htmlFor="input"
+          onDragEnter={(event) => {
+            event.preventDefault()
+            setIsVideoDragActive(true)
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDragLeave={(event) => {
+            event.preventDefault()
+            setIsVideoDragActive(false)
+          }}
+          onDrop={handleVideoDrop}
+        >
+          <span className="file-drop-zone-icon">＋</span>
+          <span className="file-drop-zone-title">
+            動画ファイルをドラッグ＆ドロップ
+          </span>
+          <span className="file-drop-zone-subtitle">
+            またはクリックしてファイルを選択
+          </span>
+        </label>
+        <div className="file-open-actions">
+          <button
+            className="file-open-button"
+            disabled={!hasSelectedFiles}
+            onClick={() => openFile()}
+          >
+            開く
+          </button>
+        </div>
+        <p
+          className={`file-selection-summary ${
+            hasSelectedFiles ? 'selected' : ''
+          }`}
+        >
+          {selectedFileSummary}
+        </p>
+      </section>
+      <section className="file-open-card">
+        <div className="file-open-card-text">
+          <h2>プロジェクトを読み込む</h2>
+          <p>保存済みのプロジェクトJSONから作業を再開します。</p>
+        </div>
+        <input
+          className="file-input-hidden"
           type="file"
           id="project-input"
           accept="application/json,.json"
@@ -230,7 +334,31 @@ export const OpenFile: React.FC<SettingsProps> = ({
             event.currentTarget.value = ''
           }}
         />
-      </div>
+        <label
+          className={`file-drop-zone ${
+            isProjectDragActive ? 'drag-active' : ''
+          }`}
+          htmlFor="project-input"
+          onDragEnter={(event) => {
+            event.preventDefault()
+            setIsProjectDragActive(true)
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDragLeave={(event) => {
+            event.preventDefault()
+            setIsProjectDragActive(false)
+          }}
+          onDrop={handleProjectDrop}
+        >
+          <span className="file-drop-zone-icon">＋</span>
+          <span className="file-drop-zone-title">
+            プロジェクトJSONをドラッグ＆ドロップ
+          </span>
+          <span className="file-drop-zone-subtitle">
+            またはクリックしてプロジェクトを選択
+          </span>
+        </label>
+      </section>
       {frameRateWarning && (
         <div className="frame-rate-warning">
           <p>{frameRateWarning}</p>
