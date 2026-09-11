@@ -122,6 +122,8 @@ Electronアプリからは、動画全体のアップロードを避けるため
 
 ローカル動画ファイルのパスと自動アノテーション設定を受け取り、AlphaPose、MotionBERT、detect_movement の一連の自動アノテーションパイプラインを実行します。Electronアプリ向けの高速経路です。
 
+`analysisStartFrame` と `analysisEndFrame` は任意項目です。指定した場合、検出結果はこの範囲内に収まる区間だけに絞り込まれます。未指定の場合は従来通り動画全体を対象にします。Electron UI ではタイムライン上に選択範囲がある場合だけ送信します。
+
 ### `POST /similar_motion_from_path/`
 
 利用者が選択した人物、関節、テンプレート区間を基に、v40のDTW類似動作検出を実行します。AlphaPoseとMotionBERTで選択人物の3次元姿勢を生成し、`detect_movement/similarity_detection.py` の検出器へ渡します。既存の自動動作検出とは異なり、CSV変換・外積CSV計算・`detect_movement.py` は実行しません。

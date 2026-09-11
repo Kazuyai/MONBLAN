@@ -30,6 +30,9 @@ interface SettingsProps {
   setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void
   apiStatus: ApiStatus | null
   frameRate: number
+  currentFrame: number
+  selectionStartFrame: number
+  selectionFrameWidth: number
   selectedTimelineAnnotation: SelectedTimelineAnnotation | null
 }
 
@@ -49,6 +52,9 @@ export const Settings: React.FC<SettingsProps> = ({
   setSimilarMotionCandidates,
   apiStatus,
   frameRate,
+  currentFrame,
+  selectionStartFrame,
+  selectionFrameWidth,
   selectedTimelineAnnotation
 }) => {
   const [selectedTabIndex, setSelectedTabIndex] = useState(0)
@@ -75,6 +81,9 @@ export const Settings: React.FC<SettingsProps> = ({
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
           apiStatus={apiStatus}
           videoSrcs={videoSrcs}
+          currentFrame={currentFrame}
+          selectionStartFrame={selectionStartFrame}
+          selectionFrameWidth={selectionFrameWidth}
         />
       )
     },
@@ -86,8 +95,11 @@ export const Settings: React.FC<SettingsProps> = ({
           setSimilarMotionCandidates={setSimilarMotionCandidates}
           apiStatus={apiStatus}
           frameRate={frameRate}
+          currentFrame={currentFrame}
           selectedTimelineAnnotation={selectedTimelineAnnotation}
           videoSrcs={videoSrcs}
+          selectionStartFrame={selectionStartFrame}
+          selectionFrameWidth={selectionFrameWidth}
         />
       )
     },

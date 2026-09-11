@@ -6,6 +6,33 @@ root {
   --timeline-container-height: 0;
 }
 
+@mixin app-scrollbar {
+  scrollbar-color: #6f6f6f #2b2b2b;
+  scrollbar-width: thin;
+  &::-webkit-scrollbar {
+    width: 12rem;
+    height: 12rem;
+  }
+  &::-webkit-scrollbar-track {
+    background: #2b2b2b;
+    border-radius: 999rem;
+  }
+  &::-webkit-scrollbar-thumb {
+    border: 3rem solid #2b2b2b;
+    border-radius: 999rem;
+    background: #6f6f6f;
+    &:hover {
+      background: #8a8a8a;
+    }
+    &:active {
+      background: #a0a0a0;
+    }
+  }
+  &::-webkit-scrollbar-corner {
+    background: #232323;
+  }
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -191,9 +218,13 @@ button {
               }
             }
             #auto-annotation {
+              display: flex;
+              flex-direction: column;
+              gap: 12rem;
               height: 100%;
+              overflow-y: auto;
+              @include app-scrollbar;
               .api-status-message {
-                margin-bottom: 12rem;
                 padding: 12rem;
                 border: 1rem solid #8a6d3b;
                 border-radius: 6rem;
@@ -250,7 +281,7 @@ button {
                 flex-direction: column;
                 gap: 20rem;
                 width: 100%;
-                height: 100%;
+                min-height: 180rem;
                 .button-container {
                   display: flex;
                   flex-direction: row;
@@ -266,8 +297,7 @@ button {
               .auto-annotation-param-editor {
                 display: flex;
                 flex-direction: row;
-                height: 100%;
-                overflow-y: hidden;
+                min-height: 360rem;
                 .human-selector {
                   position: relative;
                   display: flex;
@@ -290,7 +320,6 @@ button {
                     flex: 1;
                     padding-block: 30rem;
                     padding-inline: 15%;
-                    overflow-y: auto;
                     &::before {
                       content: '';
                       position: absolute;
@@ -420,17 +449,13 @@ button {
                   gap: 20rem;
                   flex: 1;
                   // width: 60%;
-                  height: 100%;
                   padding: 10rem 20rem;
-                  overflow-y: auto;
                   .edit-layer-param {
                     flex: 1;
-                    overflow-y: auto;
                     .edit-layer-list {
                       display: flex;
                       flex-direction: column;
                       gap: 10rem;
-                      overflow-y: auto;
                       .edit-layer-item {
                         position: relative;
                         display: flex;
@@ -491,6 +516,42 @@ button {
                   }
                 }
               }
+              .analysis-range-message {
+                padding: 8rem 10rem;
+                border-left: 3rem solid #66aeea;
+                background: #223142;
+                color: #d7edff;
+                font-size: 14rem;
+              }
+              .analysis-range-controls {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8rem 14rem;
+                font-size: 14rem;
+                label {
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 4rem;
+                  cursor: pointer;
+                }
+                .manual-analysis-range-controls {
+                  display: flex;
+                  flex-wrap: wrap;
+                  align-items: center;
+                  gap: 8rem;
+                  width: 100%;
+                  button {
+                    width: auto;
+                    height: 28rem;
+                    padding: 0 10rem;
+                    font-size: 13rem;
+                  }
+                  span {
+                    color: #d7edff;
+                  }
+                }
+              }
             }
             #audio-video-controls {
               display: flex;
@@ -522,6 +583,7 @@ button {
               height: 100%;
               overflow-y: auto;
               font-size: 14rem;
+              @include app-scrollbar;
               .api-status-message {
                 padding: 12rem;
                 border: 1rem solid #8a6d3b;
@@ -558,12 +620,48 @@ button {
                   }
                 }
               }
+              .analysis-range-message {
+                padding: 8rem 10rem;
+                border-left: 3rem solid #66aeea;
+                background: #223142;
+                color: #d7edff;
+                font-size: 14rem;
+              }
+              .analysis-range-controls {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8rem 14rem;
+                font-size: 14rem;
+                label {
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 4rem;
+                  cursor: pointer;
+                }
+                .manual-analysis-range-controls {
+                  display: flex;
+                  flex-wrap: wrap;
+                  align-items: center;
+                  gap: 8rem;
+                  width: 100%;
+                  button {
+                    width: auto;
+                    height: 28rem;
+                    padding: 0 10rem;
+                    font-size: 13rem;
+                  }
+                  span {
+                    color: #d7edff;
+                  }
+                }
+              }
               .human-count-selector {
                 display: flex;
                 flex-direction: column;
                 gap: 20rem;
                 width: 100%;
-                height: 100%;
+                min-height: 180rem;
                 .button-container {
                   display: flex;
                   flex-direction: row;
@@ -579,9 +677,7 @@ button {
               .similarity-param-editor {
                 display: flex;
                 flex-direction: row;
-                height: 100%;
-                min-height: 0;
-                overflow-y: hidden;
+                min-height: 360rem;
                 .human-selector {
                   position: relative;
                   display: flex;
@@ -604,7 +700,6 @@ button {
                     flex: 1;
                     padding-block: 30rem;
                     padding-inline: 15%;
-                    overflow-y: auto;
                     &::-webkit-scrollbar {
                       display: none;
                     }
@@ -694,9 +789,7 @@ button {
                   justify-content: space-between;
                   gap: 14rem;
                   min-width: 0;
-                  height: 100%;
                   padding: 10rem 20rem;
-                  overflow-y: auto;
                   .template-annotation-card {
                     padding: 12rem;
                     border: 1rem solid #666;
@@ -904,30 +997,7 @@ button {
         // height: 250rem;
         // overflow: hidden;
         overflow: auto;
-        scrollbar-color: #6f6f6f #2b2b2b;
-        scrollbar-width: thin;
-        &::-webkit-scrollbar {
-          width: 12rem;
-          height: 12rem;
-        }
-        &::-webkit-scrollbar-track {
-          background: #2b2b2b;
-          border-radius: 999rem;
-        }
-        &::-webkit-scrollbar-thumb {
-          border: 3rem solid #2b2b2b;
-          border-radius: 999rem;
-          background: #6f6f6f;
-          &:hover {
-            background: #8a8a8a;
-          }
-          &:active {
-            background: #a0a0a0;
-          }
-        }
-        &::-webkit-scrollbar-corner {
-          background: #232323;
-        }
+        @include app-scrollbar;
         .empty-timeline-guide {
           display: flex;
           align-items: center;

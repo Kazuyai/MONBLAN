@@ -184,6 +184,9 @@ const App = () => {
           setSimilarMotionCandidates={setSimilarMotionCandidates}
           apiStatus={apiStatus}
           frameRate={frameRate}
+          currentFrame={currentFrame}
+          selectionStartFrame={selectionStartFrame}
+          selectionFrameWidth={selectionFrameWidth}
           selectedTimelineAnnotation={selectedTimelineAnnotation}
         />
       </div>

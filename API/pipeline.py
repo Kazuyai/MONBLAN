@@ -35,6 +35,41 @@ _ALPHAPOSE_CACHE_LOCK = threading.Lock()
 _ALPHAPOSE_CACHE_LOCKS: dict[str, threading.Lock] = {}
 
 
+def validate_frame_range(
+    start_frame: int | None,
+    end_frame: int | None,
+    *,
+    start_name: str,
+    end_name: str,
+) -> None:
+    if start_frame is not None and start_frame < ANNOTATION_FRAME_INDEX_BASE:
+        raise ValueError(f"{start_name} must be frame one or greater")
+    if end_frame is not None and end_frame < ANNOTATION_FRAME_INDEX_BASE:
+        raise ValueError(f"{end_name} must be frame one or greater")
+    if start_frame is not None and end_frame is not None and end_frame < start_frame:
+        raise ValueError(f"{end_name} must be greater than or equal to {start_name}")
+
+
+def filter_results_by_frame_range(
+    results: list[dict],
+    start_frame: int | None,
+    end_frame: int | None,
+) -> list[dict]:
+    if start_frame is None and end_frame is None:
+        return results
+
+    filtered_results = []
+    for result in results:
+        result_start_frame = int(result["startFrame"])
+        result_end_frame = int(result["endFrame"])
+        if start_frame is not None and result_start_frame < start_frame:
+            continue
+        if end_frame is not None and result_end_frame > end_frame:
+            continue
+        filtered_results.append(result)
+    return filtered_results
+
+
 def create_job_dir() -> str:
     """リクエストごとの一時作業ディレクトリを作成する。"""
     job_id = str(uuid.uuid4())
@@ -243,16 +278,12 @@ def run_similarity_detection(
         raise ValueError("selectedJoints must contain at least one joint")
     if not template_segments:
         raise ValueError("templateSegments must contain at least one interval")
-    if search_start_frame is not None and search_start_frame < ANNOTATION_FRAME_INDEX_BASE:
-        raise ValueError("searchStartFrame must be frame one or greater")
-    if search_end_frame is not None and search_end_frame < ANNOTATION_FRAME_INDEX_BASE:
-        raise ValueError("searchEndFrame must be frame one or greater")
-    if (
-        search_start_frame is not None
-        and search_end_frame is not None
-        and search_end_frame < search_start_frame
-    ):
-        raise ValueError("searchEndFrame must be greater than or equal to searchStartFrame")
+    validate_frame_range(
+        search_start_frame,
+        search_end_frame,
+        start_name="searchStartFrame",
+        end_name="searchEndFrame",
+    )
 
     template_times: list[tuple[float, float]] = []
     template_frame_ranges: list[tuple[int, int]] = []
@@ -434,6 +465,8 @@ def run_pose_pipeline(
     auto_annotation_layer: list[dict],
     job_dir: str | None = None,
     alphapose_results_path: str | None = None,
+    analysis_start_frame: int | None = None,
+    analysis_end_frame: int | None = None,
 ) -> list[dict]:
     """自動アノテーション用の全パイプラインを実行し、検出された動作区間を返す。"""
     owns_job_dir = job_dir is None
@@ -441,6 +474,13 @@ def run_pose_pipeline(
         job_dir = create_job_dir()
     success = False
     try:
+        validate_frame_range(
+            analysis_start_frame,
+            analysis_end_frame,
+            start_name="analysisStartFrame",
+            end_name="analysisEndFrame",
+        )
+
         if alphapose_results_path is None:
             run_alphapose(video_file_path, job_dir)
             alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
@@ -469,7 +509,12 @@ def run_pose_pipeline(
                 motion_times += json.load(file)
 
         success = True
-        return sorted(motion_times, key=lambda item: item["layerIndex"])
+        filtered_motion_times = filter_results_by_frame_range(
+            motion_times,
+            analysis_start_frame,
+            analysis_end_frame,
+        )
+        return sorted(filtered_motion_times, key=lambda item: item["layerIndex"])
 
     finally:
         if success and owns_job_dir:

@@ -11,8 +11,11 @@ interface SimilarityCompletionProps {
   setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void
   apiStatus: ApiStatus | null
   frameRate: number
+  currentFrame: number
   selectedTimelineAnnotation: SelectedTimelineAnnotation | null
   videoSrcs: string[]
+  selectionStartFrame: number
+  selectionFrameWidth: number
 }
 
 interface KeyPoint {
@@ -31,6 +34,8 @@ interface ApiErrorPayload {
   returncode?: number
   job_dir?: string
 }
+
+type AnalysisRangeMode = 'full' | 'selection' | 'manual'
 
 interface SimilarMotionApiCandidate {
   startFrame: number
@@ -88,8 +93,11 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   setSimilarMotionCandidates,
   apiStatus,
   frameRate,
+  currentFrame,
   selectedTimelineAnnotation,
-  videoSrcs
+  videoSrcs,
+  selectionStartFrame,
+  selectionFrameWidth
 }) => {
   const [isHumanCountSingle, setIsHumanCountSingle] = useState<boolean | null>(
     null
@@ -102,6 +110,14 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   )
   const [apiError, setApiError] = useState<ApiErrorPayload | null>(null)
   const [candidateCount, setCandidateCount] = useState<number | null>(null)
+  const [analysisRangeMode, setAnalysisRangeMode] =
+    useState<AnalysisRangeMode>('full')
+  const [manualAnalysisStartFrame, setManualAnalysisStartFrame] = useState<
+    number | null
+  >(null)
+  const [manualAnalysisEndFrame, setManualAnalysisEndFrame] = useState<
+    number | null
+  >(null)
 
   const isAiReady =
     apiStatus?.status === 'ready' && apiStatus.aiAvailable === true
@@ -142,6 +158,45 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   const getCurrentVideoPath = () => {
     const file = getCurrentVideoFile()
     return file ? getElectronFilePath(file) : getStoredVideoPath()
+  }
+
+  const getAnalysisFrameRange = () => {
+    if (analysisRangeMode === 'full') {
+      return null
+    }
+
+    if (analysisRangeMode === 'manual') {
+      if (manualAnalysisStartFrame === null || manualAnalysisEndFrame === null) {
+        return null
+      }
+
+      return {
+        startFrame: Math.min(manualAnalysisStartFrame, manualAnalysisEndFrame),
+        endFrame: Math.max(manualAnalysisStartFrame, manualAnalysisEndFrame)
+      }
+    }
+
+    if (selectionStartFrame <= 0 || selectionFrameWidth <= 0) {
+      return null
+    }
+
+    return {
+      startFrame: selectionStartFrame,
+      endFrame: selectionStartFrame + selectionFrameWidth - 1
+    }
+  }
+
+  const getAnalysisRangeMessage = () => {
+    const analysisFrameRange = getAnalysisFrameRange()
+    if (analysisRangeMode === 'full') {
+      return '分析対象: 動画全体'
+    }
+    if (analysisFrameRange) {
+      return `分析対象: ${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f`
+    }
+    return analysisRangeMode === 'selection'
+      ? '分析対象: 選択範囲がありません'
+      : '分析対象: 手動範囲が未設定です'
   }
 
   const readApiError = async (response: Response): Promise<ApiErrorPayload> => {
@@ -251,6 +306,15 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     if (!isAiReady) {
       return
     }
+    if (analysisRangeMode !== 'full' && !getAnalysisFrameRange()) {
+      setApiError({
+        message:
+          analysisRangeMode === 'selection'
+            ? 'タイムライン上で分析範囲を選択してください。'
+            : '分析範囲の開始位置と終了位置を設定してください。'
+      })
+      return
+    }
 
     const filePath = getCurrentVideoPath()
 
@@ -279,6 +343,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     setCandidateCount(null)
 
     try {
+      const analysisFrameRange = getAnalysisFrameRange()
       const response = await fetch(
         'http://127.0.0.1:8000/similar_motion_from_path/',
         {
@@ -296,6 +361,8 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
                 endFrame: selectedTimelineAnnotation.endFrame
               }
             ],
+            searchStartFrame: analysisFrameRange?.startFrame ?? null,
+            searchEndFrame: analysisFrameRange?.endFrame ?? null,
             layerName: selectedTimelineAnnotation.layerName,
             layerIndex: selectedTimelineAnnotation.layerIndex
           })
@@ -359,6 +426,72 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
           {apiError.job_dir && <p>{`詳細ログ: ${apiError.job_dir}`}</p>}
         </div>
       )}
+      <p className="analysis-range-message">
+        {getAnalysisRangeMessage()}
+      </p>
+      <div className="analysis-range-controls">
+        <label>
+          <input
+            type="radio"
+            name="similarity-analysis-range-mode"
+            checked={analysisRangeMode === 'full'}
+            onChange={() => setAnalysisRangeMode('full')}
+          />
+          全体
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="similarity-analysis-range-mode"
+            checked={analysisRangeMode === 'selection'}
+            onChange={() => setAnalysisRangeMode('selection')}
+          />
+          選択範囲
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="similarity-analysis-range-mode"
+            checked={analysisRangeMode === 'manual'}
+            onChange={() => setAnalysisRangeMode('manual')}
+          />
+          手動指定
+        </label>
+        {analysisRangeMode === 'manual' && (
+          <div className="manual-analysis-range-controls">
+            <button
+              type="button"
+              onClick={() => setManualAnalysisStartFrame(currentFrame)}
+            >
+              現在位置を開始に設定
+            </button>
+            <button
+              type="button"
+              onClick={() => setManualAnalysisEndFrame(currentFrame)}
+            >
+              現在位置を終了に設定
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setManualAnalysisStartFrame(null)
+                setManualAnalysisEndFrame(null)
+              }}
+            >
+              クリア
+            </button>
+            <span>
+              {manualAnalysisStartFrame !== null
+                ? `開始: ${manualAnalysisStartFrame}f`
+                : '開始: 未設定'}
+              {' / '}
+              {manualAnalysisEndFrame !== null
+                ? `終了: ${manualAnalysisEndFrame}f`
+                : '終了: 未設定'}
+            </span>
+          </div>
+        )}
+      </div>
       {isHumanCountSingle === null ? (
         <div className="human-count-selector">
           <p>動画内に映る人物は1人ですか？複数人ですか？</p>

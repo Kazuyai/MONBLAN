@@ -62,6 +62,8 @@ class VideoPathRequest(BaseModel):
 
 class ItemsPathRequest(VideoPathRequest):
     autoAnnotationLayer: list[dict]
+    analysisStartFrame: int | None = None
+    analysisEndFrame: int | None = None
 
 
 class SimilarMotionTemplate(BaseModel):
@@ -255,6 +257,8 @@ async def get_human_images_from_path(request: VideoPathRequest):
 async def create_item(
     file: UploadFile = File(...),
     autoAnnotationLayer: str = Form(...),
+    analysisStartFrame: int | None = Form(None),
+    analysisEndFrame: int | None = Form(None),
 ):
     """AlphaPose、MotionBERT、動作検出を順に実行し、自動アノテーション範囲を返す。"""
     start_time = time.time()
@@ -266,7 +270,13 @@ async def create_item(
         temp_filename = await save_upload_to_temp(file)
         job_dir = create_job_dir()
 
-        motion_times = run_pose_pipeline(temp_filename, auto_annotation_layer, job_dir)
+        motion_times = run_pose_pipeline(
+            temp_filename,
+            auto_annotation_layer,
+            job_dir,
+            analysis_start_frame=analysisStartFrame,
+            analysis_end_frame=analysisEndFrame,
+        )
 
         end_time = time.time()
         log_api_call("create_item", start_time, end_time, f"Processed {len(motion_times)} motion times")
@@ -306,7 +316,14 @@ async def create_item_from_path(request: ItemsPathRequest):
         job_dir = create_job_dir()
         alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
 
-        motion_times = run_pose_pipeline(video_path, request.autoAnnotationLayer, job_dir, alphapose_results_path)
+        motion_times = run_pose_pipeline(
+            video_path,
+            request.autoAnnotationLayer,
+            job_dir,
+            alphapose_results_path,
+            analysis_start_frame=request.analysisStartFrame,
+            analysis_end_frame=request.analysisEndFrame,
+        )
 
         end_time = time.time()
         log_api_call("create_item_from_path", start_time, end_time, f"Processed {len(motion_times)} motion times, alphapose_cache_hit={alphapose_cache_hit}")

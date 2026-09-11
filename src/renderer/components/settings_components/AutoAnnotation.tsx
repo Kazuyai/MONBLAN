@@ -15,6 +15,9 @@ interface SettingsProps {
   ) => void
   apiStatus: ApiStatus | null
   videoSrcs: string[]
+  currentFrame: number
+  selectionStartFrame: number
+  selectionFrameWidth: number
 }
 
 interface KeyPoint {
@@ -41,6 +44,8 @@ interface ApiErrorPayload {
   job_dir?: string
 }
 
+type AnalysisRangeMode = 'full' | 'selection' | 'manual'
+
 const getApiStatusMessage = (apiStatus: ApiStatus | null) => {
   if (!apiStatus || apiStatus.status === 'starting') {
     return 'AI自動アノテーション環境を確認中です。'
@@ -66,7 +71,10 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   setIsEditing,
   setAutoAnnotationResponseData,
   apiStatus,
-  videoSrcs
+  videoSrcs,
+  currentFrame,
+  selectionStartFrame,
+  selectionFrameWidth
 }) => {
   // 画像サイズ
   //   width : 170rem
@@ -97,6 +105,14 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     null
   )
   const [apiError, setApiError] = useState<ApiErrorPayload | null>(null)
+  const [analysisRangeMode, setAnalysisRangeMode] =
+    useState<AnalysisRangeMode>('full')
+  const [manualAnalysisStartFrame, setManualAnalysisStartFrame] = useState<
+    number | null
+  >(null)
+  const [manualAnalysisEndFrame, setManualAnalysisEndFrame] = useState<
+    number | null
+  >(null)
 
   const readApiError = async (response: Response): Promise<ApiErrorPayload> => {
     try {
@@ -279,6 +295,45 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     }
   }
 
+  const getAnalysisFrameRange = () => {
+    if (analysisRangeMode === 'full') {
+      return null
+    }
+
+    if (analysisRangeMode === 'manual') {
+      if (manualAnalysisStartFrame === null || manualAnalysisEndFrame === null) {
+        return null
+      }
+
+      return {
+        startFrame: Math.min(manualAnalysisStartFrame, manualAnalysisEndFrame),
+        endFrame: Math.max(manualAnalysisStartFrame, manualAnalysisEndFrame)
+      }
+    }
+
+    if (selectionStartFrame <= 0 || selectionFrameWidth <= 0) {
+      return null
+    }
+
+    return {
+      startFrame: selectionStartFrame,
+      endFrame: selectionStartFrame + selectionFrameWidth - 1
+    }
+  }
+
+  const getAnalysisRangeMessage = () => {
+    const analysisFrameRange = getAnalysisFrameRange()
+    if (analysisRangeMode === 'full') {
+      return '分析対象: 動画全体'
+    }
+    if (analysisFrameRange) {
+      return `分析対象: ${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f`
+    }
+    return analysisRangeMode === 'selection'
+      ? '分析対象: 選択範囲がありません'
+      : '分析対象: 手動範囲が未設定です'
+  }
+
   const getUploadedHumanImages = (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -303,6 +358,14 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     const formData = new FormData()
     formData.append('file', file)
     formData.append('autoAnnotationLayer', JSON.stringify(autoAnnotationLayer))
+    const analysisFrameRange = getAnalysisFrameRange()
+    if (analysisFrameRange) {
+      formData.append(
+        'analysisStartFrame',
+        String(analysisFrameRange.startFrame)
+      )
+      formData.append('analysisEndFrame', String(analysisFrameRange.endFrame))
+    }
 
     return fetch('http://127.0.0.1:8000/items/', {
       method: 'POST',
@@ -311,6 +374,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   }
 
   const getAutoAnnotationFromPath = (filePath: string) => {
+    const analysisFrameRange = getAnalysisFrameRange()
     return fetch('http://127.0.0.1:8000/items_from_path/', {
       method: 'POST',
       headers: {
@@ -318,7 +382,9 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       },
       body: JSON.stringify({
         file_path: filePath,
-        autoAnnotationLayer
+        autoAnnotationLayer,
+        analysisStartFrame: analysisFrameRange?.startFrame ?? null,
+        analysisEndFrame: analysisFrameRange?.endFrame ?? null
       })
     })
   }
@@ -410,6 +476,16 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     if (!isAiReady) {
       return
     }
+    if (analysisRangeMode !== 'full' && !getAnalysisFrameRange()) {
+      setApiError({
+        message:
+          analysisRangeMode === 'selection'
+            ? 'タイムライン上で分析範囲を選択してください。'
+            : '分析範囲の開始位置と終了位置を設定してください。'
+      })
+      return
+    }
+
     const input = document.getElementById('input') as HTMLInputElement
     const files = input.files
     const storedVideoPath = getStoredVideoPath()
@@ -517,6 +593,72 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
           )}
         </div>
       )}
+      <p className="analysis-range-message">
+        {getAnalysisRangeMessage()}
+      </p>
+      <div className="analysis-range-controls">
+        <label>
+          <input
+            type="radio"
+            name="auto-analysis-range-mode"
+            checked={analysisRangeMode === 'full'}
+            onChange={() => setAnalysisRangeMode('full')}
+          />
+          全体
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="auto-analysis-range-mode"
+            checked={analysisRangeMode === 'selection'}
+            onChange={() => setAnalysisRangeMode('selection')}
+          />
+          選択範囲
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="auto-analysis-range-mode"
+            checked={analysisRangeMode === 'manual'}
+            onChange={() => setAnalysisRangeMode('manual')}
+          />
+          手動指定
+        </label>
+        {analysisRangeMode === 'manual' && (
+          <div className="manual-analysis-range-controls">
+            <button
+              type="button"
+              onClick={() => setManualAnalysisStartFrame(currentFrame)}
+            >
+              現在位置を開始に設定
+            </button>
+            <button
+              type="button"
+              onClick={() => setManualAnalysisEndFrame(currentFrame)}
+            >
+              現在位置を終了に設定
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setManualAnalysisStartFrame(null)
+                setManualAnalysisEndFrame(null)
+              }}
+            >
+              クリア
+            </button>
+            <span>
+              {manualAnalysisStartFrame !== null
+                ? `開始: ${manualAnalysisStartFrame}f`
+                : '開始: 未設定'}
+              {' / '}
+              {manualAnalysisEndFrame !== null
+                ? `終了: ${manualAnalysisEndFrame}f`
+                : '終了: 未設定'}
+            </span>
+          </div>
+        )}
+      </div>
       {/* isHumanCountSingleがnullならhuman-count-selectorを表示 */}
       {isHumanCountSingle === null ? (
         <div className="human-count-selector">
