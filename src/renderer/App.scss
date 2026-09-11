@@ -56,25 +56,37 @@ root {
     color 0.12s ease,
     opacity 0.12s ease;
   &:not(:disabled):hover {
-    border-color: #b7d7f2;
-    background: linear-gradient(#ffffff, #e8f3ff);
-    box-shadow: 0 0 0 2rem #66aeea33;
+    border-color: #9a9a9a;
+    background: linear-gradient(#ffffff, #e8e8e8);
+    box-shadow: 0 2rem 8rem #0004;
   }
   &:not(:disabled):active {
-    background: linear-gradient(#d4e9ff, #f4f9ff);
+    background: linear-gradient(#d7d7d7, #eeeeee);
     box-shadow: inset 0 1rem 3rem #0003;
   }
   &:focus-visible {
-    outline: 2rem solid #66aeea;
+    outline: 2rem solid #b5b5b5;
     outline-offset: 2rem;
   }
   &:disabled {
-    border-color: #6b6b6b;
-    background: #727272;
-    color: #4b4b4b;
+    border-color: #4e4e4e;
+    background: #555;
+    color: #2f2f2f;
     box-shadow: none;
     cursor: not-allowed;
     opacity: 0.75;
+  }
+  &.primary-action {
+    border-color: #9a9a9a;
+    background: linear-gradient(#f8f8f8, #e0e0e0);
+  }
+  &.secondary-action {
+    border-color: #8a8a8a;
+    background: linear-gradient(#f7f7f7, #dddddd);
+  }
+  &.danger-action {
+    border-color: #8a8a8a;
+    background: linear-gradient(#f7f7f7, #dddddd);
   }
 }
 
@@ -267,12 +279,12 @@ button {
                 &:hover {
                   border-color: #aaa;
                   background: #2d2d2d;
-                  box-shadow: 0 0 0 2rem #66aeea33;
+                  box-shadow: 0 2rem 8rem #0005;
                 }
                 &.drag-active {
-                  border-color: #66aeea;
-                  background: #203143;
-                  box-shadow: 0 0 0 3rem #66aeea44;
+                  border-color: #b5b5b5;
+                  background: #343434;
+                  box-shadow: 0 0 0 3rem #ffffff1f;
                 }
                 .file-drop-zone-icon {
                   display: flex;
@@ -708,6 +720,50 @@ button {
                 }
               }
             }
+            #export-file {
+              display: flex;
+              flex-direction: column;
+              gap: 18rem;
+              height: 100%;
+              overflow-y: auto;
+              @include app-scrollbar;
+              .export-file-card {
+                display: flex;
+                flex-direction: column;
+                gap: 14rem;
+                width: 100%;
+                padding: 18rem;
+                border: 1rem solid #555;
+                border-radius: 10rem;
+                background: #292929;
+                box-shadow: 0 4rem 14rem #0004;
+                .export-file-card-text {
+                  display: flex;
+                  flex-direction: column;
+                  gap: 6rem;
+                  h2 {
+                    color: #fff;
+                    font-size: 18rem;
+                  }
+                  p {
+                    color: #bbb;
+                    font-size: 14rem;
+                    line-height: 1.5;
+                  }
+                }
+                .export-file-actions {
+                  display: flex;
+                  flex-wrap: wrap;
+                  gap: 10rem;
+                }
+                button {
+                  width: fit-content;
+                  min-width: 180rem;
+                  min-height: 42rem;
+                  font-size: 15rem;
+                }
+              }
+            }
             #similarity-completion {
               display: flex;
               flex-direction: column;
@@ -1075,12 +1131,17 @@ button {
         padding-left: 130rem;
         button {
           width: fit-content;
-          padding: 5rem 20rem;
+          min-height: 34rem;
+          padding: 5rem 16rem;
           font-size: 16rem;
           cursor: pointer;
           img {
             display: block;
             height: 100%;
+          }
+          &.icon-button {
+            width: 44rem;
+            padding: 5rem 10rem;
           }
         }
       }

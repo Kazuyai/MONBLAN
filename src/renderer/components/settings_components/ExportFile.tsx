@@ -12,10 +12,26 @@ export const ExportFile: React.FC<SettingsProps> = ({
   onExportEAF
 }) => {
   return (
-    <div>
-      <button onClick={onExportProjectJson}>プロジェクトを保存</button>
-      <button onClick={onExportCSV}>csv出力</button>
-      <button onClick={onExportEAF}>eaf出力</button>
+    <div id="export-file">
+      <section className="export-file-card">
+        <div className="export-file-card-text">
+          <h2>プロジェクトを保存</h2>
+          <p>現在の作業状態を、あとから読み込めるJSON形式で保存します。</p>
+        </div>
+        <button className="primary-action" onClick={onExportProjectJson}>
+          プロジェクトを保存
+        </button>
+      </section>
+      <section className="export-file-card">
+        <div className="export-file-card-text">
+          <h2>注釈データを書き出す</h2>
+          <p>解析や他ツールで利用するため、CSVまたはEAF形式で出力します。</p>
+        </div>
+        <div className="export-file-actions">
+          <button onClick={onExportCSV}>CSV出力</button>
+          <button onClick={onExportEAF}>EAF出力</button>
+        </div>
+      </section>
     </div>
   )
 }

@@ -627,18 +627,21 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
         {analysisRangeMode === 'manual' && (
           <div className="manual-analysis-range-controls">
             <button
+              className="secondary-action"
               type="button"
               onClick={() => setManualAnalysisStartFrame(currentFrame)}
             >
               現在位置を開始に設定
             </button>
             <button
+              className="secondary-action"
               type="button"
               onClick={() => setManualAnalysisEndFrame(currentFrame)}
             >
               現在位置を終了に設定
             </button>
             <button
+              className="secondary-action"
               type="button"
               onClick={() => {
                 setManualAnalysisStartFrame(null)
@@ -664,8 +667,14 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
         <div className="human-count-selector">
           <p>動画内に映る人物は1人ですか？複数人ですか？</p>
           <div className="button-container">
-            <button onClick={() => setIsHumanCountSingle(true)}>1人</button>
             <button
+              className="primary-action"
+              onClick={() => setIsHumanCountSingle(true)}
+            >
+              1人
+            </button>
+            <button
+              className="primary-action"
               disabled={!isAiReady}
               onClick={() => {
                 setIsHumanCountSingle(false)
@@ -789,7 +798,11 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
                 </div>
               </div>
             </div>
-            <button disabled={!isAiReady} onClick={() => autoAnnotation()}>
+            <button
+              className="primary-action"
+              disabled={!isAiReady}
+              onClick={() => autoAnnotation()}
+            >
               実行
             </button>
           </div>

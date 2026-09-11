@@ -1460,31 +1460,37 @@ ${tierElements.join('\n')}
         style={{ height: `calc(${100 - topHeight}% - 1.5rem)` }}
       >
         <div className="controls">
-          <button onClick={() => setCurrentFrame(1)}>
+          <button className="icon-button" onClick={() => setCurrentFrame(1)}>
             <img src="./skip_start.svg" alt="" />
           </button>
           <button
+            className="icon-button"
             onClick={() => setCurrentFrame((frame) => Math.max(1, frame - 1))}
           >
             <img src="./1f_left.svg" alt="< 1f" />
           </button>
-          <button onClick={() => play()}>
+          <button className="icon-button primary-action" onClick={() => play()}>
             <img
               src={isPlaying ? './pause.svg' : './play.svg'}
               alt={isPlaying ? 'pause' : 'play'}
             />
           </button>
           <button
+            className="icon-button"
             onClick={() =>
               setCurrentFrame((frame) => Math.min(totalFrames, frame + 1))
             }
           >
             <img src="./1f_right.svg" alt="1f >" />
           </button>
-          <button onClick={() => setCurrentFrame(totalFrames)}>
+          <button
+            className="icon-button"
+            onClick={() => setCurrentFrame(totalFrames)}
+          >
             <img src="./skip_end.svg" alt="" />
           </button>
           <button
+            className="secondary-action"
             onClick={() => {
               setIsPartiallyPlaying(!isPartiallyPlaying)
               setIsPlaying?.(false)
@@ -1492,16 +1498,36 @@ ${tierElements.join('\n')}
           >
             部分再生
           </button>
-          <button onClick={addLayer}>注釈層追加</button>
-          <button onClick={deleteLayer}>注釈層削除</button>
-          <button onClick={addAnnotation}>注釈追加</button>
-          <button onClick={deleteAnnotation}>注釈削除</button>
-          <button onClick={mergeAnnotations}>結合</button>
-          <button onClick={splitAnnotations}>分割</button>
-          <button onClick={undo} disabled={undoStack.length === 0}>
+          <button className="secondary-action" onClick={addLayer}>
+            注釈層追加
+          </button>
+          <button className="danger-action" onClick={deleteLayer}>
+            注釈層削除
+          </button>
+          <button className="primary-action" onClick={addAnnotation}>
+            注釈追加
+          </button>
+          <button className="danger-action" onClick={deleteAnnotation}>
+            注釈削除
+          </button>
+          <button className="secondary-action" onClick={mergeAnnotations}>
+            結合
+          </button>
+          <button className="secondary-action" onClick={splitAnnotations}>
+            分割
+          </button>
+          <button
+            className="secondary-action"
+            onClick={undo}
+            disabled={undoStack.length === 0}
+          >
             戻す
           </button>
-          <button onClick={redo} disabled={redoStack.length === 0}>
+          <button
+            className="secondary-action"
+            onClick={redo}
+            disabled={redoStack.length === 0}
+          >
             進める
           </button>
         </div>

@@ -460,18 +460,21 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
         {analysisRangeMode === 'manual' && (
           <div className="manual-analysis-range-controls">
             <button
+              className="secondary-action"
               type="button"
               onClick={() => setManualAnalysisStartFrame(currentFrame)}
             >
               現在位置を開始に設定
             </button>
             <button
+              className="secondary-action"
               type="button"
               onClick={() => setManualAnalysisEndFrame(currentFrame)}
             >
               現在位置を終了に設定
             </button>
             <button
+              className="secondary-action"
               type="button"
               onClick={() => {
                 setManualAnalysisStartFrame(null)
@@ -497,6 +500,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
           <p>動画内に映る人物は1人ですか？複数人ですか？</p>
           <div className="button-container">
             <button
+              className="primary-action"
               onClick={() => {
                 setIsHumanCountSingle(true)
                 setHumanId(0)
@@ -505,6 +509,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
               1人
             </button>
             <button
+              className="primary-action"
               disabled={!isAiReady}
               onClick={() => {
                 setIsHumanCountSingle(false)
@@ -583,12 +588,14 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
             </div>
             <div className="similarity-actions">
               <button
+                className="primary-action"
                 disabled={!isAiReady || !selectedTimelineAnnotation}
                 onClick={detectSimilarMotion}
               >
                 類似候補を検出
               </button>
               <button
+                className="danger-action"
                 type="button"
                 onClick={() => {
                   setSimilarMotionCandidates([])
