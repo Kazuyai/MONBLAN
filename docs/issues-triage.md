@@ -43,6 +43,7 @@ or together with related work.
 | #20   | UX           | Fixed: blocking alerts are replaced by inline/floating notices.     |
 | #17   | latent-bug   | Fixed: frameWidth/timelineWidth are no longer duplicated state.     |
 | #42   | AI completion | Fixed: similarity completion is available from UI/API.             |
+| #8    | AI analysis    | Fixed: partial-analysis scope is available from UI/API.            |
 | #6    | AI completion | Superseded by #42 similarity completion integration scope.         |
 | #5    | AI pipeline  | Fixed: local motion-detection pipeline is available through API.    |
 
@@ -56,9 +57,9 @@ than verified user-facing bugs.
 | #40, #39, #38, #37           | architecture              |
 | #36, #33, #32                | code-quality              |
 | #29, #28, #27, #26, #25, #24 | performance               |
-| #8, #7, #4, #3, #1 | enhancements / AI completion |
+| #7, #4, #3, #1 | enhancements / AI completion |
 
 ## Recommended next order
 
-1. Implement #8 partial-analysis scope for both motion detection and similarity detection.
-2. Review #43 button UI consistency after the AI workflows are stable.
+1. Review #43 button UI consistency after the AI workflows are stable.
+2. Consider #3 joint-selection UI improvements if the button styling work exposes related usability issues.
