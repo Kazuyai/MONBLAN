@@ -19,9 +19,14 @@ class AppUpdater {
 let mainWindow: BrowserWindow | null = null
 
 ipcMain.handle('api:get-status', async () => getApiStatus())
-ipcMain.handle('api:refresh-status', async () =>
-  refreshApiEnvironment({ force: true })
-)
+ipcMain.handle('api:refresh-status', async () => {
+  try {
+    return await refreshApiEnvironment({ force: true })
+  } catch (error) {
+    log.warn('Failed to refresh API environment status', error)
+    return getApiStatus()
+  }
+})
 ipcMain.handle('api:restart', async () =>
   startApiServer(getProjectRoot(app.getAppPath()))
 )

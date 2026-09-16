@@ -40,6 +40,8 @@ const API_PORT = 8000
 const API_BASE_URL = `http://${API_HOST}:${API_PORT}`
 const API_START_TIMEOUT_MS = 30000
 const API_POLL_INTERVAL_MS = 500
+const API_REQUEST_TIMEOUT_MS = 3000
+const API_ENVIRONMENT_TIMEOUT_MS = 15000
 
 let apiProcess: ChildProcessWithoutNullStreams | null = null
 let apiStatus: ApiStatus = {
@@ -66,7 +68,10 @@ const updateStatus = (partial: Partial<ApiStatus>) => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-const requestJson = <T>(url: string, timeoutMs = 3000): Promise<T> => {
+const requestJson = <T>(
+  url: string,
+  timeoutMs = API_REQUEST_TIMEOUT_MS
+): Promise<T> => {
   return new Promise((resolve, reject) => {
     const request = http.get(url, { timeout: timeoutMs }, (response) => {
       let body = ''
@@ -117,7 +122,8 @@ export const refreshApiEnvironment = async (options = { force: false }) => {
 
 const refreshApiEnvironmentRequest = async () => {
   const environment = await requestJson<ApiEnvironmentStatus>(
-    `${API_BASE_URL}/environment/`
+    `${API_BASE_URL}/environment/`,
+    API_ENVIRONMENT_TIMEOUT_MS
   )
   updateStatus({
     status: 'ready',
