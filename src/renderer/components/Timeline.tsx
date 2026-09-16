@@ -1086,6 +1086,20 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       return values.map(escapeCsvCell).join(',')
     }
 
+    const downloadBlob = (blob: Blob, fileName: string) => {
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', fileName)
+      try {
+        document.body.appendChild(link)
+        link.click()
+      } finally {
+        link.remove()
+        window.setTimeout(() => URL.revokeObjectURL(url), 0)
+      }
+    }
+
     // 注釈付けしたものをCSVで出力する関数
     const exportCSV = () => {
       const headers = [
@@ -1113,12 +1127,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
 
       // CSVファイルの作成とダウンロード
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.setAttribute('download', 'annotations.csv')
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      downloadBlob(blob, 'annotations.csv')
     }
 
     const exportEAF = () => {
@@ -1129,12 +1138,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const blob = new Blob([eafContent], {
         type: 'application/xml;charset=utf-8;'
       })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.setAttribute('download', 'annotations.eaf')
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      downloadBlob(blob, 'annotations.eaf')
     }
 
     const readStoredVideoMetadata = () => {
@@ -1185,13 +1189,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const blob = new Blob([jsonContent], {
         type: 'application/json;charset=utf-8;'
       })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.setAttribute('download', 'annotation-project.json')
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(link.href)
+      downloadBlob(blob, 'annotation-project.json')
     }
 
     const importProjectJson = (project: AnnotationProject) => {

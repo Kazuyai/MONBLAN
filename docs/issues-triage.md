@@ -46,6 +46,7 @@ or together with related work.
 | #8    | AI analysis    | Fixed: partial-analysis scope is available from UI/API.            |
 | #6    | AI completion | Superseded by #42 similarity completion integration scope.         |
 | #5    | AI pipeline  | Fixed: local motion-detection pipeline is available through API.    |
+| #29   | performance   | Fixed: Blob URLs are revoked after replacement/download/unmount.   |
 
 ## defer
 
@@ -56,7 +57,7 @@ than verified user-facing bugs.
 | ---------------------------- | ------------------------- |
 | #40, #39, #38, #37           | architecture              |
 | #36, #33, #32                | code-quality              |
-| #29, #28, #27, #26, #25, #24 | performance               |
+| #28, #27, #26, #25, #24      | performance               |
 | #7, #4, #3, #1 | enhancements / AI completion |
 
 ## Recommended next order

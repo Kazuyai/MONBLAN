@@ -20,6 +20,7 @@ const App = () => {
   const [isPlaying, setIsPlaying] = useState<boolean>(false)
   const [playSpeed, setPlaySpeed] = useState<number>(1)
   const [isPartiallyPlaying, setIsPartiallyPlaying] = useState<boolean>(false)
+  const previousVideoSrcsRef = useRef<string[]>([])
 
   const [selectionStartFrame, setSelectionStartFrame] = useState<number>(0)
   const [selectionFrameWidth, setSelectionFrameWidth] = useState<number>(0)
@@ -73,6 +74,26 @@ const App = () => {
     return () => {
       isMounted = false
       unsubscribe?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    const previousVideoSrcs = previousVideoSrcsRef.current
+    const currentVideoSrcs = new Set(videoSrcs)
+
+    previousVideoSrcs
+      .filter((src) => src.startsWith('blob:') && !currentVideoSrcs.has(src))
+      .forEach((src) => URL.revokeObjectURL(src))
+
+    previousVideoSrcsRef.current = videoSrcs
+  }, [videoSrcs])
+
+  useEffect(() => {
+    return () => {
+      previousVideoSrcsRef.current
+        .filter((src) => src.startsWith('blob:'))
+        .forEach((src) => URL.revokeObjectURL(src))
+      previousVideoSrcsRef.current = []
     }
   }, [])
 
