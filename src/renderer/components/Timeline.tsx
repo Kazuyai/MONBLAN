@@ -62,6 +62,8 @@ interface TimelineState {
   layerNames: string[]
 }
 
+const MAX_HISTORY_LENGTH = 100
+
 type TimelineNoticeType = 'success' | 'warning' | 'error'
 
 interface TimelineNotice {
@@ -234,9 +236,14 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }
     }
 
+    const appendHistory = (stack: TimelineState[], stateToSave: TimelineState) => [
+      ...stack.slice(-(MAX_HISTORY_LENGTH - 1)),
+      deepCopyState(stateToSave)
+    ]
+
     // Undoスタックに現在の状態を保存し、Redoスタックをクリアする関数
     const pushToUndoStack = (stateToSave: TimelineState) => {
-      setUndoStack((prevStack) => [...prevStack, deepCopyState(stateToSave)])
+      setUndoStack((prevStack) => appendHistory(prevStack, stateToSave))
       setRedoStack([])
     }
 
@@ -502,7 +509,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       if (undoStack.length > 0) {
         const previousState = undoStack[undoStack.length - 1]
         setUndoStack((prevStack) => prevStack.slice(0, prevStack.length - 1))
-        setRedoStack((prevStack) => [...prevStack, deepCopyState(state)])
+        setRedoStack((prevStack) => appendHistory(prevStack, state))
         setState(previousState)
         setSelectedLayerIndex((index) =>
           clampLayerIndex(index, previousState.layerNames)
@@ -518,7 +525,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       if (redoStack.length > 0) {
         const nextState = redoStack[redoStack.length - 1]
         setRedoStack((prevStack) => prevStack.slice(0, prevStack.length - 1))
-        setUndoStack((prevStack) => [...prevStack, deepCopyState(state)])
+        setUndoStack((prevStack) => appendHistory(prevStack, state))
         setState(nextState)
         setSelectedLayerIndex((index) =>
           clampLayerIndex(index, nextState.layerNames)
