@@ -115,6 +115,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
 
     const [undoStack, setUndoStack] = useState<TimelineState[]>([])
     const [redoStack, setRedoStack] = useState<TimelineState[]>([])
+    const undoRef = useRef<() => void>(() => undefined)
+    const redoRef = useRef<() => void>(() => undefined)
 
     const [zoomLevel, setZoomLevel] = useState(defaultZoomLevel)
     const [minZoomLevel, setMinZoomLevel] = useState(0.5)
@@ -526,6 +528,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         updateContainerRefs(nextState.layerNames)
       }
     }
+
+    undoRef.current = undo
+    redoRef.current = redo
 
     // 注釈層の追加
     const addLayer = () => {
@@ -1419,13 +1424,13 @@ ${tierElements.join('\n')}
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.ctrlKey && e.key === 'z') {
           e.preventDefault()
-          undo()
+          undoRef.current()
         } else if (
           (e.ctrlKey && e.key === 'y') ||
           (e.ctrlKey && e.shiftKey && e.key === 'z')
         ) {
           e.preventDefault()
-          redo()
+          redoRef.current()
         }
       }
 
@@ -1434,7 +1439,7 @@ ${tierElements.join('\n')}
       return () => {
         document.removeEventListener('keydown', handleKeyDown)
       }
-    })
+    }, [])
 
     // useImperativeHandleを使用してexportCSVとexportEAFを公開
     useImperativeHandle(ref, () => ({
