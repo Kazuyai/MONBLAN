@@ -42,6 +42,7 @@ or together with related work.
 | #21   | UX           | Fixed: guidance is shown before loading a video.                    |
 | #20   | UX           | Fixed: blocking alerts are replaced by inline/floating notices.     |
 | #17   | latent-bug   | Fixed: frameWidth/timelineWidth are no longer duplicated state.     |
+| #18   | latent-bug   | Fixed: annotation edits save Undo history outside state updaters.  |
 | #42   | AI completion | Fixed: similarity completion is available from UI/API.             |
 | #8    | AI analysis    | Fixed: partial-analysis scope is available from UI/API.            |
 | #6    | AI completion | Superseded by #42 similarity completion integration scope.         |

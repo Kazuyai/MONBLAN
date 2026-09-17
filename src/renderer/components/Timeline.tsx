@@ -247,6 +247,11 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       setRedoStack([])
     }
 
+    const applyEdit = (nextState: TimelineState) => {
+      pushToUndoStack(state)
+      setState(nextState)
+    }
+
     const updateContainerRefs = (layerNames: string[]) => {
       containerRefs.current = layerNames.map(() =>
         React.createRef<HTMLDivElement>()
@@ -473,12 +478,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         )
 
         if (canInsertAnnotation(newAnnotation, layerAnnotations)) {
-          setState((prevState) => {
-            pushToUndoStack(prevState) // Undoスタックに保存
-            return {
-              ...prevState,
-              annotations: [...prevState.annotations, newAnnotation]
-            }
+          applyEdit({
+            ...state,
+            annotations: [...state.annotations, newAnnotation]
           })
           // アノテーションを追加した後、選択範囲をクリア
           setSelectionWidth(0)
@@ -491,14 +493,11 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     // 注釈の削除
     const deleteAnnotation = () => {
       if (focusedAnnotationId) {
-        setState((prevState) => {
-          pushToUndoStack(prevState) // Undoスタックに保存
-          return {
-            ...prevState,
-            annotations: prevState.annotations.filter(
-              (annotation) => !selectedAnnotationIds.includes(annotation.id)
-            )
-          }
+        applyEdit({
+          ...state,
+          annotations: state.annotations.filter(
+            (annotation) => !selectedAnnotationIds.includes(annotation.id)
+          )
         })
         setFocusedAnnotationId(null)
       }
@@ -832,53 +831,39 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       updatedData: { startFrame: number; endFrame: number; text: string },
       shouldPushToUndoStack: boolean = true
     ) => {
-      setState((prevState) => {
-        const newAnnotations = [...prevState.annotations]
-        const annotationIndex = newAnnotations.findIndex(
-          (annotation) => annotation.id === id
-        )
+      const annotationIndex = state.annotations.findIndex(
+        (annotation) => annotation.id === id
+      )
+      if (annotationIndex === -1) return
 
-        if (annotationIndex !== -1) {
-          const oldAnnotation = newAnnotations[annotationIndex]
+      const oldAnnotation = state.annotations[annotationIndex]
+      if (
+        oldAnnotation.startFrame === updatedData.startFrame &&
+        oldAnnotation.endFrame === updatedData.endFrame &&
+        oldAnnotation.text === updatedData.text
+      ) {
+        return
+      }
 
-          // 状態が変化していない場合は何もしない
-          if (
-            oldAnnotation.startFrame === updatedData.startFrame &&
-            oldAnnotation.endFrame === updatedData.endFrame &&
-            oldAnnotation.text === updatedData.text
-          ) {
-            return prevState
-          }
+      const updatedAnnotation = { ...oldAnnotation, ...updatedData }
+      const layerAnnotations = state.annotations.filter(
+        (annotation) =>
+          annotation.layerIndex === updatedAnnotation.layerIndex &&
+          annotation.id !== id
+      )
+      if (!canInsertAnnotation(updatedAnnotation, layerAnnotations)) {
+        showTimelineNotice('アノテーションが重なっています。')
+        return
+      }
 
-          const updatedAnnotation = {
-            ...oldAnnotation,
-            ...updatedData
-          }
-
-          const layerAnnotations = newAnnotations.filter(
-            (annotation) =>
-              annotation.layerIndex === updatedAnnotation.layerIndex &&
-              annotation.id !== id
-          )
-
-          if (canInsertAnnotation(updatedAnnotation, layerAnnotations)) {
-            newAnnotations[annotationIndex] = updatedAnnotation
-
-            if (shouldPushToUndoStack) {
-              pushToUndoStack(prevState) // Undoスタックに保存
-            }
-
-            return {
-              ...prevState,
-              annotations: newAnnotations
-            }
-          } else {
-            showTimelineNotice('アノテーションが重なっています。')
-            return prevState // 変更なし
-          }
-        }
-        return prevState
-      })
+      const newAnnotations = [...state.annotations]
+      newAnnotations[annotationIndex] = updatedAnnotation
+      const nextState = { ...state, annotations: newAnnotations }
+      if (shouldPushToUndoStack) {
+        applyEdit(nextState)
+      } else {
+        setState(nextState)
+      }
     }
 
     // 結合機能の実装
@@ -933,17 +918,12 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }
 
       // 結合を実行
-      setState((prevState) => {
-        pushToUndoStack(prevState) // Undo スタックに保存
-
-        const remainingAnnotations = prevState.annotations.filter(
-          (annotation) => !selectedAnnotationIds.includes(annotation.id)
-        )
-
-        return {
-          ...prevState,
-          annotations: [...remainingAnnotations, newAnnotation]
-        }
+      const remainingAnnotations = annotations.filter(
+        (annotation) => !selectedAnnotationIds.includes(annotation.id)
+      )
+      applyEdit({
+        ...state,
+        annotations: [...remainingAnnotations, newAnnotation]
       })
 
       // 結合後のアノテーションを選択状態にする
@@ -976,37 +956,32 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
           return
         }
 
-        setState((prevState) => {
-          pushToUndoStack(prevState) // Undo スタックに保存
+        let newAnnotations = [...annotations]
+        annotationsToSplit.forEach((annotation) => {
+          // 元のアノテーションを削除
+          newAnnotations = newAnnotations.filter(
+            (a) => a.id !== annotation.id
+          )
 
-          let newAnnotations = [...prevState.annotations]
-
-          annotationsToSplit.forEach((annotation) => {
-            // 元のアノテーションを削除
-            newAnnotations = newAnnotations.filter(
-              (a) => a.id !== annotation.id
-            )
-
-            // 分割されたアノテーションを作成
-            const firstPart: AnnotationType = {
-              ...annotation,
-              id: uuidv4(),
-              endFrame: playheadFrame
-            }
-
-            const secondPart: AnnotationType = {
-              ...annotation,
-              id: uuidv4(),
-              startFrame: playheadFrame
-            }
-
-            newAnnotations.push(firstPart, secondPart)
-          })
-
-          return {
-            ...prevState,
-            annotations: newAnnotations
+          // 分割されたアノテーションを作成
+          const firstPart: AnnotationType = {
+            ...annotation,
+            id: uuidv4(),
+            endFrame: playheadFrame
           }
+
+          const secondPart: AnnotationType = {
+            ...annotation,
+            id: uuidv4(),
+            startFrame: playheadFrame
+          }
+
+          newAnnotations.push(firstPart, secondPart)
+        })
+
+        applyEdit({
+          ...state,
+          annotations: newAnnotations
         })
       } else {
         // 方法2：選択範囲で分割
@@ -1030,58 +1005,53 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
           return
         }
 
-        setState((prevState) => {
-          pushToUndoStack(prevState) // Undo スタックに保存
+        let newAnnotations = [...annotations]
+        annotationsToSplit.forEach((annotation) => {
+          // 元のアノテーションを削除
+          newAnnotations = newAnnotations.filter(
+            (a) => a.id !== annotation.id
+          )
 
-          let newAnnotations = [...prevState.annotations]
+          // 分割されたアノテーションを作成
+          const newParts: AnnotationType[] = []
 
-          annotationsToSplit.forEach((annotation) => {
-            // 元のアノテーションを削除
-            newAnnotations = newAnnotations.filter(
-              (a) => a.id !== annotation.id
-            )
-
-            // 分割されたアノテーションを作成
-            const newParts: AnnotationType[] = []
-
-            // 選択範囲の前の部分
-            if (annotation.startFrame < selectionStartFrame) {
-              newParts.push({
-                ...annotation,
-                id: uuidv4(),
-                endFrame: selectionStartFrame
-              })
-            }
-
-            // 選択範囲内の部分
-            const overlapStart = Math.max(
-              annotation.startFrame,
-              selectionStartFrame
-            )
-            const overlapEnd = Math.min(annotation.endFrame, selectionEndFrame)
+          // 選択範囲の前の部分
+          if (annotation.startFrame < selectionStartFrame) {
             newParts.push({
               ...annotation,
               id: uuidv4(),
-              startFrame: overlapStart,
-              endFrame: overlapEnd
+              endFrame: selectionStartFrame
             })
+          }
 
-            // 選択範囲の後の部分
-            if (annotation.endFrame > selectionEndFrame) {
-              newParts.push({
-                ...annotation,
-                id: uuidv4(),
-                startFrame: selectionEndFrame
-              })
-            }
-
-            newAnnotations.push(...newParts)
+          // 選択範囲内の部分
+          const overlapStart = Math.max(
+            annotation.startFrame,
+            selectionStartFrame
+          )
+          const overlapEnd = Math.min(annotation.endFrame, selectionEndFrame)
+          newParts.push({
+            ...annotation,
+            id: uuidv4(),
+            startFrame: overlapStart,
+            endFrame: overlapEnd
           })
 
-          return {
-            ...prevState,
-            annotations: newAnnotations
+          // 選択範囲の後の部分
+          if (annotation.endFrame > selectionEndFrame) {
+            newParts.push({
+              ...annotation,
+              id: uuidv4(),
+              startFrame: selectionEndFrame
+            })
           }
+
+          newAnnotations.push(...newParts)
+        })
+
+        applyEdit({
+          ...state,
+          annotations: newAnnotations
         })
       }
     }
