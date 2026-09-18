@@ -306,6 +306,13 @@ button {
   @include app-button;
 }
 
+.tab-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: #0009;
+}
+
 .no-spin::-webkit-inner-spin-button,
 .no-spin::-webkit-outer-spin-button {
   -webkit-appearance: none;
@@ -403,6 +410,76 @@ button {
           > div {
             height: 100%;
             overflow-y: hidden;
+            min-height: 0;
+            flex-direction: column;
+            .tab-panel-toolbar {
+              display: flex;
+              flex: none;
+              align-items: center;
+              justify-content: flex-end;
+              min-height: 32rem;
+              margin-bottom: 6rem;
+              h2 {
+                flex: 1;
+                color: #eee;
+                font-size: 18rem;
+              }
+              .tab-panel-expand-button {
+                min-height: 28rem;
+                padding: 4rem 10rem;
+                border-color: #646464;
+                background: #303030;
+                color: #ddd;
+                font-size: 12rem;
+                font-weight: 500;
+                &:hover {
+                  border-color: #999;
+                  background: #3c3c3c;
+                  color: #fff;
+                  box-shadow: none;
+                }
+              }
+            }
+            .tab-panel-body {
+              flex: 1;
+              min-height: 0;
+              overflow: hidden;
+            }
+            &.expanded {
+              position: fixed;
+              top: 50%;
+              left: 50%;
+              z-index: 90;
+              width: min(980px, calc(100vw - 48px));
+              height: min(720px, calc(100vh - 48px));
+              padding: 22rem;
+              transform: translate(-50%, -50%);
+              border: 1rem solid #696969;
+              border-radius: 12rem;
+              background: #262626;
+              box-shadow: 0 20rem 60rem #000b;
+              .tab-panel-toolbar {
+                min-height: 36rem;
+                margin-bottom: 14rem;
+                .tab-panel-expand-button {
+                  width: 30rem;
+                  min-height: 30rem;
+                  padding: 0;
+                  border: 0;
+                  border-radius: 50%;
+                  background: transparent;
+                  color: #ddd;
+                  font-size: 23rem;
+                  font-weight: 400;
+                  line-height: 1;
+                  &:hover {
+                    border: 0;
+                    background: #ffffff1c;
+                    box-shadow: none;
+                  }
+                }
+              }
+            }
             #open-file {
               display: flex;
               flex-direction: column;

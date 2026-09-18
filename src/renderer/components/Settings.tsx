@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ApiStatus } from '../../main/preload'
 import type {
   AnnotationProject,
@@ -58,6 +59,7 @@ export const Settings: React.FC<SettingsProps> = ({
   selectedTimelineAnnotation
 }) => {
   const [selectedTabIndex, setSelectedTabIndex] = useState(0)
+  const [expandedTabIndex, setExpandedTabIndex] = useState<number | null>(null)
   const tabHeaderRef = useRef<HTMLDivElement>(null)
 
   const tabs = [
@@ -149,6 +151,44 @@ export const Settings: React.FC<SettingsProps> = ({
   }, [])
 
   useEffect(() => {
+    if (expandedTabIndex === null) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (
+        event.key === 'Escape' &&
+        !document.querySelector('.analysis-step-dialog-backdrop')
+      ) {
+        setExpandedTabIndex(null)
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [expandedTabIndex])
+
+  const keepFocusInExpandedTab = (
+    event: React.KeyboardEvent<HTMLDivElement>
+  ) => {
+    if (event.key !== 'Tab') return
+    const controls = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'button, input, select, textarea, [tabindex]'
+      )
+    ).filter(
+      (control) =>
+        !control.hasAttribute('disabled') && control.getClientRects().length > 0
+    )
+    const firstControl = controls[0]
+    const lastControl = controls[controls.length - 1]
+    if (!firstControl || !lastControl) return
+    if (event.shiftKey && document.activeElement === firstControl) {
+      event.preventDefault()
+      lastControl.focus()
+    } else if (!event.shiftKey && document.activeElement === lastControl) {
+      event.preventDefault()
+      firstControl.focus()
+    }
+  }
+
+  useEffect(() => {
     const tabHeader = tabHeaderRef.current
 
     const handleWheel = (event: WheelEvent) => {
@@ -168,32 +208,67 @@ export const Settings: React.FC<SettingsProps> = ({
   }, [])
 
   return (
-    <section className="settings">
-      {/* タブのヘッダー */}
-      <div className="tab-header" ref={tabHeaderRef}>
-        {tabs.map((tab, index) => (
-          <div
-            key={index}
-            className={`tab-button ${selectedTabIndex === index ? 'active' : ''}`}
-            onClick={() => setSelectedTabIndex(index)}
-          >
-            {tab.label}
-          </div>
-        ))}
-      </div>
+    <>
+      <section className="settings">
+        {/* タブのヘッダー */}
+        <div className="tab-header" ref={tabHeaderRef}>
+          {tabs.map((tab, index) => (
+            <div
+              key={index}
+              className={`tab-button ${selectedTabIndex === index ? 'active' : ''}`}
+              onClick={() => setSelectedTabIndex(index)}
+            >
+              {tab.label}
+            </div>
+          ))}
+        </div>
 
-      {/* タブのコンテンツ */}
-      <div className="tab-content">
-        {tabs.map((tab, index) => (
+        {/* タブのコンテンツ */}
+        <div className="tab-content">
+          {tabs.map((tab, index) => (
+            <div
+              key={index}
+              className={`tab-panel${expandedTabIndex === index ? ' expanded' : ''}`}
+              style={{ display: selectedTabIndex === index ? 'flex' : 'none' }}
+              role={expandedTabIndex === index ? 'dialog' : undefined}
+              aria-modal={expandedTabIndex === index ? true : undefined}
+              aria-labelledby={expandedTabIndex === index ? `settings-tab-title-${index}` : undefined}
+              onKeyDown={expandedTabIndex === index ? keepFocusInExpandedTab : undefined}
+            >
+              <div className="tab-panel-toolbar">
+                {expandedTabIndex === index && (
+                  <h2 id={`settings-tab-title-${index}`}>{tab.label}</h2>
+                )}
+                <button
+                  type="button"
+                  className="tab-panel-expand-button"
+                  aria-label={
+                    expandedTabIndex === index
+                      ? `${tab.label}の拡大表示を閉じる`
+                      : `${tab.label}を拡大表示`
+                  }
+                  onClick={() =>
+                    setExpandedTabIndex(expandedTabIndex === index ? null : index)
+                  }
+                >
+                  {expandedTabIndex === index ? '×' : '拡大表示'}
+                </button>
+              </div>
+              <div className="tab-panel-body">{tab.component()}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+      {expandedTabIndex !== null &&
+        createPortal(
           <div
-            key={index}
-            style={{ display: selectedTabIndex === index ? 'block' : 'none' }}
-          >
-            {tab.component()}
-          </div>
-        ))}
-      </div>
-    </section>
+            className="tab-panel-backdrop"
+            onMouseDown={() => setExpandedTabIndex(null)}
+            aria-hidden="true"
+          />,
+          document.body
+        )}
+    </>
   )
 }
 
