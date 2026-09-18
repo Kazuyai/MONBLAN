@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 _SIMILARITY_DETECTOR_CLASS = None
 # Existing detect_movement.py returns one-based, inclusive frame ranges.
 ANNOTATION_FRAME_INDEX_BASE = 1
+MIN_MOVEMENT_ANALYSIS_FRAMES = 5
 ALPHAPOSE_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "annotation-tool-alphapose-cache")
 _ALPHAPOSE_CACHE_LOCK = threading.Lock()
 _ALPHAPOSE_CACHE_LOCKS: dict[str, threading.Lock] = {}
@@ -655,6 +656,16 @@ def run_pose_pipeline(
                 end_name="analysisEndFrame",
             )
         selected_range = normalize_analysis_range(video_file_path, analysis_range)
+        if selected_range is None:
+            capture = cv2.VideoCapture(video_file_path)
+            try:
+                analysis_frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            finally:
+                capture.release()
+        else:
+            analysis_frame_count = selected_range["endFrame"] - selected_range["startFrame"] + 1
+        if analysis_frame_count < MIN_MOVEMENT_ANALYSIS_FRAMES:
+            raise ValueError(f"動作範囲検出には{MIN_MOVEMENT_ANALYSIS_FRAMES}フレーム以上の分析区間が必要です。")
         analysis_video_path, pose_results_path, frame_offset = prepare_analysis_input(
             video_file_path,
             selected_range,

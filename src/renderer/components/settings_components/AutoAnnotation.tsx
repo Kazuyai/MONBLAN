@@ -47,6 +47,7 @@ interface ApiErrorPayload {
 }
 
 type AnalysisRangeMode = 'full' | 'selection' | 'manual'
+const MIN_MOVEMENT_ANALYSIS_FRAMES = 5
 
 const getApiStatusMessage = (apiStatus: ApiStatus | null) => {
   if (!apiStatus || apiStatus.status === 'starting') {
@@ -379,7 +380,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       return '分析対象: 動画全体'
     }
     if (analysisFrameRange) {
-      return `分析対象: ${formatFrameTime(analysisFrameRange.startFrame)}–${formatFrameTime(analysisFrameRange.endFrame)}（${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f）`
+      return `分析対象: ${formatFrameTime(analysisFrameRange.startFrame)}–${formatFrameTime(analysisFrameRange.endFrame + 1)}（${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f）`
     }
     return analysisRangeMode === 'selection'
       ? '分析対象: タイムライン上で範囲を選択してください'
@@ -535,13 +536,18 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     if (step !== 2) {
       return
     }
-    if (analysisRangeMode !== 'full' && !getAnalysisFrameRange()) {
+    const analysisFrameRange = getAnalysisFrameRange()
+    if (analysisRangeMode !== 'full' && !analysisFrameRange) {
       setApiError({
         message:
           analysisRangeMode === 'selection'
             ? 'タイムライン上で分析範囲を選択してください。'
             : '分析範囲の開始位置と終了位置を設定してください。'
       })
+      return
+    }
+    if (analysisFrameRange && analysisFrameRange.endFrame - analysisFrameRange.startFrame + 1 < MIN_MOVEMENT_ANALYSIS_FRAMES) {
+      setApiError({ message: `動作範囲検出には${MIN_MOVEMENT_ANALYSIS_FRAMES}フレーム以上の分析区間が必要です。` })
       return
     }
 
@@ -732,6 +738,10 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
         const range = getAnalysisFrameRange()
         if (analysisRangeMode !== 'full' && !range) {
           setApiError({ message: '分析区間を指定してください。' })
+          return
+        }
+        if (range && range.endFrame - range.startFrame + 1 < MIN_MOVEMENT_ANALYSIS_FRAMES) {
+          setApiError({ message: `動作範囲検出には${MIN_MOVEMENT_ANALYSIS_FRAMES}フレーム以上の分析区間が必要です。` })
           return
         }
         setApiError(null)
