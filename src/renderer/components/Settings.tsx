@@ -80,6 +80,7 @@ export const Settings: React.FC<SettingsProps> = ({
           setIsEditing={setIsEditing}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
           apiStatus={apiStatus}
+          frameRate={frameRate}
           videoSrcs={videoSrcs}
           currentFrame={currentFrame}
           selectionStartFrame={selectionStartFrame}

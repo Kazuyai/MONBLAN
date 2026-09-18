@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { ApiStatus } from '../../../main/preload'
+import { AnalysisSteps } from './AnalysisSteps'
 
 interface SettingsProps {
   setIsProcessing: (isProcessing: boolean) => void
@@ -14,6 +15,7 @@ interface SettingsProps {
     }[]
   ) => void
   apiStatus: ApiStatus | null
+  frameRate: number
   videoSrcs: string[]
   currentFrame: number
   selectionStartFrame: number
@@ -71,11 +73,13 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   setIsEditing,
   setAutoAnnotationResponseData,
   apiStatus,
+  frameRate,
   videoSrcs,
   currentFrame,
   selectionStartFrame,
   selectionFrameWidth
 }) => {
+  const videoSrc = videoSrcs[0]
   // 画像サイズ
   //   width : 170rem
   //   height: 300rem
@@ -96,6 +100,13 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     null
   )
   const [humanImageUrls, setHumanImageUrls] = useState<string[]>([])
+  const [humanIds, setHumanIds] = useState<number[]>([])
+  const [step, setStep] = useState(0)
+  const previousVideoSrc = useRef(videoSrc)
+  const peopleRequestId = useRef(0)
+  const [confirmedAnalysisRange, setConfirmedAnalysisRange] = useState<
+    { startFrame: number; endFrame: number } | null | undefined
+  >(undefined)
   const [autoAnnotationLayer, setAutoAnnotationLayer] = useState<
     AutoAnnotationLayerParam[]
   >([{ index: 0, layerName: 'レイヤー1', humanId: 0, points: [] }])
@@ -113,6 +124,37 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   const [manualAnalysisEndFrame, setManualAnalysisEndFrame] = useState<
     number | null
   >(null)
+
+  useEffect(() => {
+    if (previousVideoSrc.current === videoSrc) return
+    previousVideoSrc.current = videoSrc
+    peopleRequestId.current += 1
+    setStep(0)
+    setConfirmedAnalysisRange(undefined)
+    setIsHumanCountSingle(null)
+    setHumanImageUrls([])
+    setHumanIds([])
+    setManualAnalysisStartFrame(null)
+    setManualAnalysisEndFrame(null)
+  }, [videoSrc])
+
+  const handleStepBack = (targetStep: number) => {
+    peopleRequestId.current += 1
+    if (step === 2) {
+      setIsHumanCountSingle(null)
+      setHumanImageUrls([])
+      setHumanIds([])
+      setAutoAnnotationLayer([{ index: 0, layerName: 'レイヤー1', humanId: 0, points: [] }])
+      setSelectedLayerIndex(0)
+      setIsLayerNameEdit(false)
+      setIsEditing(false)
+    }
+    if (targetStep === 0) {
+      setConfirmedAnalysisRange(undefined)
+    }
+    setApiError(null)
+    setStep(targetStep)
+  }
 
   const readApiError = async (response: Response): Promise<ApiErrorPayload> => {
     try {
@@ -296,6 +338,9 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   }
 
   const getAnalysisFrameRange = () => {
+    if (confirmedAnalysisRange !== undefined) {
+      return confirmedAnalysisRange
+    }
     if (analysisRangeMode === 'full') {
       return null
     }
@@ -321,22 +366,32 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     }
   }
 
+  const formatFrameTime = (frame: number) => {
+    if (!Number.isFinite(frameRate) || frameRate <= 0) {
+      return '-'
+    }
+    return `${((frame - 1) / frameRate).toFixed(3)}s`
+  }
+
   const getAnalysisRangeMessage = () => {
     const analysisFrameRange = getAnalysisFrameRange()
     if (analysisRangeMode === 'full') {
       return '分析対象: 動画全体'
     }
     if (analysisFrameRange) {
-      return `分析対象: ${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f`
+      return `分析対象: ${formatFrameTime(analysisFrameRange.startFrame)}–${formatFrameTime(analysisFrameRange.endFrame)}（${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f）`
     }
     return analysisRangeMode === 'selection'
-      ? '分析対象: 選択範囲がありません'
-      : '分析対象: 手動範囲が未設定です'
+      ? '分析対象: タイムライン上で範囲を選択してください'
+      : '分析対象: 再生位置から開始と終了を設定してください'
   }
 
   const getUploadedHumanImages = (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
+    if (confirmedAnalysisRange) {
+      formData.append('analysisRange', JSON.stringify(confirmedAnalysisRange))
+    }
 
     return fetch('http://127.0.0.1:8000/get_human_images/', {
       method: 'POST',
@@ -350,7 +405,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ file_path: filePath })
+      body: JSON.stringify({ file_path: filePath, analysisRange: confirmedAnalysisRange })
     })
   }
 
@@ -360,11 +415,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     formData.append('autoAnnotationLayer', JSON.stringify(autoAnnotationLayer))
     const analysisFrameRange = getAnalysisFrameRange()
     if (analysisFrameRange) {
-      formData.append(
-        'analysisStartFrame',
-        String(analysisFrameRange.startFrame)
-      )
-      formData.append('analysisEndFrame', String(analysisFrameRange.endFrame))
+      formData.append('analysisRange', JSON.stringify(analysisFrameRange))
     }
 
     return fetch('http://127.0.0.1:8000/items/', {
@@ -383,16 +434,29 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       body: JSON.stringify({
         file_path: filePath,
         autoAnnotationLayer,
-        analysisStartFrame: analysisFrameRange?.startFrame ?? null,
-        analysisEndFrame: analysisFrameRange?.endFrame ?? null
+        analysisRange: analysisFrameRange
       })
     })
   }
 
-  const getHumanImages = async () => {
+  const applyPeople = (data: { people?: { humanId: number; image: string }[]; images?: string[] }, single: boolean) => {
+    const people = data.people ?? (data.images ?? []).map((image, humanId) => ({ humanId, image }))
+    if (people.length === 0) {
+      setApiError({ message: '指定区間に人物が見つかりません。分析区間を変更してください。' })
+      return
+    }
+    setHumanIds(people.map((person) => person.humanId))
+    setHumanImageUrls(people.map((person) => `data:image/jpeg;base64,${person.image}`))
+    setAutoAnnotationLayer((layers) => layers.map((layer) => ({ ...layer, humanId: people[0].humanId })))
+    setIsHumanCountSingle(single)
+    setStep(2)
+  }
+
+  const getHumanImages = async (single: boolean) => {
     if (!isAiReady) {
       return
     }
+    const requestId = ++peopleRequestId.current
     const input = document.getElementById('input') as HTMLInputElement
     const files = input.files
     const storedVideoPath = getStoredVideoPath()
@@ -408,12 +472,8 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
           return
         }
         const data = await response.json()
-        if (data.images) {
-          const imageUrls = data.images.map(
-            (base64String: string) => `data:image/jpeg;base64,${base64String}`
-          )
-          setHumanImageUrls(imageUrls)
-        }
+        if (requestId !== peopleRequestId.current) return
+        applyPeople(data, single)
       } catch (error) {
         console.error('Error:', error)
         setApiError({
@@ -447,12 +507,8 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
           return
         }
         const data = await response.json()
-        if (data.images) {
-          const imageUrls = data.images.map(
-            (base64String: string) => `data:image/jpeg;base64,${base64String}`
-          )
-          setHumanImageUrls(imageUrls)
-        }
+        if (requestId !== peopleRequestId.current) return
+        applyPeople(data, single)
       } catch (error) {
         console.error('Error:', error)
         setApiError({
@@ -474,6 +530,9 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
 
   const autoAnnotation = async () => {
     if (!isAiReady) {
+      return
+    }
+    if (step !== 2) {
       return
     }
     if (analysisRangeMode !== 'full' && !getAnalysisFrameRange()) {
@@ -593,6 +652,13 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
           )}
         </div>
       )}
+      <AnalysisSteps
+        labels={['分析区間', '人物', '関節・レイヤーと検出']}
+        currentStep={step}
+        onBack={handleStepBack}
+      />
+      {step > 0 && <p className="analysis-range-message">{getAnalysisRangeMessage()}</p>}
+      {step === 0 && <>
       <p className="analysis-range-message">
         {getAnalysisRangeMessage()}
       </p>
@@ -604,7 +670,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
             checked={analysisRangeMode === 'full'}
             onChange={() => setAnalysisRangeMode('full')}
           />
-          全体
+          動画全体
         </label>
         <label>
           <input
@@ -613,7 +679,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
             checked={analysisRangeMode === 'selection'}
             onChange={() => setAnalysisRangeMode('selection')}
           />
-          選択範囲
+          タイムラインの選択範囲
         </label>
         <label>
           <input
@@ -622,7 +688,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
             checked={analysisRangeMode === 'manual'}
             onChange={() => setAnalysisRangeMode('manual')}
           />
-          手動指定
+          再生位置で開始・終了
         </label>
         {analysisRangeMode === 'manual' && (
           <div className="manual-analysis-range-controls">
@@ -652,40 +718,51 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
             </button>
             <span>
               {manualAnalysisStartFrame !== null
-                ? `開始: ${manualAnalysisStartFrame}f`
+                ? `開始: ${formatFrameTime(manualAnalysisStartFrame)}（${manualAnalysisStartFrame}f）`
                 : '開始: 未設定'}
               {' / '}
               {manualAnalysisEndFrame !== null
-                ? `終了: ${manualAnalysisEndFrame}f`
+                ? `終了: ${formatFrameTime(manualAnalysisEndFrame)}（${manualAnalysisEndFrame}f）`
                 : '終了: 未設定'}
             </span>
           </div>
         )}
       </div>
+      <button className="primary-action analysis-next" type="button" onClick={() => {
+        const range = getAnalysisFrameRange()
+        if (analysisRangeMode !== 'full' && !range) {
+          setApiError({ message: '分析区間を指定してください。' })
+          return
+        }
+        setApiError(null)
+        setConfirmedAnalysisRange(range)
+        setStep(1)
+      }}>分析区間を確定して次へ</button>
+      </>}
       {/* isHumanCountSingleがnullならhuman-count-selectorを表示 */}
-      {isHumanCountSingle === null ? (
+      {step === 1 && (
         <div className="human-count-selector">
-          <p>動画内に映る人物は1人ですか？複数人ですか？</p>
+          <p>指定区間に映る人物は1人ですか？複数人ですか？</p>
           <div className="button-container">
             <button
               className="primary-action"
-              onClick={() => setIsHumanCountSingle(true)}
+              disabled={!isAiReady}
+              onClick={() => getHumanImages(true)}
             >
               1人
             </button>
             <button
               className="primary-action"
               disabled={!isAiReady}
-              onClick={() => {
-                setIsHumanCountSingle(false)
-                getHumanImages()
-              }}
+              onClick={() => getHumanImages(false)}
             >
               複数人
             </button>
           </div>
         </div>
-      ) : (
+      )}
+      {step === 2 && (
+        <>
         <div className="auto-annotation-param-editor">
           {isHumanCountSingle === false && (
             <div className="human-selector">
@@ -693,13 +770,13 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
               <div className="human-img-container">
                 {humanImageUrls.map((url, index) => (
                   <div
-                    key={index}
-                    className={`human-img ${index === autoAnnotationLayer[selectedLayerIndex].humanId ? 'selected' : ''}`}
+                    key={humanIds[index]}
+                    className={`human-img ${humanIds[index] === autoAnnotationLayer[selectedLayerIndex].humanId ? 'selected' : ''}`}
                   >
                     <div
                       className="icon"
                       style={{ backgroundImage: `url(${url})` }}
-                      onClick={() => selectHuman(index)}
+                      onClick={() => selectHuman(humanIds[index])}
                     ></div>
                     <img src={url} alt="" className="popup" />
                   </div>
@@ -790,7 +867,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
                 <div
                   className="add-layer-item"
                   onClick={() =>
-                    addLayerParam(autoAnnotationLayer.length, 'レイヤー', 0, [])
+                    addLayerParam(autoAnnotationLayer.length, 'レイヤー', autoAnnotationLayer[selectedLayerIndex].humanId, [])
                   }
                 >
                   <span>＋</span>
@@ -807,6 +884,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
             </button>
           </div>
         </div>
+        </>
       )}
     </div>
   )

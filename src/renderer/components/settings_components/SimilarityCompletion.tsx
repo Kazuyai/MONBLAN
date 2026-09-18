@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import type { ApiStatus } from '../../../main/preload'
 import type {
   SelectedTimelineAnnotation,
   SimilarMotionCandidate
 } from '../../types'
+import { AnalysisSteps } from './AnalysisSteps'
 
 interface SimilarityCompletionProps {
   setIsProcessing: (isProcessing: boolean) => void
@@ -99,11 +100,20 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   selectionStartFrame,
   selectionFrameWidth
 }) => {
+  const videoSrc = videoSrcs[0]
   const [isHumanCountSingle, setIsHumanCountSingle] = useState<boolean | null>(
     null
   )
   const [humanId, setHumanId] = useState(0)
   const [humanImageUrls, setHumanImageUrls] = useState<string[]>([])
+  const [humanIds, setHumanIds] = useState<number[]>([])
+  const [step, setStep] = useState(0)
+  const previousVideoSrc = useRef(videoSrc)
+  const peopleRequestId = useRef(0)
+  const [confirmedTemplate, setConfirmedTemplate] = useState<SelectedTimelineAnnotation | null>(null)
+  const [confirmedAnalysisRange, setConfirmedAnalysisRange] = useState<
+    { startFrame: number; endFrame: number } | null | undefined
+  >(undefined)
   const [selectedJoints, setSelectedJoints] = useState<number[]>([14, 15])
   const [hoveredKeyPointName, setHoveredKeyPointName] = useState<string | null>(
     null
@@ -118,6 +128,46 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   const [manualAnalysisEndFrame, setManualAnalysisEndFrame] = useState<
     number | null
   >(null)
+
+  useEffect(() => {
+    if (previousVideoSrc.current === videoSrc) return
+    previousVideoSrc.current = videoSrc
+    peopleRequestId.current += 1
+    setStep(0)
+    setConfirmedTemplate(null)
+    setConfirmedAnalysisRange(undefined)
+    setIsHumanCountSingle(null)
+    setHumanImageUrls([])
+    setHumanIds([])
+    setManualAnalysisStartFrame(null)
+    setManualAnalysisEndFrame(null)
+    setCandidateCount(null)
+    setSimilarMotionCandidates([])
+  }, [videoSrc, setSimilarMotionCandidates])
+
+  const handleStepBack = (targetStep: number) => {
+    peopleRequestId.current += 1
+    if (step === 3) {
+      setIsHumanCountSingle(null)
+      setHumanId(0)
+      setHumanImageUrls([])
+      setHumanIds([])
+      setSelectedJoints([14, 15])
+      setHoveredKeyPointName(null)
+      setSimilarMotionCandidates([])
+      setCandidateCount(null)
+    }
+    if (targetStep <= 1) {
+      setConfirmedAnalysisRange(undefined)
+    }
+    if (targetStep === 0) {
+      setConfirmedTemplate(null)
+      setManualAnalysisStartFrame(null)
+      setManualAnalysisEndFrame(null)
+    }
+    setApiError(null)
+    setStep(targetStep)
+  }
 
   const isAiReady =
     apiStatus?.status === 'ready' && apiStatus.aiAvailable === true
@@ -161,6 +211,9 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   }
 
   const getAnalysisFrameRange = () => {
+    if (confirmedAnalysisRange !== undefined) {
+      return confirmedAnalysisRange
+    }
     if (analysisRangeMode === 'full') {
       return null
     }
@@ -192,11 +245,11 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       return '分析対象: 動画全体'
     }
     if (analysisFrameRange) {
-      return `分析対象: ${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f`
+      return `分析対象: ${formatFrameTime(analysisFrameRange.startFrame)}–${formatFrameTime(analysisFrameRange.endFrame)}（${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f）`
     }
     return analysisRangeMode === 'selection'
-      ? '分析対象: 選択範囲がありません'
-      : '分析対象: 手動範囲が未設定です'
+      ? '分析対象: タイムライン上で範囲を選択してください'
+      : '分析対象: 再生位置から開始と終了を設定してください'
   }
 
   const readApiError = async (response: Response): Promise<ApiErrorPayload> => {
@@ -236,6 +289,9 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   const getUploadedHumanImages = (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
+    if (confirmedAnalysisRange) {
+      formData.append('analysisRange', JSON.stringify(confirmedAnalysisRange))
+    }
 
     return fetch('http://127.0.0.1:8000/get_human_images/', {
       method: 'POST',
@@ -249,14 +305,15 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ file_path: filePath })
+      body: JSON.stringify({ file_path: filePath, analysisRange: confirmedAnalysisRange })
     })
   }
 
-  const getHumanImages = async () => {
+  const getHumanImages = async (single: boolean) => {
     if (!isAiReady) {
       return
     }
+    const requestId = ++peopleRequestId.current
 
     const file = getCurrentVideoFile()
     const filePath = getCurrentVideoPath()
@@ -285,13 +342,18 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       }
 
       const data = await response.json()
-      if (data.images) {
-        setHumanImageUrls(
-          data.images.map(
-            (base64String: string) => `data:image/jpeg;base64,${base64String}`
-          )
-        )
+      if (requestId !== peopleRequestId.current) return
+      const people: { humanId: number; image: string }[] = data.people ??
+        (data.images ?? []).map((image: string, humanId: number) => ({ humanId, image }))
+      if (people.length === 0) {
+        setApiError({ message: '指定区間に人物が見つかりません。分析区間を変更してください。' })
+        return
       }
+      setHumanIds(people.map((person) => person.humanId))
+      setHumanImageUrls(people.map((person) => `data:image/jpeg;base64,${person.image}`))
+      setHumanId(people[0].humanId)
+      setIsHumanCountSingle(single)
+      setStep(3)
     } catch (error) {
       setApiError({
         message:
@@ -304,6 +366,9 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
 
   const detectSimilarMotion = async () => {
     if (!isAiReady) {
+      return
+    }
+    if (step !== 3) {
       return
     }
     if (analysisRangeMode !== 'full' && !getAnalysisFrameRange()) {
@@ -326,7 +391,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       return
     }
 
-    if (!selectedTimelineAnnotation) {
+    if (!confirmedTemplate) {
       setApiError({
         message: 'テンプレートにする注釈をタイムライン上で1つ選択してください。'
       })
@@ -357,14 +422,13 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
             selectedJoints,
             templateSegments: [
               {
-                startFrame: selectedTimelineAnnotation.startFrame,
-                endFrame: selectedTimelineAnnotation.endFrame
+                startFrame: confirmedTemplate.startFrame,
+                endFrame: confirmedTemplate.endFrame
               }
             ],
-            searchStartFrame: analysisFrameRange?.startFrame ?? null,
-            searchEndFrame: analysisFrameRange?.endFrame ?? null,
-            layerName: selectedTimelineAnnotation.layerName,
-            layerIndex: selectedTimelineAnnotation.layerIndex
+            analysisRange: analysisFrameRange,
+            layerName: confirmedTemplate.layerName,
+            layerIndex: confirmedTemplate.layerIndex
           })
         }
       )
@@ -426,6 +490,25 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
           {apiError.job_dir && <p>{`詳細ログ: ${apiError.job_dir}`}</p>}
         </div>
       )}
+      <AnalysisSteps
+        labels={['テンプレート', '分析区間', '人物', '関節と検索']}
+        currentStep={step}
+        onBack={handleStepBack}
+      />
+      {step > 1 && <p className="analysis-range-message">{getAnalysisRangeMessage()}</p>}
+      {step === 0 && <div className="template-annotation-card">
+        <h3>テンプレート注釈を選択</h3>
+        {selectedTimelineAnnotation ? <p>{selectedTimelineAnnotation.text}（{formatFrameTime(selectedTimelineAnnotation.startFrame)}–{formatFrameTime(selectedTimelineAnnotation.endFrame)}）</p>
+          : <p className="empty">タイムライン上で注釈を1つクリックしてください。</p>}
+        <button className="primary-action analysis-next" type="button" disabled={!selectedTimelineAnnotation} onClick={() => {
+          setConfirmedTemplate(selectedTimelineAnnotation)
+          setConfirmedAnalysisRange(undefined)
+          setSimilarMotionCandidates([])
+          setCandidateCount(null)
+          setStep(1)
+        }}>テンプレートを確定して次へ</button>
+      </div>}
+      {step === 1 && <>
       <p className="analysis-range-message">
         {getAnalysisRangeMessage()}
       </p>
@@ -437,7 +520,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
             checked={analysisRangeMode === 'full'}
             onChange={() => setAnalysisRangeMode('full')}
           />
-          全体
+          動画全体
         </label>
         <label>
           <input
@@ -446,7 +529,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
             checked={analysisRangeMode === 'selection'}
             onChange={() => setAnalysisRangeMode('selection')}
           />
-          選択範囲
+          タイムラインの選択範囲
         </label>
         <label>
           <input
@@ -455,7 +538,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
             checked={analysisRangeMode === 'manual'}
             onChange={() => setAnalysisRangeMode('manual')}
           />
-          手動指定
+          再生位置で開始・終了
         </label>
         {analysisRangeMode === 'manual' && (
           <div className="manual-analysis-range-controls">
@@ -485,42 +568,55 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
             </button>
             <span>
               {manualAnalysisStartFrame !== null
-                ? `開始: ${manualAnalysisStartFrame}f`
+                ? `開始: ${formatFrameTime(manualAnalysisStartFrame)}（${manualAnalysisStartFrame}f）`
                 : '開始: 未設定'}
               {' / '}
               {manualAnalysisEndFrame !== null
-                ? `終了: ${manualAnalysisEndFrame}f`
+                ? `終了: ${formatFrameTime(manualAnalysisEndFrame)}（${manualAnalysisEndFrame}f）`
                 : '終了: 未設定'}
             </span>
           </div>
         )}
       </div>
-      {isHumanCountSingle === null ? (
+      <button className="primary-action analysis-next" type="button" onClick={() => {
+        const range = getAnalysisFrameRange()
+        if (analysisRangeMode !== 'full' && !range) {
+          setApiError({ message: '分析区間を指定してください。' })
+          return
+        }
+        if (range && confirmedTemplate &&
+          (confirmedTemplate.startFrame < range.startFrame || confirmedTemplate.endFrame > range.endFrame)) {
+          setApiError({ message: '分析区間にはテンプレート注釈の全体を含めてください。' })
+          return
+        }
+        setApiError(null)
+        setConfirmedAnalysisRange(range)
+        setStep(2)
+      }}>分析区間を確定して次へ</button>
+      </>}
+      {step === 2 && (
         <div className="human-count-selector">
-          <p>動画内に映る人物は1人ですか？複数人ですか？</p>
+          <p>指定区間に映る人物は1人ですか？複数人ですか？</p>
           <div className="button-container">
             <button
               className="primary-action"
-              onClick={() => {
-                setIsHumanCountSingle(true)
-                setHumanId(0)
-              }}
+              disabled={!isAiReady}
+              onClick={() => getHumanImages(true)}
             >
               1人
             </button>
             <button
               className="primary-action"
               disabled={!isAiReady}
-              onClick={() => {
-                setIsHumanCountSingle(false)
-                getHumanImages()
-              }}
+              onClick={() => getHumanImages(false)}
             >
               複数人
             </button>
           </div>
         </div>
-      ) : (
+      )}
+      {step === 3 && (
+        <>
         <div className="similarity-param-editor">
           {isHumanCountSingle === false && (
             <div className="human-selector">
@@ -528,13 +624,13 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
               <div className="human-img-container">
                 {humanImageUrls.map((url, index) => (
                   <div
-                    key={index}
-                    className={`human-img ${index === humanId ? 'selected' : ''}`}
+                    key={humanIds[index]}
+                    className={`human-img ${humanIds[index] === humanId ? 'selected' : ''}`}
                   >
                     <div
                       className="icon"
                       style={{ backgroundImage: `url(${url})` }}
-                      onClick={() => setHumanId(index)}
+                      onClick={() => setHumanId(humanIds[index])}
                     ></div>
                     <img src={url} alt="" className="popup" />
                   </div>
@@ -564,19 +660,19 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
           <div className="similarity-config">
             <div className="template-annotation-card">
               <h3>テンプレート注釈</h3>
-              {selectedTimelineAnnotation ? (
+              {confirmedTemplate ? (
                 <>
-                  <p>{selectedTimelineAnnotation.text}</p>
+                  <p>{confirmedTemplate.text}</p>
                   <dl>
                     <dt>レイヤー</dt>
-                    <dd>{selectedTimelineAnnotation.layerName}</dd>
+                    <dd>{confirmedTemplate.layerName}</dd>
                     <dt>範囲</dt>
                     <dd>
-                      {`${selectedTimelineAnnotation.startFrame}–${selectedTimelineAnnotation.endFrame}f`}
+                      {`${confirmedTemplate.startFrame}–${confirmedTemplate.endFrame}f`}
                     </dd>
                     <dt>時間</dt>
                     <dd>
-                      {`${formatFrameTime(selectedTimelineAnnotation.startFrame)}–${formatFrameTime(selectedTimelineAnnotation.endFrame)}`}
+                      {`${formatFrameTime(confirmedTemplate.startFrame)}–${formatFrameTime(confirmedTemplate.endFrame)}`}
                     </dd>
                   </dl>
                 </>
@@ -589,7 +685,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
             <div className="similarity-actions">
               <button
                 className="primary-action"
-                disabled={!isAiReady || !selectedTimelineAnnotation}
+                disabled={!isAiReady || !confirmedTemplate}
                 onClick={detectSimilarMotion}
               >
                 類似候補を検出
@@ -612,6 +708,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
             )}
           </div>
         </div>
+        </>
       )}
     </div>
   )
