@@ -22,7 +22,13 @@ try:
     from .pipeline import (
         cleanup_job_dir,
         create_job_dir,
-        extract_human_images,
+        extract_human_people,
+        get_cached_analysis_results,
+        find_cached_analysis_results,
+        normalize_analysis_range,
+        create_analysis_video,
+        slice_alphapose_results,
+        find_cached_alphapose_results,
         get_cached_alphapose_results,
         get_video_framerate,
         run_pose_pipeline,
@@ -35,7 +41,13 @@ except ImportError:
     from pipeline import (
         cleanup_job_dir,
         create_job_dir,
-        extract_human_images,
+        extract_human_people,
+        get_cached_analysis_results,
+        find_cached_analysis_results,
+        normalize_analysis_range,
+        create_analysis_video,
+        slice_alphapose_results,
+        find_cached_alphapose_results,
         get_cached_alphapose_results,
         get_video_framerate,
         run_pose_pipeline,
@@ -60,10 +72,20 @@ class VideoPathRequest(BaseModel):
     file_path: str
 
 
+class AnalysisRange(BaseModel):
+    startFrame: int
+    endFrame: int
+
+
+class HumanImagesPathRequest(VideoPathRequest):
+    analysisRange: AnalysisRange | None = None
+
+
 class ItemsPathRequest(VideoPathRequest):
     autoAnnotationLayer: list[dict]
     analysisStartFrame: int | None = None
     analysisEndFrame: int | None = None
+    analysisRange: AnalysisRange | None = None
 
 
 class SimilarMotionTemplate(BaseModel):
@@ -79,6 +101,13 @@ class SimilarMotionPathRequest(VideoPathRequest):
     searchEndFrame: int | None = None
     layerName: str
     layerIndex: int
+    analysisRange: AnalysisRange | None = None
+
+
+def analysis_range_dict(value: AnalysisRange | None) -> dict | None:
+    if value is None:
+        return None
+    return value.model_dump() if hasattr(value, "model_dump") else value.dict()
 
 
 def log_api_call(api_name: str, start_time: float, end_time: float, additional_info: str = ""):
@@ -168,7 +197,7 @@ async def get_framerate_from_path(request: VideoPathRequest):
 
 
 @app.post("/get_human_images/")
-async def get_human_images(file: UploadFile = File(...)):
+async def get_human_images(file: UploadFile = File(...), analysisRange: str | None = Form(None)):
     """AlphaPoseの検出結果から、各フレームの代表人物画像を切り出して返す。"""
     start_time = time.time()
     temp_filename = None
@@ -178,18 +207,26 @@ async def get_human_images(file: UploadFile = File(...)):
         temp_filename = await save_upload_to_temp(file)
         job_dir = create_job_dir()
 
-        image_data_list = extract_human_images(temp_filename, job_dir)
+        selected_range = normalize_analysis_range(temp_filename, json.loads(analysisRange) if analysisRange else None)
+        if selected_range is None:
+            people = extract_human_people(temp_filename, job_dir)
+        else:
+            clip_path = create_analysis_video(temp_filename, selected_range, job_dir)
+            people = extract_human_people(clip_path, job_dir)
+        image_data_list = [person["image"] for person in people]
 
         end_time = time.time()
         log_api_call("get_human_images", start_time, end_time, f"Extracted {len(image_data_list)} human images")
         success = True
-        return JSONResponse(status_code=200, content={"images": image_data_list})
+        return JSONResponse(status_code=200, content={"images": image_data_list, "people": people})
 
     except subprocess.CalledProcessError as error:
         end_time = time.time()
         error_info = _format_subprocess_error(error, job_dir)
         log_api_call("get_human_images", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
         return JSONResponse(status_code=500, content=error_info)
+    except ValueError as error:
+        return JSONResponse(status_code=422, content={"message": "Invalid request", "error": str(error)})
     except Exception as error:
         end_time = time.time()
         log_api_call("get_human_images", start_time, end_time, f"Error: {str(error)}")
@@ -209,7 +246,7 @@ async def get_human_images(file: UploadFile = File(...)):
 
 
 @app.post("/get_human_images_from_path/")
-async def get_human_images_from_path(request: VideoPathRequest):
+async def get_human_images_from_path(request: HumanImagesPathRequest):
     """ローカル動画パスから人物画像を切り出す。Electronではアップロードを避けるためこちらを使う。"""
     start_time = time.time()
     job_dir = None
@@ -217,9 +254,23 @@ async def get_human_images_from_path(request: VideoPathRequest):
     try:
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
-        alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
+        selected_range = normalize_analysis_range(video_path, analysis_range_dict(request.analysisRange))
+        if selected_range is None:
+            clip_path, alphapose_results_path, alphapose_cache_hit = get_cached_analysis_results(video_path, None)
+        else:
+            range_results = find_cached_analysis_results(video_path, selected_range)
+            full_results = find_cached_alphapose_results(video_path)
+            if range_results is not None:
+                clip_path, alphapose_results_path, alphapose_cache_hit = get_cached_analysis_results(video_path, selected_range)
+            elif full_results is not None:
+                clip_path = create_analysis_video(video_path, selected_range, job_dir)
+                alphapose_results_path = slice_alphapose_results(full_results, selected_range, job_dir, allow_empty=True)
+                alphapose_cache_hit = True
+            else:
+                clip_path, alphapose_results_path, alphapose_cache_hit = get_cached_analysis_results(video_path, selected_range)
 
-        image_data_list = extract_human_images(video_path, job_dir, alphapose_results_path)
+        people = extract_human_people(clip_path, job_dir, alphapose_results_path)
+        image_data_list = [person["image"] for person in people]
 
         end_time = time.time()
         log_api_call("get_human_images_from_path", start_time, end_time, f"Extracted {len(image_data_list)} human images, alphapose_cache_hit={alphapose_cache_hit}")
@@ -228,6 +279,7 @@ async def get_human_images_from_path(request: VideoPathRequest):
             status_code=200,
             content={
                 "images": image_data_list,
+                "people": people,
                 "alphaposeCache": {"hit": alphapose_cache_hit},
             },
         )
@@ -237,6 +289,8 @@ async def get_human_images_from_path(request: VideoPathRequest):
         error_info = _format_subprocess_error(error, job_dir)
         log_api_call("get_human_images_from_path", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
         return JSONResponse(status_code=500, content=error_info)
+    except ValueError as error:
+        return JSONResponse(status_code=422, content={"message": "Invalid request", "error": str(error)})
     except Exception as error:
         end_time = time.time()
         log_api_call("get_human_images_from_path", start_time, end_time, f"Error: {str(error)}")
@@ -259,6 +313,7 @@ async def create_item(
     autoAnnotationLayer: str = Form(...),
     analysisStartFrame: int | None = Form(None),
     analysisEndFrame: int | None = Form(None),
+    analysisRange: str | None = Form(None),
 ):
     """AlphaPose、MotionBERT、動作検出を順に実行し、自動アノテーション範囲を返す。"""
     start_time = time.time()
@@ -276,6 +331,7 @@ async def create_item(
             job_dir,
             analysis_start_frame=analysisStartFrame,
             analysis_end_frame=analysisEndFrame,
+            analysis_range=json.loads(analysisRange) if analysisRange else None,
         )
 
         end_time = time.time()
@@ -288,6 +344,8 @@ async def create_item(
         error_info = _format_subprocess_error(error, job_dir)
         log_api_call("create_item", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
         return JSONResponse(status_code=500, content=error_info)
+    except ValueError as error:
+        return JSONResponse(status_code=422, content={"message": "Invalid request", "error": str(error)})
     except Exception as error:
         end_time = time.time()
         log_api_call("create_item", start_time, end_time, f"Error: {str(error)}")
@@ -314,7 +372,17 @@ async def create_item_from_path(request: ItemsPathRequest):
     try:
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
-        alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
+        analysis_range = analysis_range_dict(request.analysisRange)
+        if analysis_range is None and request.analysisStartFrame is not None and request.analysisEndFrame is not None:
+            analysis_range = {
+                "startFrame": request.analysisStartFrame,
+                "endFrame": request.analysisEndFrame,
+            }
+        if analysis_range is None:
+            alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
+        else:
+            alphapose_results_path = find_cached_analysis_results(video_path, analysis_range) or find_cached_alphapose_results(video_path)
+            alphapose_cache_hit = alphapose_results_path is not None
 
         motion_times = run_pose_pipeline(
             video_path,
@@ -323,6 +391,7 @@ async def create_item_from_path(request: ItemsPathRequest):
             alphapose_results_path,
             analysis_start_frame=request.analysisStartFrame,
             analysis_end_frame=request.analysisEndFrame,
+            analysis_range=analysis_range,
         )
 
         end_time = time.time()
@@ -335,6 +404,8 @@ async def create_item_from_path(request: ItemsPathRequest):
         error_info = _format_subprocess_error(error, job_dir)
         log_api_call("create_item_from_path", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
         return JSONResponse(status_code=500, content=error_info)
+    except ValueError as error:
+        return JSONResponse(status_code=422, content={"message": "Invalid request", "error": str(error)})
     except Exception as error:
         end_time = time.time()
         log_api_call("create_item_from_path", start_time, end_time, f"Error: {str(error)}")
@@ -362,7 +433,23 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
 
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
-        alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
+        analysis_range = analysis_range_dict(request.analysisRange)
+        if analysis_range is None and request.searchStartFrame is not None and request.searchEndFrame is not None:
+            analysis_range = {
+                "startFrame": min(request.searchStartFrame, *(segment.startFrame for segment in request.templateSegments)),
+                "endFrame": max(request.searchEndFrame, *(segment.endFrame for segment in request.templateSegments)),
+            }
+        validated_range = normalize_analysis_range(video_path, analysis_range)
+        if validated_range is not None and any(
+            segment.startFrame < validated_range["startFrame"] or segment.endFrame > validated_range["endFrame"]
+            for segment in request.templateSegments
+        ):
+            raise ValueError("Template segment must be fully contained in analysisRange")
+        if analysis_range is None:
+            alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
+        else:
+            alphapose_results_path = find_cached_analysis_results(video_path, analysis_range) or find_cached_alphapose_results(video_path)
+            alphapose_cache_hit = alphapose_results_path is not None
         template_segments = [
             segment.model_dump() if hasattr(segment, "model_dump") else segment.dict()
             for segment in request.templateSegments
@@ -374,6 +461,7 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             template_segments=template_segments,
             search_start_frame=request.searchStartFrame,
             search_end_frame=request.searchEndFrame,
+            analysis_range=analysis_range,
             layer_name=request.layerName,
             layer_index=request.layerIndex,
             job_dir=job_dir,

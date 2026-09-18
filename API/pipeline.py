@@ -118,6 +118,167 @@ def get_cached_alphapose_results(video_file_path: str) -> tuple[str, bool]:
         return results_path, False
 
 
+def find_cached_alphapose_results(video_file_path: str) -> str | None:
+    cache_key = _get_alphapose_cache_key(video_file_path)
+    results_path = os.path.join(ALPHAPOSE_CACHE_ROOT, cache_key, "alphapose-results.json")
+    with _get_cache_lock(cache_key):
+        return results_path if os.path.isfile(results_path) else None
+
+
+def _range_cache_paths(video_file_path: str, analysis_range: dict) -> tuple[str, str, str]:
+    video_key = _get_alphapose_cache_key(video_file_path)
+    range_key = f"{analysis_range['startFrame']}-{analysis_range['endFrame']}"
+    cache_dir = os.path.join(ALPHAPOSE_CACHE_ROOT, video_key, range_key)
+    return cache_dir, os.path.join(cache_dir, "analysis_range.mp4"), os.path.join(cache_dir, "alphapose-results.json")
+
+
+def get_cached_analysis_results(video_file_path: str, analysis_range: dict | None) -> tuple[str, str, bool]:
+    if analysis_range is None:
+        results_path, hit = get_cached_alphapose_results(video_file_path)
+        return video_file_path, results_path, hit
+
+    cache_dir, clip_path, results_path = _range_cache_paths(video_file_path, analysis_range)
+    with _get_cache_lock(f"{_get_alphapose_cache_key(video_file_path)}:{analysis_range['startFrame']}-{analysis_range['endFrame']}"):
+        if os.path.isfile(results_path) and os.path.isfile(clip_path):
+            return clip_path, results_path, True
+        os.makedirs(cache_dir, exist_ok=True)
+        create_analysis_video(video_file_path, analysis_range, cache_dir)
+        run_alphapose(clip_path, cache_dir)
+        if not os.path.isfile(results_path):
+            raise FileNotFoundError(f"AlphaPose output was not found: {results_path}")
+        return clip_path, results_path, False
+
+
+def find_cached_analysis_results(video_file_path: str, analysis_range: dict | None) -> str | None:
+    if analysis_range is None:
+        return find_cached_alphapose_results(video_file_path)
+    _, clip_path, results_path = _range_cache_paths(video_file_path, analysis_range)
+    return results_path if os.path.isfile(clip_path) and os.path.isfile(results_path) else None
+
+
+def normalize_analysis_range(video_file_path: str, analysis_range: dict | None) -> dict | None:
+    if analysis_range is None:
+        return None
+    if not isinstance(analysis_range, dict):
+        raise ValueError("analysisRange must be an object")
+
+    capture = cv2.VideoCapture(video_file_path)
+    if not capture.isOpened():
+        raise RuntimeError(f"Could not open video file: {video_file_path}")
+    try:
+        frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    finally:
+        capture.release()
+
+    start_frame = analysis_range.get("startFrame")
+    end_frame = analysis_range.get("endFrame")
+    if not isinstance(start_frame, int) or isinstance(start_frame, bool):
+        raise ValueError("analysisRange.startFrame must be an integer")
+    if not isinstance(end_frame, int) or isinstance(end_frame, bool):
+        raise ValueError("analysisRange.endFrame must be an integer")
+    if start_frame < ANNOTATION_FRAME_INDEX_BASE or end_frame < start_frame:
+        raise ValueError("analysisRange must be a valid one-based frame interval")
+    if frame_count <= 0 or end_frame > frame_count:
+        raise ValueError("analysisRange exceeds the video length")
+    if start_frame == 1 and end_frame == frame_count:
+        return None
+    return {"startFrame": start_frame, "endFrame": end_frame}
+
+
+def create_analysis_video(video_file_path: str, analysis_range: dict, job_dir: str) -> str:
+    output_path = os.path.join(job_dir, "analysis_range.mp4")
+    capture = cv2.VideoCapture(video_file_path)
+    if not capture.isOpened():
+        raise RuntimeError(f"Could not open video file: {video_file_path}")
+
+    writer = None
+    written_frames = 0
+    try:
+        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = float(capture.get(cv2.CAP_PROP_FPS))
+        if width <= 0 or height <= 0 or fps <= 0:
+            raise RuntimeError("Could not read video metadata")
+        writer = cv2.VideoWriter(
+            output_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height)
+        )
+        if not writer.isOpened():
+            raise RuntimeError("Could not create partial analysis video")
+
+        for frame_index in range(analysis_range["endFrame"]):
+            success, frame = capture.read()
+            if not success:
+                raise RuntimeError(f"Could not read frame {frame_index + 1}")
+            if frame_index + ANNOTATION_FRAME_INDEX_BASE >= analysis_range["startFrame"]:
+                writer.write(frame)
+                written_frames += 1
+    finally:
+        capture.release()
+        if writer is not None:
+            writer.release()
+
+    expected_frames = analysis_range["endFrame"] - analysis_range["startFrame"] + 1
+    if written_frames != expected_frames or not os.path.isfile(output_path):
+        raise RuntimeError("Partial analysis video was not created completely")
+    return output_path
+
+
+def slice_alphapose_results(
+    results_path: str, analysis_range: dict, job_dir: str, allow_empty: bool = False
+) -> str:
+    with open(results_path, "r", encoding="utf-8") as file:
+        results = json.load(file)
+
+    frame_offset = analysis_range["startFrame"] - ANNOTATION_FRAME_INDEX_BASE
+    local_results = []
+    for item in results:
+        image_id = item.get("image_id", "")
+        try:
+            frame_index = int(image_id.split(".")[0])
+        except (ValueError, AttributeError) as error:
+            raise ValueError(f"Invalid AlphaPose image_id: {image_id}") from error
+        if frame_offset <= frame_index < analysis_range["endFrame"]:
+            local_item = {**item, "image_id": f"{frame_index - frame_offset}.jpg"}
+            local_results.append(local_item)
+
+    if not local_results and not allow_empty:
+        raise ValueError("No AlphaPose results found in analysisRange")
+    output_path = os.path.join(job_dir, "alphapose-results.json")
+    with open(output_path, "w", encoding="utf-8") as file:
+        json.dump(local_results, file)
+    return output_path
+
+
+def prepare_analysis_input(
+    video_file_path: str,
+    analysis_range: dict | None,
+    job_dir: str,
+    alphapose_results_path: str | None = None,
+) -> tuple[str, str, int]:
+    if analysis_range is None:
+        if alphapose_results_path is None:
+            run_alphapose(video_file_path, job_dir)
+            alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
+        return video_file_path, alphapose_results_path, 0
+
+    analysis_video_path = create_analysis_video(video_file_path, analysis_range, job_dir)
+    if alphapose_results_path is None:
+        cache_path = find_cached_analysis_results(video_file_path, analysis_range)
+        if cache_path is not None:
+            alphapose_results_path = cache_path
+        else:
+            alphapose_results_path = find_cached_alphapose_results(video_file_path)
+
+    if alphapose_results_path is not None:
+        _, _, range_results_path = _range_cache_paths(video_file_path, analysis_range)
+        local_results_path = (alphapose_results_path if alphapose_results_path == range_results_path
+                              else slice_alphapose_results(alphapose_results_path, analysis_range, job_dir))
+    else:
+        run_alphapose(analysis_video_path, job_dir)
+        local_results_path = os.path.join(job_dir, "alphapose-results.json")
+    return analysis_video_path, local_results_path, analysis_range["startFrame"] - 1
+
+
 def _save_subprocess_log(job_dir: str, step_name: str, stdout: str, stderr: str):
     """外部スクリプト失敗時の標準出力・標準エラーを調査用に保存する。"""
     if stdout:
@@ -268,6 +429,7 @@ def run_similarity_detection(
     layer_index: int,
     search_start_frame: int | None = None,
     search_end_frame: int | None = None,
+    frame_offset: int = 0,
 ) -> dict:
     """v40を実行し、UIで扱う注釈候補と検出メタデータを返す。"""
     if fps <= 0:
@@ -338,10 +500,10 @@ def run_similarity_detection(
             continue
         all_candidates.append(
             {
-                "startFrame": start_frame,
-                "endFrame": end_frame,
-                "startTime": float(segment.start_time),
-                "endTime": float(segment.end_time),
+                "startFrame": start_frame + frame_offset,
+                "endFrame": end_frame + frame_offset,
+                "startTime": float(segment.start_time + frame_offset / fps),
+                "endTime": float(segment.end_time + frame_offset / fps),
                 "text": "",
                 "layerName": layer_name,
                 "layerIndex": layer_index,
@@ -425,6 +587,14 @@ def extract_human_images(
     alphapose_results_path: str | None = None,
 ) -> list[str]:
     """AlphaPose結果から人物領域を切り出し、JPEGのBase64文字列リストとして返す。"""
+    return [person["image"] for person in extract_human_people(video_file_path, job_dir, alphapose_results_path)]
+
+
+def extract_human_people(
+    video_file_path: str,
+    job_dir: str,
+    alphapose_results_path: str | None = None,
+) -> list[dict]:
     if alphapose_results_path is None:
         run_alphapose(video_file_path, job_dir)
         alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
@@ -432,7 +602,7 @@ def extract_human_images(
     with open(alphapose_results_path, "r", encoding="utf-8") as file:
         alphapose_results = json.load(file)
 
-    image_data_list = []
+    people = []
     for item in _largest_person_per_frame(alphapose_results):
         frame_id = int(item["image_id"].split(".")[0])
         frame = _read_frame(video_file_path, frame_id)
@@ -455,9 +625,9 @@ def extract_human_images(
         success, img_encoded = cv2.imencode(".jpg", cropped)
         if not success:
             continue
-        image_data_list.append(base64.b64encode(img_encoded).decode("utf-8"))
+        people.append({"humanId": int(item["idx"]) - 1, "image": base64.b64encode(img_encoded).decode("utf-8")})
 
-    return image_data_list
+    return people
 
 
 def run_pose_pipeline(
@@ -467,6 +637,7 @@ def run_pose_pipeline(
     alphapose_results_path: str | None = None,
     analysis_start_frame: int | None = None,
     analysis_end_frame: int | None = None,
+    analysis_range: dict | None = None,
 ) -> list[dict]:
     """自動アノテーション用の全パイプラインを実行し、検出された動作区間を返す。"""
     owns_job_dir = job_dir is None
@@ -474,16 +645,22 @@ def run_pose_pipeline(
         job_dir = create_job_dir()
     success = False
     try:
-        validate_frame_range(
-            analysis_start_frame,
-            analysis_end_frame,
-            start_name="analysisStartFrame",
-            end_name="analysisEndFrame",
+        if analysis_range is None and analysis_start_frame is not None and analysis_end_frame is not None:
+            analysis_range = {"startFrame": analysis_start_frame, "endFrame": analysis_end_frame}
+        if analysis_range is None:
+            validate_frame_range(
+                analysis_start_frame,
+                analysis_end_frame,
+                start_name="analysisStartFrame",
+                end_name="analysisEndFrame",
+            )
+        selected_range = normalize_analysis_range(video_file_path, analysis_range)
+        analysis_video_path, pose_results_path, frame_offset = prepare_analysis_input(
+            video_file_path,
+            selected_range,
+            job_dir,
+            alphapose_results_path,
         )
-
-        if alphapose_results_path is None:
-            run_alphapose(video_file_path, job_dir)
-            alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
 
         # MotionBERTは対象人物をfocusで指定するため、humanIdごとにレイヤーを処理する。
         grouped_by_human_id: dict[int, list[dict]] = {}
@@ -494,7 +671,7 @@ def run_pose_pipeline(
         motion_times = []
         for human_id, layers in grouped_by_human_id.items():
             focus = str(human_id + 1)
-            run_motionbert(video_file_path, alphapose_results_path, job_dir, focus)
+            run_motionbert(analysis_video_path, pose_results_path, job_dir, focus)
             run_npy2csv(job_dir)
             run_calc_cross_product(job_dir)
 
@@ -502,19 +679,22 @@ def run_pose_pipeline(
             with open(annotation_file, "w", encoding="utf-8") as file:
                 json.dump(layers, file, ensure_ascii=False, indent=4)
 
-            run_detect_movement_script(video_file_path, annotation_file, job_dir)
+            run_detect_movement_script(analysis_video_path, annotation_file, job_dir)
 
             motion_times_path = os.path.join(job_dir, "motion_times.json")
             with open(motion_times_path, "r", encoding="utf-8") as file:
-                motion_times += json.load(file)
+                local_results = json.load(file)
+            for item in local_results:
+                item["startFrame"] += frame_offset
+                item["endFrame"] += frame_offset
+            motion_times += local_results
 
         success = True
-        filtered_motion_times = filter_results_by_frame_range(
-            motion_times,
-            analysis_start_frame,
-            analysis_end_frame,
-        )
-        return sorted(filtered_motion_times, key=lambda item: item["layerIndex"])
+        if selected_range is None:
+            motion_times = filter_results_by_frame_range(
+                motion_times, analysis_start_frame, analysis_end_frame
+            )
+        return sorted(motion_times, key=lambda item: item["layerIndex"])
 
     finally:
         if success and owns_job_dir:
@@ -534,6 +714,7 @@ def run_similarity_pipeline(
     search_end_frame: int | None = None,
     job_dir: str | None = None,
     alphapose_results_path: str | None = None,
+    analysis_range: dict | None = None,
 ) -> dict:
     """人物・関節・テンプレート区間を指定して、類似動作候補を返す。"""
     owns_job_dir = job_dir is None
@@ -541,26 +722,59 @@ def run_similarity_pipeline(
         job_dir = create_job_dir()
     success = False
     try:
-        if alphapose_results_path is None:
-            run_alphapose(video_file_path, job_dir)
-            alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
-        run_motionbert(video_file_path, alphapose_results_path, job_dir, str(human_id + 1))
+        selected_range = normalize_analysis_range(video_file_path, analysis_range)
+        for segment in template_segments:
+            if segment["startFrame"] < 1 or segment["endFrame"] < segment["startFrame"]:
+                raise ValueError("Invalid template segment")
+        if selected_range is not None and search_start_frame is None and search_end_frame is None:
+            search_start_frame = selected_range["startFrame"]
+            search_end_frame = selected_range["endFrame"]
+        validate_frame_range(
+            search_start_frame,
+            search_end_frame,
+            start_name="searchStartFrame",
+            end_name="searchEndFrame",
+        )
+        if selected_range is not None and any(
+            segment["startFrame"] < selected_range["startFrame"]
+            or segment["endFrame"] > selected_range["endFrame"]
+            for segment in template_segments
+        ):
+            raise ValueError("Template segment must be fully contained in analysisRange")
+        analysis_video_path, pose_results_path, frame_offset = prepare_analysis_input(
+            video_file_path,
+            selected_range,
+            job_dir,
+            alphapose_results_path,
+        )
+        run_motionbert(analysis_video_path, pose_results_path, job_dir, str(human_id + 1))
 
         pose_file_path = os.path.join(job_dir, "X3D.npy")
         if not os.path.isfile(pose_file_path):
             raise FileNotFoundError(f"MotionBERT output was not found: {pose_file_path}")
 
+        local_templates = [
+            {
+                "startFrame": segment["startFrame"] - frame_offset,
+                "endFrame": segment["endFrame"] - frame_offset,
+            }
+            for segment in template_segments
+        ]
         result = run_similarity_detection(
             pose_file_path=pose_file_path,
             human_id=human_id,
             selected_joints=selected_joints,
-            template_segments=template_segments,
-            fps=get_video_framerate(video_file_path),
-            search_start_frame=search_start_frame,
-            search_end_frame=search_end_frame,
+            template_segments=local_templates,
+            fps=get_video_framerate(analysis_video_path),
+            search_start_frame=search_start_frame - frame_offset if search_start_frame is not None else None,
+            search_end_frame=search_end_frame - frame_offset if search_end_frame is not None else None,
             layer_name=layer_name,
             layer_index=layer_index,
+            frame_offset=frame_offset,
         )
+        result["parameters"]["searchStartFrame"] = search_start_frame
+        result["parameters"]["searchEndFrame"] = search_end_frame
+        result["analysisRange"] = analysis_range
         success = True
         return result
     finally:
