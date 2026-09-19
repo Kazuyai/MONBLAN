@@ -106,12 +106,12 @@ Invoke-RestMethod `
 
 ### `POST /get_human_images/`
 
-AlphaPose を実行し、動画内人物の切り出し画像を Base64 文字列の配列として返します。AI環境が未セットアップの場合は失敗します。
+AlphaPose を実行し、動画内人物の切り出し画像を Base64 文字列の配列として返します。`analysisRange` をフォーム文字列の JSON として渡すと、指定区間だけで人物を検出します。従来の `images` に加え、AlphaPose の人物 ID に対応する `people: [{"humanId": 0, "image": "..."}]` を返します。AI環境が未セットアップの場合は失敗します。
 Electronアプリからは、動画全体のアップロードを避けるため `POST /get_human_images_from_path/` を優先します。
 
 ### `POST /get_human_images_from_path/`
 
-ローカル動画ファイルのパスを受け取り、AlphaPose を実行して人物の切り出し画像を返します。Electronアプリ向けの高速経路です。
+ローカル動画ファイルのパスを受け取り、AlphaPose を実行して人物の切り出し画像を返します。`analysisRange: {"startFrame": 31, "endFrame": 300}` を指定すると、その区間に映る人物だけを返します。レスポンスの `people` に実際の `humanId` と画像を対応付け、従来の `images` も維持します。Electronアプリ向けの高速経路です。
 
 ### `POST /items/`
 
@@ -122,7 +122,7 @@ Electronアプリからは、動画全体のアップロードを避けるため
 
 ローカル動画ファイルのパスと自動アノテーション設定を受け取り、AlphaPose、MotionBERT、detect_movement の一連の自動アノテーションパイプラインを実行します。Electronアプリ向けの高速経路です。
 
-`analysisStartFrame` と `analysisEndFrame` は任意項目です。指定した場合、検出結果はこの範囲内に収まる区間だけに絞り込まれます。未指定の場合は従来通り動画全体を対象にします。Electron UI ではタイムライン上に選択範囲がある場合だけ送信します。
+`analysisRange: {"startFrame": 31, "endFrame": 300}` は任意項目です。指定時はその区間の一時動画を使って姿勢推定・動作検出を実行し、返すフレーム番号を元動画基準に戻します。未指定時は動画全体を対象にします。従来の `analysisStartFrame` / `analysisEndFrame` も受け付けます。
 
 ### `POST /similar_motion_from_path/`
 
@@ -138,6 +138,7 @@ Electronアプリからは、動画全体のアップロードを避けるため
   "templateSegments": [
     {"startFrame": 153, "endFrame": 177}
   ],
+  "analysisRange": {"startFrame": 101, "endFrame": 900},
   "layerName": "右 右腕の動き",
   "layerIndex": 2
 }
@@ -178,15 +179,18 @@ Electronアプリからは、動画全体のアップロードを避けるため
 - `selectedJoints` は選択可能な10関節のIDを指定する。
 - `templateSegments` はタイムライン上のテンプレート区間であり、開始・終了フレームをともに含む。既存の自動動作検出に合わせてフレーム番号は1始まりである。
 - テンプレート区間と重なる検出結果は候補から除外される。
-- `searchStartFrame` と `searchEndFrame` は任意項目である。指定した場合、候補はこの範囲内に収まる区間だけに絞り込まれる。通常の注釈補完UIでは未指定とし、部分分析機能で使用する想定である。
+- `analysisRange: {"startFrame": 101, "endFrame": 900}` は任意項目である。指定時はその連続区間だけで姿勢推定・検索を実行する。テンプレート全体を分析区間に含める必要があり、含まれない場合は HTTP 422 を返す。従来の `searchStartFrame` / `searchEndFrame` も受け付ける。
 - レスポンスの`startFrame`と`endFrame`も1始まりであり、既存の自動動作検出と同じ規約である。
 - レスポンスの`candidates`は仮注釈候補である。UI側で利用者が確認してから正式な注釈として追加する。
 
 ## AlphaPose結果の再利用
 
+画面では、注釈補完は「テンプレート注釈 → 分析区間 → 人物 → 関節・検索」、動作範囲検出は「分析区間 → 人物 → 関節・検出」の順に設定します。分析区間を確定してから人物画像を取得し、区間を変更した場合は人物選択をやり直します。注釈補完の部分分析では、テンプレート注釈の全体が分析区間内に必要です。
+
 Electronアプリが利用する `*_from_path` 系エンドポイントでは、動画パス・ファイルサイズ・更新時刻をキーにして AlphaPose の `alphapose-results.json` を一時ディレクトリへキャッシュします。
 
-- `/get_human_images_from_path/` で人物画像取得を行った後、同じ動画に対して `/items_from_path/` または `/similar_motion_from_path/` を実行した場合、AlphaPose は再実行せず既存結果を再利用します。
+- `/get_human_images_from_path/` に指定した動画と分析区間で人物画像を取得すると、同じ区間での `/items_from_path/` または `/similar_motion_from_path/` は AlphaPose の結果を再利用します。区間別キャッシュには動画パス・サイズ・更新時刻・開始/終了フレームを使用します。
+- すでに動画全体の AlphaPose 結果がキャッシュされている場合は、区間内の姿勢データを切り出して人物 ID を維持します。キャッシュがない場合は指定区間だけで AlphaPose を実行します。異なる区間の人物 ID を同一視しないでください。
 - 通常のアップロード系エンドポイント `/get_human_images/` と `/items/` は、一時アップロードファイルを使うためキャッシュ対象外です。
 - 動画ファイルが更新されると、サイズまたは更新時刻が変わるため別キャッシュとして扱います。
 - キャッシュはOSの一時ディレクトリ配下 `annotation-tool-alphapose-cache` に保存され、APIプロセス終了時には自動削除されません。不要になった場合は手動削除できます。

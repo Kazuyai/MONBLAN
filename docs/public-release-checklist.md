@@ -91,6 +91,8 @@ AI環境がある場合は以下も確認する。
 .\scripts\verify-ai-pipeline.ps1
 ```
 
+部分分析を含む実機確認は `docs/partial-analysis-verification.md` に沿って行う。
+
 確認する動作:
 
 - アプリが起動する
