@@ -19,6 +19,7 @@ import threading
 import uuid
 
 import cv2
+import numpy as np
 
 try:
     from .paths import ALPHAPOSE_DIR, DETECT_MOVEMENT_DIR, MOTIONBERT_CHECKPOINT, MOTIONBERT_DIR
@@ -32,8 +33,11 @@ _SIMILARITY_DETECTOR_CLASS = None
 ANNOTATION_FRAME_INDEX_BASE = 1
 MIN_MOVEMENT_ANALYSIS_FRAMES = 5
 ALPHAPOSE_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "annotation-tool-alphapose-cache")
+MOTIONBERT_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "annotation-tool-motionbert-cache")
 _ALPHAPOSE_CACHE_LOCK = threading.Lock()
 _ALPHAPOSE_CACHE_LOCKS: dict[str, threading.Lock] = {}
+_MOTIONBERT_CACHE_LOCK = threading.Lock()
+_MOTIONBERT_CACHE_LOCKS: dict[str, threading.Lock] = {}
 
 
 def validate_frame_range(
@@ -98,6 +102,64 @@ def _get_cache_lock(cache_key: str) -> threading.Lock:
         if cache_key not in _ALPHAPOSE_CACHE_LOCKS:
             _ALPHAPOSE_CACHE_LOCKS[cache_key] = threading.Lock()
         return _ALPHAPOSE_CACHE_LOCKS[cache_key]
+
+
+def _get_motionbert_cache_lock(cache_key: str) -> threading.Lock:
+    with _MOTIONBERT_CACHE_LOCK:
+        if cache_key not in _MOTIONBERT_CACHE_LOCKS:
+            _MOTIONBERT_CACHE_LOCKS[cache_key] = threading.Lock()
+        return _MOTIONBERT_CACHE_LOCKS[cache_key]
+
+
+def _file_state_signature(file_path: str) -> str:
+    resolved_path = os.path.abspath(file_path)
+    try:
+        stat = os.stat(resolved_path)
+    except FileNotFoundError:
+        return f"{resolved_path}|missing"
+    return f"{resolved_path}|{stat.st_size}|{stat.st_mtime_ns}"
+
+
+def _file_content_digest(file_path: str) -> str:
+    digest = hashlib.sha256()
+    with open(file_path, "rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _get_motionbert_cache_key(
+    video_file_path: str,
+    analysis_range: dict | None,
+    alphapose_results_path: str,
+    focus: str,
+) -> str:
+    range_key = (
+        "full"
+        if analysis_range is None
+        else f"{analysis_range['startFrame']}-{analysis_range['endFrame']}"
+    )
+    payload = "|".join(
+        [
+            _get_alphapose_cache_key(video_file_path),
+            range_key,
+            str(focus),
+            _file_content_digest(alphapose_results_path),
+            _file_state_signature(os.path.join(MOTIONBERT_DIR, "infer_wild.py")),
+            _file_state_signature(MOTIONBERT_CHECKPOINT),
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _is_valid_motionbert_result(file_path: str) -> bool:
+    if not os.path.isfile(file_path) or os.path.getsize(file_path) == 0:
+        return False
+    try:
+        result = np.load(file_path, mmap_mode="r", allow_pickle=False)
+        return result.size > 0
+    except (OSError, ValueError, EOFError):
+        return False
 
 
 def get_cached_alphapose_results(video_file_path: str) -> tuple[str, bool]:
@@ -362,6 +424,57 @@ def run_motionbert(video_file_path: str, json_path: str, job_dir: str, focus: st
         job_dir=job_dir,
         step_name="motionbert",
     )
+
+
+def get_cached_motionbert_results(
+    source_video_path: str,
+    analysis_range: dict | None,
+    analysis_video_path: str,
+    alphapose_results_path: str,
+    job_dir: str,
+    focus: str,
+) -> tuple[str, bool]:
+    """同じ動画・区間・人物・モデルのMotionBERT結果を再利用する。"""
+    cache_key = _get_motionbert_cache_key(
+        source_video_path,
+        analysis_range,
+        alphapose_results_path,
+        focus,
+    )
+    cache_dir = os.path.join(MOTIONBERT_CACHE_ROOT, cache_key)
+    cache_path = os.path.join(cache_dir, "X3D.npy")
+    job_result_path = os.path.join(job_dir, "X3D.npy")
+
+    with _get_motionbert_cache_lock(cache_key):
+        if _is_valid_motionbert_result(cache_path):
+            shutil.copy2(cache_path, job_result_path)
+            logger.info("Reusing MotionBERT cache: %s", cache_dir)
+            return job_result_path, True
+
+        if os.path.exists(cache_path):
+            os.remove(cache_path)
+
+        run_motionbert(
+            analysis_video_path,
+            alphapose_results_path,
+            job_dir,
+            focus,
+        )
+        if not _is_valid_motionbert_result(job_result_path):
+            raise RuntimeError("MotionBERT output was not created correctly")
+
+        os.makedirs(cache_dir, exist_ok=True)
+        temporary_cache_path = os.path.join(cache_dir, f"X3D-{uuid.uuid4().hex}.tmp")
+        try:
+            shutil.copy2(job_result_path, temporary_cache_path)
+            if not _is_valid_motionbert_result(temporary_cache_path):
+                raise RuntimeError("MotionBERT cache could not be created correctly")
+            os.replace(temporary_cache_path, cache_path)
+        finally:
+            if os.path.exists(temporary_cache_path):
+                os.remove(temporary_cache_path)
+
+        return job_result_path, False
 
 
 def run_npy2csv(job_dir: str) -> subprocess.CompletedProcess:
@@ -639,6 +752,8 @@ def run_pose_pipeline(
     analysis_start_frame: int | None = None,
     analysis_end_frame: int | None = None,
     analysis_range: dict | None = None,
+    use_motionbert_cache: bool = False,
+    pipeline_metadata: dict | None = None,
 ) -> list[dict]:
     """自動アノテーション用の全パイプラインを実行し、検出された動作区間を返す。"""
     owns_job_dir = job_dir is None
@@ -680,9 +795,23 @@ def run_pose_pipeline(
             grouped_by_human_id.setdefault(human_id, []).append(item)
 
         motion_times = []
+        motionbert_cache_hits = 0
         for human_id, layers in grouped_by_human_id.items():
             focus = str(human_id + 1)
-            run_motionbert(analysis_video_path, pose_results_path, job_dir, focus)
+            if use_motionbert_cache:
+                _, motionbert_cache_hit = get_cached_motionbert_results(
+                    video_file_path,
+                    selected_range,
+                    analysis_video_path,
+                    pose_results_path,
+                    job_dir,
+                    focus,
+                )
+            else:
+                run_motionbert(analysis_video_path, pose_results_path, job_dir, focus)
+                motionbert_cache_hit = False
+            if motionbert_cache_hit:
+                motionbert_cache_hits += 1
             run_npy2csv(job_dir)
             run_calc_cross_product(job_dir)
 
@@ -699,6 +828,14 @@ def run_pose_pipeline(
                 item["startFrame"] += frame_offset
                 item["endFrame"] += frame_offset
             motion_times += local_results
+
+        if pipeline_metadata is not None:
+            pipeline_metadata["motionbertCache"] = {
+                "hits": motionbert_cache_hits,
+                "total": len(grouped_by_human_id),
+                "allHit": bool(grouped_by_human_id)
+                and motionbert_cache_hits == len(grouped_by_human_id),
+            }
 
         success = True
         if selected_range is None:
@@ -758,11 +895,14 @@ def run_similarity_pipeline(
             job_dir,
             alphapose_results_path,
         )
-        run_motionbert(analysis_video_path, pose_results_path, job_dir, str(human_id + 1))
-
-        pose_file_path = os.path.join(job_dir, "X3D.npy")
-        if not os.path.isfile(pose_file_path):
-            raise FileNotFoundError(f"MotionBERT output was not found: {pose_file_path}")
+        pose_file_path, motionbert_cache_hit = get_cached_motionbert_results(
+            video_file_path,
+            selected_range,
+            analysis_video_path,
+            pose_results_path,
+            job_dir,
+            str(human_id + 1),
+        )
 
         local_templates = [
             {
@@ -786,6 +926,7 @@ def run_similarity_pipeline(
         result["parameters"]["searchStartFrame"] = search_start_frame
         result["parameters"]["searchEndFrame"] = search_end_frame
         result["analysisRange"] = analysis_range
+        result["motionbertCache"] = {"hit": motionbert_cache_hit}
         success = True
         return result
     finally:

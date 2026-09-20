@@ -194,6 +194,18 @@ Electronアプリが利用する `*_from_path` 系エンドポイントでは、
 - 通常のアップロード系エンドポイント `/get_human_images/` と `/items/` は、一時アップロードファイルを使うためキャッシュ対象外です。
 - 動画ファイルが更新されると、サイズまたは更新時刻が変わるため別キャッシュとして扱います。
 - キャッシュはOSの一時ディレクトリ配下 `annotation-tool-alphapose-cache` に保存され、APIプロセス終了時には自動削除されません。不要になった場合は手動削除できます。
+
+## MotionBERT結果の再利用
+
+ローカル動画パスを使用する `POST /items_from_path/` と `POST /similar_motion_from_path/` は、MotionBERTが生成した3次元姿勢データ `X3D.npy` を再利用します。
+
+- キャッシュは、元動画のパス・サイズ・更新時刻、分析区間、AlphaPose結果の内容、人物ID、MotionBERT推論スクリプト、checkpointの状態を基に分離します。
+- 同じ動画・分析区間・人物でテンプレートや関節だけを変更した場合、MotionBERTを再実行せず類似動作検索へ進みます。
+- 動作範囲検出と注釈補完は、条件が一致すれば同じ3次元姿勢データを利用します。
+- `POST /similar_motion_from_path/` のレスポンスには `motionbertCache: {"hit": true | false}` が含まれます。
+- `POST /items_from_path/` は従来の配列形式を維持し、レスポンスヘッダー `X-MotionBERT-Cache-Hit` と `X-MotionBERT-Cache-Hits` で利用状況を返します。
+- 読み込めないキャッシュは破棄し、MotionBERTを再実行して復旧します。
+- キャッシュはOSの一時ディレクトリ配下 `annotation-tool-motionbert-cache` に保存され、APIプロセス終了時には自動削除されません。
 - ログには `alphapose_cache_hit=True/False` が出力され、再利用されたか確認できます。
 
 ## 手動確認手順

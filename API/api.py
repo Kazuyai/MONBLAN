@@ -10,7 +10,7 @@ import tempfile
 import time
 from datetime import datetime
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -364,7 +364,7 @@ async def create_item(
 
 
 @app.post("/items_from_path/")
-async def create_item_from_path(request: ItemsPathRequest):
+async def create_item_from_path(request: ItemsPathRequest, response: Response):
     """ローカル動画パスから自動アノテーションパイプラインを実行する。Electronではアップロードを避けるためこちらを使う。"""
     start_time = time.time()
     job_dir = None
@@ -384,6 +384,7 @@ async def create_item_from_path(request: ItemsPathRequest):
             alphapose_results_path = find_cached_analysis_results(video_path, analysis_range) or find_cached_alphapose_results(video_path)
             alphapose_cache_hit = alphapose_results_path is not None
 
+        pipeline_metadata = {}
         motion_times = run_pose_pipeline(
             video_path,
             request.autoAnnotationLayer,
@@ -392,10 +393,25 @@ async def create_item_from_path(request: ItemsPathRequest):
             analysis_start_frame=request.analysisStartFrame,
             analysis_end_frame=request.analysisEndFrame,
             analysis_range=analysis_range,
+            use_motionbert_cache=True,
+            pipeline_metadata=pipeline_metadata,
         )
 
+        motionbert_cache = pipeline_metadata.get("motionbertCache", {})
+        response.headers["X-MotionBERT-Cache-Hit"] = str(
+            motionbert_cache.get("allHit", False)
+        ).lower()
+        response.headers["X-MotionBERT-Cache-Hits"] = (
+            f"{motionbert_cache.get('hits', 0)}/{motionbert_cache.get('total', 0)}"
+        )
         end_time = time.time()
-        log_api_call("create_item_from_path", start_time, end_time, f"Processed {len(motion_times)} motion times, alphapose_cache_hit={alphapose_cache_hit}")
+        log_api_call(
+            "create_item_from_path",
+            start_time,
+            end_time,
+            f"Processed {len(motion_times)} motion times, alphapose_cache_hit={alphapose_cache_hit}, "
+            f"motionbert_cache_hits={motionbert_cache.get('hits', 0)}/{motionbert_cache.get('total', 0)}",
+        )
         success = True
         return motion_times
 
@@ -473,7 +489,9 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             "similar_motion_from_path",
             start_time,
             end_time,
-            f"Processed {len(result['candidates'])} similar motion candidates, alphapose_cache_hit={alphapose_cache_hit}",
+            f"Processed {len(result['candidates'])} similar motion candidates, "
+            f"alphapose_cache_hit={alphapose_cache_hit}, "
+            f"motionbert_cache_hit={result['motionbertCache']['hit']}",
         )
         success = True
         result["alphaposeCache"] = {"hit": alphapose_cache_hit}
