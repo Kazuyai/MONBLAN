@@ -380,7 +380,11 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       return '分析対象: 動画全体'
     }
     if (analysisFrameRange) {
-      return `分析対象: ${formatFrameTime(analysisFrameRange.startFrame)}–${formatFrameTime(analysisFrameRange.endFrame + 1)}（${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f）`
+      const displayEndFrame =
+        analysisRangeMode === 'selection'
+          ? analysisFrameRange.endFrame + 1
+          : analysisFrameRange.endFrame
+      return `分析対象: ${formatFrameTime(analysisFrameRange.startFrame)}–${formatFrameTime(displayEndFrame)}（${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f）`
     }
     return analysisRangeMode === 'selection'
       ? '分析対象: タイムライン上で範囲を選択してください'
