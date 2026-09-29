@@ -60,7 +60,7 @@ macOSは、現時点では手動アノテーション機能のみ対象とする
 - 現在のAIパイプラインは CUDA 前提。
 - 一般的なMacでは NVIDIA CUDA を利用できない。
 - `API\environment.py` は `torch.cuda.is_available()` を見てAI可否を判定している。
-- Apple Silicon の MPS 対応は未検証であり、AlphaPose / MotionBERT / OpenMMLab を含む全体パイプラインの安定動作を確認していない。
+- Apple Silicon の MPS 対応は未検証であり、AlphaPose / MotionBERT を含む全体パイプラインの安定動作を確認していない。
 
 将来的に検討する場合:
 
@@ -80,7 +80,7 @@ Dockerは、OS横断で全機能を同じように動かすための手段では
 
 Dockerで改善できること:
 
-- Python / PyTorch / OpenMMLab 系依存の固定
+- Python / PyTorch / CUDA 系依存の固定
 - FastAPI 実行環境の再現性
 - LinuxベースのAI API環境の固定
 - 開発者間でのAPI環境差分の削減
@@ -177,7 +177,7 @@ Docker対応を行う場合は、以下のルールを守る。
 Dockerfile / docker compose は、以下が満たされてから実装する。
 
 - Windows + venv 手順で共同研究者が再現できている。
-- `API\requirements.txt` の最小化または固定方針が決まっている。
+- `API\requirements.txt` の直接依存を最小化し、主要パッケージの固定方針が決まっている。
 - AlphaPose / MotionBERT / checkpoint の volume mount 先が決まっている。
 - 動画ファイルの path mapping 方針が決まっている。
 - Docker GPU環境を検証できる対象マシンがある。
@@ -188,7 +188,7 @@ PyInstallerでPython APIを単一実行ファイル化する案は、現時点�
 
 理由:
 
-- PyTorch、OpenMMLab、CUDA、外部スクリプトを含むため失敗しやすい。
+- PyTorch、CUDA、外部AIスクリプトを含むため失敗しやすい。
 - AlphaPose / MotionBERT を同梱しない方針と相性が悪い。
 - 問題発生時のログ・依存関係切り分けが難しくなる。
 
@@ -245,6 +245,6 @@ Electron本体のインストーラは `electron-builder` で作成できる。
 
 - 配布対象を「研究室内」までに留めるか、外部共同研究者まで広げるか。
 - ElectronインストーラにPython APIコードをどのように含めるか。
-- `API\requirements.txt` を現状の大きな固定リストのまま使うか、最小化するか。
+- `API\requirements.txt` のうち、PyTorch以外の直接依存をどこまでバージョン固定するか。
 - checkpoint入手手順をどこまで具体化するか。
 - Dockerをいつ検証するか。

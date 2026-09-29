@@ -16,7 +16,7 @@
 
 AI機能の正式対象は Windows + NVIDIA GPU + CUDA とする。macOS は現時点では手動アノテーション機能のみ対象であり、AI自動アノテーション機能は非対応扱いにする。
 
-Docker 前提にはしない。AlphaPose / MotionBERT / OpenMMLab 系の依存は環境差が大きいため、まずは手順を明文化し、安定してから必要に応じてスクリプト化する。
+Docker 前提にはしない。AlphaPose / MotionBERT / CUDA 系の依存は環境差が大きいため、まずは手順を明文化し、安定してから必要に応じてスクリプト化する。
 
 ## 配置方針
 
@@ -75,7 +75,7 @@ python -m pip install --upgrade pip
 pip install -r API\requirements.txt
 ```
 
-`API\requirements.txt` は `torch==2.3.0+cu118` を含む。CUDA 11.8 以外の環境では、PyTorch / torchvision / torchaudio の組み合わせを見直す必要がある。
+`API\requirements.txt` は `torch==2.3.0+cu118` と `torchvision==0.18.0+cu118` を含む。CUDA 11.8 以外の環境では、この組み合わせを見直す必要がある。依存一覧にはこのツールの実行経路で直接使用するパッケージのみを記載し、推移依存は `pip` に解決させる。
 
 ## AlphaPose
 

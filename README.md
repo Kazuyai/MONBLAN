@@ -99,7 +99,7 @@ docs/
 - AlphaPose
 - MotionBERT
 
-AI APIの依存関係は重く、OpenMMLab系パッケージを含みます。まずは `docs/setup-ai-environment.md` の手順で環境を確認してください。
+AI APIの依存関係には、CUDA対応PyTorch、AlphaPose、MotionBERTが含まれます。まずは `docs/setup-ai-environment.md` の手順で環境を確認してください。
 
 ## セットアップ
 
