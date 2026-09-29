@@ -1,6 +1,9 @@
 // Disable no-unused-vars, broken for spread args
 /* eslint no-unused-vars: off */
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
+import type { AiSetupOperation, AiSetupStatus } from './aiSetup'
+
+export type { AiSetupOperation, AiSetupStatus } from './aiSetup'
 
 export type Channels = 'ipc-example'
 
@@ -76,6 +79,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   refreshApiStatus: (): Promise<ApiStatus> =>
     ipcRenderer.invoke('api:refresh-status'),
   restartApi: (): Promise<ApiStatus> => ipcRenderer.invoke('api:restart'),
+  getAiSetupStatus: (): Promise<AiSetupStatus> =>
+    ipcRenderer.invoke('ai-setup:get-status'),
+  runAiSetupOperation: (
+    operation: AiSetupOperation
+  ): Promise<AiSetupStatus> =>
+    ipcRenderer.invoke('ai-setup:run-operation', operation),
+  onAiSetupStatusChanged: (callback: (status: AiSetupStatus) => void) => {
+    const subscription = (_event: IpcRendererEvent, status: AiSetupStatus) =>
+      callback(status)
+    ipcRenderer.on('ai-setup:status-changed', subscription)
+
+    return () => {
+      ipcRenderer.removeListener('ai-setup:status-changed', subscription)
+    }
+  },
   onApiStatusChanged: (callback: (status: ApiStatus) => void) => {
     const subscription = (_event: IpcRendererEvent, status: ApiStatus) =>
       callback(status)

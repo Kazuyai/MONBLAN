@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type {
   ApiEnvironmentCheck,
-  ApiStatus
+  ApiStatus,
+  AiSetupStatus
 } from '../../../main/preload'
 
 interface AiEnvironmentSetupProps {
@@ -140,7 +141,9 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
 }) => {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isRestarting, setIsRestarting] = useState(false)
+  const [isPreparingStorage, setIsPreparingStorage] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [setupStatus, setSetupStatus] = useState<AiSetupStatus | null>(null)
   const presentation = getStatusPresentation(apiStatus)
   const checks = apiStatus?.environment?.checks ?? []
   const aiAvailable =
@@ -174,6 +177,33 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
     (check) => getCheckGroup(check) === 'cuda-pytorch'
   )
 
+  useEffect(() => {
+    let isMounted = true
+    const unsubscribe = window.electronAPI?.onAiSetupStatusChanged((status) => {
+      if (isMounted) setSetupStatus(status)
+    })
+
+    const loadSetupStatus = async () => {
+      try {
+        const status = await window.electronAPI?.getAiSetupStatus()
+        if (isMounted && status) setSetupStatus(status)
+      } catch (error) {
+        if (!isMounted) return
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : 'AI環境の保存先を確認できませんでした。'
+        )
+      }
+    }
+
+    loadSetupStatus()
+    return () => {
+      isMounted = false
+      unsubscribe?.()
+    }
+  }, [])
+
   const runAction = async (
     action: () => Promise<void>,
     setIsRunning: React.Dispatch<React.SetStateAction<boolean>>
@@ -188,6 +218,29 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
       )
     } finally {
       setIsRunning(false)
+    }
+  }
+
+  const prepareStorage = async () => {
+    if (!window.electronAPI) {
+      setActionError('Electron APIを利用できません。')
+      return
+    }
+    setActionError(null)
+    setIsPreparingStorage(true)
+    try {
+      const status = await window.electronAPI.runAiSetupOperation(
+        'prepare-storage'
+      )
+      setSetupStatus(status)
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : 'AI環境の保存先を準備できませんでした。'
+      )
+    } finally {
+      setIsPreparingStorage(false)
     }
   }
 
@@ -206,6 +259,35 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
       </section>
 
       <p className="ai-environment-description">{presentation.description}</p>
+
+      {setupStatus && (
+        <section className="ai-environment-card ai-environment-storage">
+          <div className="ai-environment-storage-header">
+            <div>
+              <h3>AI環境の保存先</h3>
+              <p>
+                配布版でも書き込み可能な専用領域にAI環境を構築します。
+              </p>
+            </div>
+            <span className={setupStatus.prepared ? 'prepared' : ''}>
+              {setupStatus.prepared ? '準備済み' : '未準備'}
+            </span>
+          </div>
+          <code>{setupStatus.rootPath}</code>
+          {!setupStatus.prepared && (
+            <button
+              type="button"
+              disabled={isPreparingStorage || setupStatus.phase === 'running'}
+              onClick={prepareStorage}
+            >
+              {isPreparingStorage ? '準備中…' : '保存先を準備'}
+            </button>
+          )}
+          <p className="ai-environment-storage-note">
+            この操作では保存先だけを作成します。現在使用中のAI環境やPythonは変更しません。
+          </p>
+        </section>
+      )}
 
       {actionError && (
         <div className="ai-environment-action-error" role="alert">

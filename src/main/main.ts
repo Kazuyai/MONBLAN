@@ -2,6 +2,12 @@ import path from 'path'
 import { app, dialog, BrowserWindow, shell, ipcMain } from 'electron'
 import log from 'electron-log'
 import {
+  getAiSetupStatus,
+  runAiSetupOperation,
+  setAiSetupStatusListener,
+  type AiSetupOperation
+} from './aiSetup'
+import {
   getApiStatus,
   getProjectRoot,
   refreshApiEnvironment,
@@ -30,9 +36,20 @@ ipcMain.handle('api:refresh-status', async () => {
 ipcMain.handle('api:restart', async () =>
   startApiServer(getProjectRoot(app.getAppPath()))
 )
+ipcMain.handle('ai-setup:get-status', async () =>
+  getAiSetupStatus(app.getPath('userData'))
+)
+ipcMain.handle(
+  'ai-setup:run-operation',
+  async (_event, operation: AiSetupOperation) =>
+    runAiSetupOperation(operation, app.getPath('userData'))
+)
 
 setApiStatusListener((status) => {
   mainWindow?.webContents.send('api:status-changed', status)
+})
+setAiSetupStatusListener((status) => {
+  mainWindow?.webContents.send('ai-setup:status-changed', status)
 })
 
 ipcMain.on('ipc-example', async (event) => {

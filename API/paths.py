@@ -8,8 +8,12 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-ALPHAPOSE_DIR = os.path.join(BASE_DIR, "AlphaPose")
-MOTIONBERT_DIR = os.path.join(BASE_DIR, "MotionBERT")
+# 配布版では書き込み可能な外部ディレクトリを指定できるようにする。
+# 未指定時は従来どおりAPIディレクトリ配下を使用し、既存の開発環境を維持する。
+AI_HOME = os.path.abspath(os.environ.get("ANNOTATION_TOOL_AI_HOME", BASE_DIR))
+
+ALPHAPOSE_DIR = os.path.join(AI_HOME, "AlphaPose")
+MOTIONBERT_DIR = os.path.join(AI_HOME, "MotionBERT")
 DETECT_MOVEMENT_DIR = os.path.join(BASE_DIR, "detect_movement")
 OUT_DIR = os.path.join(BASE_DIR, "out")
 

@@ -1,4 +1,9 @@
-import { ApiStatus, ElectronHandler } from '../main/preload'
+import {
+  AiSetupOperation,
+  AiSetupStatus,
+  ApiStatus,
+  ElectronHandler
+} from '../main/preload'
 
 declare global {
   interface Window {
@@ -15,6 +20,13 @@ declare global {
       getApiStatus: () => Promise<ApiStatus>
       refreshApiStatus: () => Promise<ApiStatus>
       restartApi: () => Promise<ApiStatus>
+      getAiSetupStatus: () => Promise<AiSetupStatus>
+      runAiSetupOperation: (
+        operation: AiSetupOperation
+      ) => Promise<AiSetupStatus>
+      onAiSetupStatusChanged: (
+        callback: (status: AiSetupStatus) => void
+      ) => () => void
       onApiStatusChanged: (callback: (status: ApiStatus) => void) => () => void
     }
   }

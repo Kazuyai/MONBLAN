@@ -716,6 +716,50 @@ button {
                   line-height: 1.55;
                 }
               }
+              .ai-environment-storage {
+                .ai-environment-storage-header {
+                  display: flex;
+                  align-items: flex-start;
+                  justify-content: space-between;
+                  gap: 12rem;
+                  > span {
+                    flex: 0 0 auto;
+                    padding: 4rem 9rem;
+                    border: 1rem solid #777;
+                    border-radius: 999rem;
+                    color: #bbb;
+                    font-size: 11rem;
+                    &.prepared {
+                      border-color: #4f8884;
+                      background: #203c3a;
+                      color: #bde7e3;
+                    }
+                  }
+                }
+                code {
+                  display: block;
+                  margin-top: 12rem;
+                  padding: 9rem 10rem;
+                  border-radius: 6rem;
+                  background: #1d1d1d;
+                  color: #d5d5d5;
+                  font-family: Consolas, monospace;
+                  font-size: 12rem;
+                  overflow-wrap: anywhere;
+                  user-select: text;
+                }
+                button {
+                  width: fit-content;
+                  min-width: 150rem;
+                  min-height: 36rem;
+                  margin-top: 12rem;
+                }
+                .ai-environment-storage-note {
+                  margin-top: 10rem;
+                  color: #aaa;
+                  font-size: 12rem;
+                }
+              }
               .ai-environment-check-list,
               .ai-environment-missing-list {
                 display: flex;
