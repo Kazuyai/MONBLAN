@@ -50,6 +50,8 @@ interface SettingsProps {
   selectionStartFrame: number
   selectionFrameWidth: number
   selectedTimelineAnnotation: SelectedTimelineAnnotation | null
+  timelineLayerNames: string[]
+  onCreateTimelineLayer: (name: string) => number | null
   onRefreshApiStatus: () => Promise<void>
   onRestartApi: () => Promise<void>
 }
@@ -74,6 +76,8 @@ export const Settings: React.FC<SettingsProps> = ({
   selectionStartFrame,
   selectionFrameWidth,
   selectedTimelineAnnotation,
+  timelineLayerNames,
+  onCreateTimelineLayer,
   onRefreshApiStatus,
   onRestartApi
 }) => {
@@ -111,6 +115,8 @@ export const Settings: React.FC<SettingsProps> = ({
         currentFrame={currentFrame}
         selectionStartFrame={selectionStartFrame}
         selectionFrameWidth={selectionFrameWidth}
+        timelineLayerNames={timelineLayerNames}
+        onCreateTimelineLayer={onCreateTimelineLayer}
       />
     )
   }

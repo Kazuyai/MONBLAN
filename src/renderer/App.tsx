@@ -33,12 +33,18 @@ const App = () => {
   >([])
   const [selectedTimelineAnnotation, setSelectedTimelineAnnotation] =
     useState<SelectedTimelineAnnotation | null>(null)
+  const [timelineLayerNames, setTimelineLayerNames] = useState<string[]>([
+    'レイヤー1',
+    'レイヤー2',
+    'レイヤー3'
+  ])
 
   const timelineRef = useRef<{
     exportCSV: () => void
     exportEAF: () => void
     exportProjectJson: () => void
     importProjectJson: (project: AnnotationProject) => void
+    addLayer: (name: string) => number
   }>(null)
 
   const MAX_HEIGHT = 80
@@ -163,6 +169,10 @@ const App = () => {
     timelineRef.current.importProjectJson(project)
   }
 
+  const handleCreateTimelineLayer = (name: string) => {
+    return timelineRef.current?.addLayer(name) ?? null
+  }
+
   const startVerticalResizing = (e: React.MouseEvent) => {
     setIsResizing(true)
     e.preventDefault()
@@ -225,6 +235,8 @@ const App = () => {
           selectionStartFrame={selectionStartFrame}
           selectionFrameWidth={selectionFrameWidth}
           selectedTimelineAnnotation={selectedTimelineAnnotation}
+          timelineLayerNames={timelineLayerNames}
+          onCreateTimelineLayer={handleCreateTimelineLayer}
           onRefreshApiStatus={refreshApiStatus}
           onRestartApi={restartApi}
         />
@@ -252,6 +264,7 @@ const App = () => {
         similarMotionCandidates={similarMotionCandidates}
         setSimilarMotionCandidates={setSimilarMotionCandidates}
         setSelectedTimelineAnnotation={setSelectedTimelineAnnotation}
+        onLayerNamesChange={setTimelineLayerNames}
         topHeight={topHeight}
       />
       {isProcessing && <Processing />}

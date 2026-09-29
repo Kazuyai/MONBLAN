@@ -39,6 +39,7 @@ interface TimelineProps {
   setSelectedTimelineAnnotation: Dispatch<
     SetStateAction<SelectedTimelineAnnotation | null>
   >
+  onLayerNamesChange: (layerNames: string[]) => void
   topHeight: number
 }
 
@@ -47,6 +48,7 @@ interface TimelineHandle {
   exportEAF: () => void
   exportProjectJson: () => void
   importProjectJson: (project: AnnotationProject) => void
+  addLayer: (name: string) => number
 }
 
 interface AnnotationType {
@@ -101,6 +103,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       similarMotionCandidates,
       setSimilarMotionCandidates,
       setSelectedTimelineAnnotation,
+      onLayerNamesChange,
       topHeight
     },
     ref
@@ -638,18 +641,28 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     redoRef.current = redo
 
     // 注釈層の追加
-    const addLayer = () => {
-      pushToUndoStack(state)
+    const addLayerWithName = (name?: string) => {
+      const currentState = stateRef.current
+      const newLayerIndex = currentState.layerNames.length
+      const layerName = name?.trim() || `レイヤー${newLayerIndex + 1}`
+      pushToUndoStack(currentState)
       const newLayerNames = [
-        ...state.layerNames,
-        `レイヤー${state.layerNames.length + 1}`
+        ...currentState.layerNames,
+        layerName
       ]
-      setState({
-        ...state,
+      const nextState = {
+        ...currentState,
         layerNames: newLayerNames
-      })
+      }
+      stateRef.current = nextState
+      setState(nextState)
       setSelectedLayerIndex(newLayerNames.length - 1)
       setEditingLayerIndex(null)
+      return newLayerIndex
+    }
+
+    const addLayer = () => {
+      addLayerWithName()
     }
 
     // 注釈層の削除
@@ -680,7 +693,26 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         annotations: updatedAnnotations
       }
 
+      stateRef.current = nextState
       setState(nextState)
+      setMovementDetectionCandidates((current) =>
+        current
+          .filter((candidate) => candidate.layerIndex !== targetLayerIndex)
+          .map((candidate) =>
+            candidate.layerIndex > targetLayerIndex
+              ? { ...candidate, layerIndex: candidate.layerIndex - 1 }
+              : candidate
+          )
+      )
+      setSimilarMotionCandidates((current) =>
+        current
+          .filter((candidate) => candidate.layerIndex !== targetLayerIndex)
+          .map((candidate) =>
+            candidate.layerIndex > targetLayerIndex
+              ? { ...candidate, layerIndex: candidate.layerIndex - 1 }
+              : candidate
+          )
+      )
       setSelectedLayerIndex(clampLayerIndex(targetLayerIndex, newLayerNames))
       setEditingLayerIndex(null)
       removeInvalidAnnotationSelection(nextState)
@@ -1450,46 +1482,26 @@ ${tierElements.join('\n')}
       }
 
       const currentState = stateRef.current
-      const nextLayerNames = [...currentState.layerNames]
-      const destinationLayerBySource = new Map<number, number>()
-      const assignedLayerIndices = new Set<number>()
-
-      autoAnnotationResponseData.forEach((result) => {
-        if (destinationLayerBySource.has(result.layerIndex)) return
-
-        let destinationLayerIndex = nextLayerNames.findIndex(
-          (name, index) =>
-            name === result.layerName && !assignedLayerIndices.has(index)
-        )
-        if (destinationLayerIndex < 0) {
-          destinationLayerIndex = nextLayerNames.length
-          nextLayerNames.push(
-            result.layerName || `レイヤー${destinationLayerIndex + 1}`
-          )
-        }
-        destinationLayerBySource.set(result.layerIndex, destinationLayerIndex)
-        assignedLayerIndices.add(destinationLayerIndex)
-      })
+      const validResults = autoAnnotationResponseData.filter(
+        (result) =>
+          result.layerIndex >= 0 &&
+          result.layerIndex < currentState.layerNames.length
+      )
 
       setMovementDetectionCandidates(
-        autoAnnotationResponseData.map((result) => ({
+        validResults.map((result) => ({
           ...result,
           id: uuidv4(),
-          layerIndex:
-            destinationLayerBySource.get(result.layerIndex) ??
-            result.layerIndex,
+          layerName: currentState.layerNames[result.layerIndex],
           status: 'pending'
         }))
       )
 
-      if (nextLayerNames.length !== currentState.layerNames.length) {
-        const nextState = {
-          ...currentState,
-          layerNames: nextLayerNames
-        }
-        stateRef.current = nextState
-        setState(nextState)
-        updateContainerRefs(nextLayerNames)
+      if (validResults.length !== autoAnnotationResponseData.length) {
+        showTimelineNotice(
+          '挿入先が存在しない動作検出候補を除外しました。',
+          'warning'
+        )
       }
     }, [autoAnnotationResponseData])
 
@@ -1549,7 +1561,8 @@ ${tierElements.join('\n')}
       exportCSV,
       exportEAF,
       exportProjectJson,
-      importProjectJson
+      importProjectJson,
+      addLayer: addLayerWithName
     }))
 
     // レイヤー数に合わせて containerRefs を初期化
@@ -1557,7 +1570,8 @@ ${tierElements.join('\n')}
       containerRefs.current = layerNames.map(() =>
         React.createRef<HTMLDivElement>()
       )
-    }, [layerNames])
+      onLayerNamesChange([...layerNames])
+    }, [layerNames, onLayerNamesChange])
 
     return (
       <section

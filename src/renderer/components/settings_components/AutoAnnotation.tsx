@@ -20,6 +20,8 @@ interface SettingsProps {
   currentFrame: number
   selectionStartFrame: number
   selectionFrameWidth: number
+  timelineLayerNames: string[]
+  onCreateTimelineLayer: (name: string) => number | null
 }
 
 interface KeyPoint {
@@ -78,7 +80,9 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   videoSrcs,
   currentFrame,
   selectionStartFrame,
-  selectionFrameWidth
+  selectionFrameWidth,
+  timelineLayerNames,
+  onCreateTimelineLayer
 }) => {
   const videoSrc = videoSrcs[0]
   // 画像サイズ
@@ -110,9 +114,16 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   >(undefined)
   const [autoAnnotationLayer, setAutoAnnotationLayer] = useState<
     AutoAnnotationLayerParam[]
-  >([{ index: 0, layerName: 'レイヤー1', humanId: 0, points: [] }])
+  >([
+    {
+      index: 0,
+      layerName: timelineLayerNames[0] ?? 'レイヤー1',
+      humanId: 0,
+      points: []
+    }
+  ])
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0)
-  const [isLayerNameEdit, setIsLayerNameEdit] = useState<boolean>(false)
+  const [newLayerName, setNewLayerName] = useState('')
   const [hoveredKeyPointName, setHoveredKeyPointName] = useState<string | null>(
     null
   )
@@ -125,6 +136,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   const [manualAnalysisEndFrame, setManualAnalysisEndFrame] = useState<
     number | null
   >(null)
+  const previousTimelineLayerNames = useRef(timelineLayerNames)
 
   useEffect(() => {
     if (previousVideoSrc.current === videoSrc) return
@@ -139,15 +151,80 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     setManualAnalysisEndFrame(null)
   }, [videoSrc])
 
+  useEffect(() => {
+    const previousNames = previousTimelineLayerNames.current
+    previousTimelineLayerNames.current = timelineLayerNames
+    if (previousNames === timelineLayerNames) return
+
+    const layerWasDeleted = timelineLayerNames.length < previousNames.length
+    const removedConfiguration =
+      layerWasDeleted &&
+      autoAnnotationLayer.some(
+        (layer) => !timelineLayerNames.includes(layer.layerName)
+      )
+    setAutoAnnotationLayer((currentLayers) => {
+      const remappedLayers = currentLayers.flatMap((layer) => {
+        if (!layerWasDeleted) {
+          if (layer.index >= timelineLayerNames.length) return []
+          return [
+            {
+              ...layer,
+              layerName: timelineLayerNames[layer.index]
+            }
+          ]
+        }
+
+        const destinationIndex = timelineLayerNames.indexOf(layer.layerName)
+        if (destinationIndex < 0) {
+          return []
+        }
+        return [{ ...layer, index: destinationIndex }]
+      })
+
+      if (remappedLayers.length > 0 || timelineLayerNames.length === 0) {
+        return remappedLayers
+      }
+      return [
+        {
+          index: 0,
+          layerName: timelineLayerNames[0],
+          humanId: humanIds[0] ?? 0,
+          points: []
+        }
+      ]
+    })
+    if (removedConfiguration) {
+      setApiError({
+        message:
+          '挿入先の注釈層が削除されたため、対応する検出設定を取り除きました。'
+      })
+    }
+  }, [autoAnnotationLayer, humanIds, timelineLayerNames])
+
+  useEffect(() => {
+    setSelectedLayerIndex((index) =>
+      autoAnnotationLayer.length === 0
+        ? -1
+        : Math.max(0, Math.min(index, autoAnnotationLayer.length - 1))
+    )
+  }, [autoAnnotationLayer.length])
+
   const handleStepBack = (targetStep: number) => {
     peopleRequestId.current += 1
     if (step === 2) {
       setIsHumanCountSingle(null)
       setHumanImageUrls([])
       setHumanIds([])
-      setAutoAnnotationLayer([{ index: 0, layerName: 'レイヤー1', humanId: 0, points: [] }])
+      setAutoAnnotationLayer([
+        {
+          index: 0,
+          layerName: timelineLayerNames[0] ?? 'レイヤー1',
+          humanId: 0,
+          points: []
+        }
+      ])
       setSelectedLayerIndex(0)
-      setIsLayerNameEdit(false)
+      setNewLayerName('')
       setIsEditing(false)
     }
     if (targetStep === 0) {
@@ -233,39 +310,36 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     )
   }
 
-  const addLayerParam = (
-    index: number,
-    layerName: string,
-    humanId: number,
-    points: number[]
-  ) => {
+  const addLayerParam = () => {
+    const usedLayerIndices = new Set(
+      autoAnnotationLayer.map((layer) => layer.index)
+    )
+    const destinationIndex = timelineLayerNames.findIndex(
+      (_, index) => !usedLayerIndices.has(index)
+    )
+    if (destinationIndex < 0) {
+      setApiError({
+        message:
+          '選択できる注釈層がありません。新しい注釈層を作成してください。'
+      })
+      return
+    }
+    const currentLayer = autoAnnotationLayer[selectedLayerIndex]
     setAutoAnnotationLayer([
       ...autoAnnotationLayer,
-      { index: index, layerName: layerName, humanId: humanId, points: points }
+      {
+        index: destinationIndex,
+        layerName: timelineLayerNames[destinationIndex],
+        humanId: currentLayer?.humanId ?? humanIds[0] ?? 0,
+        points: []
+      }
     ])
     setSelectedLayerIndex(autoAnnotationLayer.length)
+    setApiError(null)
   }
 
   const deleteLayerParam = (index: number) => {
-    const newLayers = autoAnnotationLayer
-      .filter((layer, i) => i !== index)
-      .map((layer, i) => {
-        if (i > index) {
-          return {
-            index: i - 1,
-            layerName: layer.layerName,
-            humanId: layer.humanId,
-            points: layer.points
-          }
-        } else {
-          return {
-            index: i,
-            layerName: layer.layerName,
-            humanId: layer.humanId,
-            points: layer.points
-          }
-        }
-      })
+    const newLayers = autoAnnotationLayer.filter((_, i) => i !== index)
 
     setAutoAnnotationLayer(newLayers)
 
@@ -285,33 +359,55 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     }
   }
 
-  const updateLayerParam = (
-    index: number,
-    layerName: string,
-    humanId: number,
-    points: number[]
+  const selectDestinationLayer = (
+    configIndex: number,
+    destinationIndex: number,
+    destinationName = timelineLayerNames[destinationIndex]
   ) => {
     setAutoAnnotationLayer(
       autoAnnotationLayer.map((item, i) => {
-        if (i === index) {
+        if (i === configIndex) {
           return {
-            index: index,
-            layerName: layerName,
-            humanId: humanId,
-            points: points
+            ...item,
+            index: destinationIndex,
+            layerName: destinationName
           }
-        } else {
-          return item
         }
+        return item
       })
     )
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      setIsEditing(false)
-      setIsLayerNameEdit(false)
+  const createTimelineLayer = () => {
+    const layerName = newLayerName.trim()
+    if (!layerName) {
+      setApiError({ message: '新しい注釈層の名前を入力してください。' })
+      return
     }
+    if (timelineLayerNames.includes(layerName)) {
+      setApiError({ message: '同じ名前の注釈層が既に存在します。' })
+      return
+    }
+    const destinationIndex = onCreateTimelineLayer(layerName)
+    if (destinationIndex === null) {
+      setApiError({ message: '新しい注釈層を作成できませんでした。' })
+      return
+    }
+    if (selectedLayerIndex < 0) {
+      setAutoAnnotationLayer([
+        {
+          index: destinationIndex,
+          layerName,
+          humanId: humanIds[0] ?? 0,
+          points: []
+        }
+      ])
+      setSelectedLayerIndex(0)
+    } else {
+      selectDestinationLayer(selectedLayerIndex, destinationIndex, layerName)
+    }
+    setNewLayerName('')
+    setApiError(null)
   }
 
   const isAiReady =
@@ -424,7 +520,10 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   const getUploadedAutoAnnotation = (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('autoAnnotationLayer', JSON.stringify(autoAnnotationLayer))
+    formData.append(
+      'autoAnnotationLayer',
+      JSON.stringify(getAutoAnnotationRequestLayers())
+    )
     const analysisFrameRange = getAnalysisFrameRange()
     if (analysisFrameRange) {
       formData.append('analysisRange', JSON.stringify(analysisFrameRange))
@@ -445,11 +544,17 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       },
       body: JSON.stringify({
         file_path: filePath,
-        autoAnnotationLayer,
+        autoAnnotationLayer: getAutoAnnotationRequestLayers(),
         analysisRange: analysisFrameRange
       })
     })
   }
+
+  const getAutoAnnotationRequestLayers = () =>
+    autoAnnotationLayer.map((layer) => ({
+      ...layer,
+      layerName: timelineLayerNames[layer.index] ?? layer.layerName
+    }))
 
   const applyPeople = (data: { people?: { humanId: number; image: string }[]; images?: string[] }, single: boolean) => {
     const people = data.people ?? (data.images ?? []).map((image, humanId) => ({ humanId, image }))
@@ -545,6 +650,32 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       return
     }
     if (step !== 2) {
+      return
+    }
+    if (
+      autoAnnotationLayer.some(
+        (layer) =>
+          layer.index < 0 || layer.index >= timelineLayerNames.length
+      )
+    ) {
+      setApiError({
+        message: '挿入先の注釈層を選び直してください。'
+      })
+      return
+    }
+    if (
+      new Set(autoAnnotationLayer.map((layer) => layer.index)).size !==
+      autoAnnotationLayer.length
+    ) {
+      setApiError({
+        message: '同じ注釈層を複数の検出設定には指定できません。'
+      })
+      return
+    }
+    if (autoAnnotationLayer.some((layer) => layer.points.length === 0)) {
+      setApiError({
+        message: 'すべての検出設定で、使用する関節を1つ以上選択してください。'
+      })
       return
     }
     const analysisFrameRange = getAnalysisFrameRange()
@@ -792,7 +923,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
                 {humanImageUrls.map((url, index) => (
                   <div
                     key={humanIds[index]}
-                    className={`human-img ${humanIds[index] === autoAnnotationLayer[selectedLayerIndex].humanId ? 'selected' : ''}`}
+                    className={`human-img ${humanIds[index] === autoAnnotationLayer[selectedLayerIndex]?.humanId ? 'selected' : ''}`}
                   >
                     <div
                       className="icon"
@@ -840,39 +971,37 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
                     onClick={() => setSelectedLayerIndex(index)}
                   >
                     <div className="layer-info">
-                      <span>{index + 1}.</span>
-                      {index === selectedLayerIndex && isLayerNameEdit ? (
-                        <input
-                          type="text"
-                          name="layerName"
-                          value={layer.layerName}
-                          onChange={(e) =>
-                            updateLayerParam(
+                      <strong>{`設定 ${index + 1}`}</strong>
+                      <label className="layer-destination">
+                        <span>挿入先</span>
+                        <select
+                          aria-label={`検出設定${index + 1}の挿入先注釈層`}
+                          value={layer.index}
+                          onChange={(event) => {
+                            selectDestinationLayer(
                               index,
-                              e.target.value,
-                              layer.humanId,
-                              layer.points
+                              Number(event.target.value)
                             )
-                          }
-                          onBlur={() => {
-                            ;(setIsEditing(false), setIsLayerNameEdit(false))
-                          }}
-                          onKeyDown={(e) => handleKeyDown(e)}
-                          autoFocus
-                        />
-                      ) : (
-                        <p
-                          onDoubleClick={() => {
-                            setIsEditing(true)
-                            setSelectedLayerIndex(index)
-                            setIsLayerNameEdit(true)
                           }}
                         >
-                          {layer.layerName}
-                        </p>
-                      )}
+                          {timelineLayerNames.map((layerName, layerIndex) => (
+                            <option
+                              key={`${layerIndex}-${layerName}`}
+                              value={layerIndex}
+                              disabled={autoAnnotationLayer.some(
+                                (item, itemIndex) =>
+                                  itemIndex !== index &&
+                                  item.index === layerIndex
+                              )}
+                            >
+                              {layerName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <small>{`人物 ${layer.humanId + 1}・関節 ${layer.points.length}個`}</small>
                     </div>
-                    {index !== 0 && (
+                    {autoAnnotationLayer.length > 1 && (
                       <div
                         className="delete"
                         onClick={(e) => {
@@ -887,12 +1016,28 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
                 ))}
                 <div
                   className="add-layer-item"
-                  onClick={() =>
-                    addLayerParam(autoAnnotationLayer.length, 'レイヤー', autoAnnotationLayer[selectedLayerIndex].humanId, [])
-                  }
+                  onClick={addLayerParam}
                 >
                   <span>＋</span>
-                  <p>追加</p>
+                  <p>検出設定を追加</p>
+                </div>
+                <div className="new-timeline-layer">
+                  <input
+                    type="text"
+                    value={newLayerName}
+                    placeholder="新しい注釈層名"
+                    onChange={(event) => setNewLayerName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') createTimelineLayer()
+                    }}
+                  />
+                  <button
+                    className="secondary-action"
+                    type="button"
+                    onClick={createTimelineLayer}
+                  >
+                    注釈層を作成して選択
+                  </button>
                 </div>
               </div>
             </div>
