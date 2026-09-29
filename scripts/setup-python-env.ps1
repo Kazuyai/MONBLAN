@@ -1,6 +1,7 @@
 param(
   [string]$PythonPath = "py",
   [string]$PythonVersion = "3.11",
+  [string]$AiRoot = "",
   [switch]$SkipInstall,
   [switch]$Force
 )
@@ -10,7 +11,12 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 $apiDir = Join-Path $repoRoot "API"
-$venvDir = Join-Path $apiDir "venv"
+$environmentRoot = if ($AiRoot) {
+  [System.IO.Path]::GetFullPath($AiRoot)
+} else {
+  $apiDir
+}
+$venvDir = Join-Path $environmentRoot "venv"
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $requirementsPath = Join-Path $apiDir "requirements.txt"
 
@@ -18,6 +24,10 @@ if (-not (Test-Path $requirementsPath)) {
   Write-Host "[NG] requirements.txt was not found." -ForegroundColor Red
   Write-Host "Expected: $requirementsPath"
   exit 1
+}
+
+if (-not (Test-Path $environmentRoot)) {
+  New-Item -ItemType Directory -Path $environmentRoot -Force | Out-Null
 }
 
 if ((Test-Path $venvDir) -and -not $Force) {

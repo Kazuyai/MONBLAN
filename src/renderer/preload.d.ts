@@ -24,6 +24,7 @@ declare global {
       runAiSetupOperation: (
         operation: AiSetupOperation
       ) => Promise<AiSetupStatus>
+      cancelAiSetupOperation: () => Promise<AiSetupStatus>
       onAiSetupStatusChanged: (
         callback: (status: AiSetupStatus) => void
       ) => () => void

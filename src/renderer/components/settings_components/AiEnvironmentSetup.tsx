@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import type {
   ApiEnvironmentCheck,
   ApiStatus,
+  AiSetupOperation,
   AiSetupStatus
 } from '../../../main/preload'
 
@@ -141,7 +142,9 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
 }) => {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isRestarting, setIsRestarting] = useState(false)
-  const [isPreparingStorage, setIsPreparingStorage] = useState(false)
+  const [pendingSetupOperation, setPendingSetupOperation] =
+    useState<AiSetupOperation | null>(null)
+  const [isCancellingSetup, setIsCancellingSetup] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [setupStatus, setSetupStatus] = useState<AiSetupStatus | null>(null)
   const presentation = getStatusPresentation(apiStatus)
@@ -221,26 +224,44 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
     }
   }
 
-  const prepareStorage = async () => {
+  const runSetupOperation = async (operation: AiSetupOperation) => {
     if (!window.electronAPI) {
       setActionError('Electron APIを利用できません。')
       return
     }
     setActionError(null)
-    setIsPreparingStorage(true)
+    setPendingSetupOperation(operation)
     try {
-      const status = await window.electronAPI.runAiSetupOperation(
-        'prepare-storage'
-      )
+      const status = await window.electronAPI.runAiSetupOperation(operation)
       setSetupStatus(status)
     } catch (error) {
       setActionError(
         error instanceof Error
           ? error.message
-          : 'AI環境の保存先を準備できませんでした。'
+          : 'AI環境のセットアップ処理に失敗しました。'
       )
     } finally {
-      setIsPreparingStorage(false)
+      setPendingSetupOperation(null)
+    }
+  }
+
+  const setupIsRunning =
+    pendingSetupOperation !== null || setupStatus?.phase === 'running'
+
+  const cancelSetupOperation = async () => {
+    if (!window.electronAPI) return
+    setIsCancellingSetup(true)
+    try {
+      const status = await window.electronAPI.cancelAiSetupOperation()
+      setSetupStatus(status)
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : 'セットアップ処理を中止できませんでした。'
+      )
+    } finally {
+      setIsCancellingSetup(false)
     }
   }
 
@@ -277,10 +298,12 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
           {!setupStatus.prepared && (
             <button
               type="button"
-              disabled={isPreparingStorage || setupStatus.phase === 'running'}
-              onClick={prepareStorage}
+              disabled={setupIsRunning}
+              onClick={() => runSetupOperation('prepare-storage')}
             >
-              {isPreparingStorage ? '準備中…' : '保存先を準備'}
+              {pendingSetupOperation === 'prepare-storage'
+                ? '準備中…'
+                : '保存先を準備'}
             </button>
           )}
           <p className="ai-environment-storage-note">
@@ -288,6 +311,117 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
           </p>
         </section>
       )}
+
+      {setupStatus?.prepared && (
+        <section className="ai-environment-card ai-python-setup">
+          <h3>Python環境の準備</h3>
+          <ol className="ai-setup-step-list">
+            <li className={setupStatus.python.available ? 'completed' : ''}>
+              <div className="ai-setup-step-header">
+                <div>
+                  <strong>1. Pythonを確認</strong>
+                  <span>
+                    {setupStatus.python.available
+                      ? `Python ${setupStatus.python.version} (${setupStatus.python.command})`
+                      : 'Python 3.11または3.12が必要です。'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={setupIsRunning}
+                  onClick={() => runSetupOperation('check-python')}
+                >
+                  {pendingSetupOperation === 'check-python'
+                    ? '確認中…'
+                    : '確認'}
+                </button>
+              </div>
+            </li>
+            <li className={setupStatus.venvReady ? 'completed' : ''}>
+              <div className="ai-setup-step-header">
+                <div>
+                  <strong>2. 専用Python環境を作成</strong>
+                  <span>{setupStatus.venvPath}</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={setupIsRunning || !setupStatus.python.available}
+                  onClick={() =>
+                    runSetupOperation('create-python-environment')
+                  }
+                >
+                  {pendingSetupOperation === 'create-python-environment'
+                    ? '作成中…'
+                    : setupStatus.venvReady
+                      ? '再確認'
+                      : '作成'}
+                </button>
+              </div>
+            </li>
+            <li className={setupStatus.dependenciesReady ? 'completed' : ''}>
+              <div className="ai-setup-step-header">
+                <div>
+                  <strong>3. AI依存パッケージを導入</strong>
+                  <span>
+                    ダウンロード容量が大きく、完了まで時間がかかる場合があります。
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={setupIsRunning || !setupStatus.venvReady}
+                  onClick={() =>
+                    runSetupOperation('install-python-dependencies')
+                  }
+                >
+                  {pendingSetupOperation === 'install-python-dependencies'
+                    ? '導入中…'
+                    : setupStatus.dependenciesReady
+                      ? '再インストール'
+                      : 'インストール'}
+                </button>
+              </div>
+            </li>
+          </ol>
+          <p className="ai-environment-storage-note">
+            専用環境への切り替えは、依存関係と外部AIプログラムの確認後に行います。現在使用中の環境には影響しません。
+          </p>
+        </section>
+      )}
+
+      {setupStatus &&
+        (setupStatus.message ||
+          setupStatus.error ||
+          setupStatus.logs.length > 0) && (
+          <section className="ai-environment-card ai-setup-progress">
+            <div className="ai-setup-progress-header">
+              <h3>セットアップ状況</h3>
+              {setupIsRunning && (
+                <div>
+                  <span>処理中</span>
+                  <button
+                    type="button"
+                    disabled={isCancellingSetup}
+                    onClick={cancelSetupOperation}
+                  >
+                    {isCancellingSetup ? '中止中…' : '中止'}
+                  </button>
+                </div>
+              )}
+            </div>
+            {setupStatus.message && <p>{setupStatus.message}</p>}
+            {setupStatus.error && (
+              <p className="ai-setup-progress-error" role="alert">
+                {setupStatus.error}
+              </p>
+            )}
+            {setupStatus.logs.length > 0 && (
+              <details open={setupIsRunning}>
+                <summary>実行ログ</summary>
+                <pre>{setupStatus.logs.join('\n')}</pre>
+              </details>
+            )}
+          </section>
+        )}
 
       {actionError && (
         <div className="ai-environment-action-error" role="alert">
@@ -380,7 +514,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
 
       {!aiAvailable && setupGroups.length > 0 && (
         <p className="ai-environment-note">
-          現在は診断と再確認のみ行います。環境を変更する処理は、次の段階で安全確認を加えて接続します。
+          Python環境の準備後に、AlphaPose・MotionBERT本体とモデルをセットアップします。
         </p>
       )}
 

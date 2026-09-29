@@ -85,6 +85,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     operation: AiSetupOperation
   ): Promise<AiSetupStatus> =>
     ipcRenderer.invoke('ai-setup:run-operation', operation),
+  cancelAiSetupOperation: (): Promise<AiSetupStatus> =>
+    ipcRenderer.invoke('ai-setup:cancel'),
   onAiSetupStatusChanged: (callback: (status: AiSetupStatus) => void) => {
     const subscription = (_event: IpcRendererEvent, status: AiSetupStatus) =>
       callback(status)

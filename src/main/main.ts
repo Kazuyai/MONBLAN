@@ -2,6 +2,7 @@ import path from 'path'
 import { app, dialog, BrowserWindow, shell, ipcMain } from 'electron'
 import log from 'electron-log'
 import {
+  cancelAiSetupOperation,
   getAiSetupStatus,
   runAiSetupOperation,
   setAiSetupStatusListener,
@@ -42,7 +43,14 @@ ipcMain.handle('ai-setup:get-status', async () =>
 ipcMain.handle(
   'ai-setup:run-operation',
   async (_event, operation: AiSetupOperation) =>
-    runAiSetupOperation(operation, app.getPath('userData'))
+    runAiSetupOperation(
+      operation,
+      app.getPath('userData'),
+      getProjectRoot(app.getAppPath())
+    )
+)
+ipcMain.handle('ai-setup:cancel', async () =>
+  cancelAiSetupOperation(app.getPath('userData'))
 )
 
 setApiStatusListener((status) => {
