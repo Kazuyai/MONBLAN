@@ -62,6 +62,13 @@ interface TimelineState {
   layerNames: string[]
 }
 
+interface MovementDetectionCandidate extends TimelineAnnotationResult {
+  id: string
+  status: 'pending' | 'accepted' | 'rejected'
+}
+
+type AnnotationCandidate = SimilarMotionCandidate | MovementDetectionCandidate
+
 const MAX_HISTORY_LENGTH = 100
 
 type TimelineNoticeType = 'success' | 'warning' | 'error'
@@ -109,6 +116,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       annotations: [],
       layerNames: ['レイヤー1', 'レイヤー2', 'レイヤー3']
     })
+    const stateRef = useRef(state)
+    const [movementDetectionCandidates, setMovementDetectionCandidates] =
+      useState<MovementDetectionCandidate[]>([])
+
+    useEffect(() => {
+      stateRef.current = state
+    }, [state])
 
     // 総フレーム数を計算
     const totalFrames = Math.ceil(videoDuration * frameRate)
@@ -308,7 +322,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     }
 
     const hasAnnotationConflict = (
-      candidate: SimilarMotionCandidate,
+      candidate: AnnotationCandidate,
       candidateLayerAnnotations = annotations.filter(
         (annotation) => annotation.layerIndex === candidate.layerIndex
       )
@@ -326,7 +340,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     }
 
     const isInsertedCandidateStillPresent = (
-      candidate: SimilarMotionCandidate
+      candidate: AnnotationCandidate
     ) => {
       return annotations.some(
         (annotation) =>
@@ -345,6 +359,16 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     )
     const insertableSimilarMotionCandidates =
       visibleSimilarMotionCandidates.filter(
+        (candidate) => !hasAnnotationConflict(candidate)
+      )
+    const visibleMovementDetectionCandidates =
+      movementDetectionCandidates.filter(
+        (candidate) =>
+          candidate.status !== 'accepted' ||
+          !isInsertedCandidateStillPresent(candidate)
+      )
+    const insertableMovementDetectionCandidates =
+      visibleMovementDetectionCandidates.filter(
         (candidate) => !hasAnnotationConflict(candidate)
       )
 
@@ -432,6 +456,81 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       candidate: SimilarMotionCandidate
     ) => {
       insertSimilarMotionCandidates([candidate])
+    }
+
+    const removeMovementDetectionCandidate = (candidateId: string) => {
+      setMovementDetectionCandidates((current) =>
+        current.filter((candidate) => candidate.id !== candidateId)
+      )
+    }
+
+    const insertMovementDetectionCandidates = (
+      candidatesToInsert: MovementDetectionCandidate[]
+    ) => {
+      const annotationsByLayer = new Map<number, AnnotationType[]>()
+      annotations.forEach((annotation) => {
+        const layerAnnotations =
+          annotationsByLayer.get(annotation.layerIndex) ?? []
+        layerAnnotations.push(annotation)
+        annotationsByLayer.set(annotation.layerIndex, layerAnnotations)
+      })
+
+      const insertableCandidates: MovementDetectionCandidate[] = []
+      candidatesToInsert.forEach((candidate) => {
+        const layerAnnotations =
+          annotationsByLayer.get(candidate.layerIndex) ?? []
+        if (hasAnnotationConflict(candidate, layerAnnotations)) {
+          return
+        }
+        insertableCandidates.push(candidate)
+        annotationsByLayer.set(candidate.layerIndex, [
+          ...layerAnnotations,
+          {
+            id: candidate.id,
+            startFrame: candidate.startFrame,
+            endFrame: candidate.endFrame,
+            text: candidate.text,
+            layerIndex: candidate.layerIndex
+          }
+        ])
+      })
+
+      if (insertableCandidates.length === 0) {
+        showTimelineNotice('挿入できる動作検出候補がありません。')
+        return
+      }
+
+      pushToUndoStack(state)
+      setState({
+        annotations: [
+          ...annotations,
+          ...insertableCandidates.map((candidate) => ({
+            id: candidate.id,
+            startFrame: candidate.startFrame,
+            endFrame: candidate.endFrame,
+            text: candidate.text,
+            layerIndex: candidate.layerIndex
+          }))
+        ],
+        layerNames: [...layerNames]
+      })
+      setMovementDetectionCandidates((current) =>
+        current.map((candidate) =>
+          insertableCandidates.some((inserted) => inserted.id === candidate.id)
+            ? { ...candidate, status: 'accepted' }
+            : candidate
+        )
+      )
+      showTimelineNotice(
+        `${insertableCandidates.length}件の動作検出候補を挿入しました。`,
+        'success'
+      )
+    }
+
+    const insertMovementDetectionCandidate = (
+      candidate: MovementDetectionCandidate
+    ) => {
+      insertMovementDetectionCandidates([candidate])
     }
 
     // 位置からフレームインデックスを計算する関数を追加
@@ -1205,6 +1304,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       setSelectionFrameWidth(0)
       setSelectionStart(0)
       setSelectionWidth(0)
+      setMovementDetectionCandidates([])
       setSimilarMotionCandidates([])
       showTimelineNotice('プロジェクトを読み込みました。', 'success')
     }
@@ -1343,28 +1443,54 @@ ${tierElements.join('\n')}
     }
 
     useEffect(() => {
-      if (autoAnnotationResponseData?.length === 0) return
-      // autoAnnotationResponseDataの中にあるlayerNameでlayerNamesを書き換え
-      const newLayerNames = [
-        ...new Set(
-          autoAnnotationResponseData?.map((data) => data.layerName) ?? []
-        )
-      ]
-      setState((prevState) => ({
-        ...prevState,
-        layerNames: newLayerNames,
-        annotations: (autoAnnotationResponseData ?? []).map((data) => ({
-          id: uuidv4(),
-          startFrame: data.startFrame,
-          endFrame: data.endFrame,
-          text: data.text,
-          layerIndex: data.layerIndex
-        }))
-      }))
+      if (autoAnnotationResponseData === undefined) return
+      if (autoAnnotationResponseData.length === 0) {
+        setMovementDetectionCandidates([])
+        return
+      }
 
-      // レイヤー数に合わせて containerRefs を初期化
-      updateContainerRefs(newLayerNames)
-      setSelectedLayerIndex(clampLayerIndex(0, newLayerNames))
+      const currentState = stateRef.current
+      const nextLayerNames = [...currentState.layerNames]
+      const destinationLayerBySource = new Map<number, number>()
+      const assignedLayerIndices = new Set<number>()
+
+      autoAnnotationResponseData.forEach((result) => {
+        if (destinationLayerBySource.has(result.layerIndex)) return
+
+        let destinationLayerIndex = nextLayerNames.findIndex(
+          (name, index) =>
+            name === result.layerName && !assignedLayerIndices.has(index)
+        )
+        if (destinationLayerIndex < 0) {
+          destinationLayerIndex = nextLayerNames.length
+          nextLayerNames.push(
+            result.layerName || `レイヤー${destinationLayerIndex + 1}`
+          )
+        }
+        destinationLayerBySource.set(result.layerIndex, destinationLayerIndex)
+        assignedLayerIndices.add(destinationLayerIndex)
+      })
+
+      setMovementDetectionCandidates(
+        autoAnnotationResponseData.map((result) => ({
+          ...result,
+          id: uuidv4(),
+          layerIndex:
+            destinationLayerBySource.get(result.layerIndex) ??
+            result.layerIndex,
+          status: 'pending'
+        }))
+      )
+
+      if (nextLayerNames.length !== currentState.layerNames.length) {
+        const nextState = {
+          ...currentState,
+          layerNames: nextLayerNames
+        }
+        stateRef.current = nextState
+        setState(nextState)
+        updateContainerRefs(nextLayerNames)
+      }
     }, [autoAnnotationResponseData])
 
     // ドキュメント全体でマウスイベントを監視
@@ -1530,6 +1656,36 @@ ${tierElements.join('\n')}
             </button>
           </div>
         )}
+        {visibleMovementDetectionCandidates.length > 0 && (
+          <div className="similarity-candidate-toolbar movement-candidate-toolbar">
+            <div className="similarity-candidate-toolbar-summary">
+              <span>{`動作検出候補: ${visibleMovementDetectionCandidates.length}件`}</span>
+              <span>{`挿入可能: ${insertableMovementDetectionCandidates.length}件`}</span>
+            </div>
+            <div className="similarity-candidate-toolbar-actions">
+              <button
+                type="button"
+                disabled={insertableMovementDetectionCandidates.length === 0}
+                onClick={() =>
+                  insertMovementDetectionCandidates(
+                    insertableMovementDetectionCandidates
+                  )
+                }
+              >
+                すべて挿入
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMovementDetectionCandidates([])
+                  showTimelineNotice('動作検出候補を破棄しました。', 'success')
+                }}
+              >
+                候補を破棄
+              </button>
+            </div>
+          </div>
+        )}
         {visibleSimilarMotionCandidates.length > 0 && (
           <div className="similarity-candidate-toolbar">
             <div className="similarity-candidate-toolbar-summary">
@@ -1682,13 +1838,21 @@ ${tierElements.join('\n')}
               {layerNames.map((name, layerIndex) => {
                 // 各レイヤーに対応する containerRef を取得
                 const containerRef = containerRefs.current[layerIndex]
-                const layerCandidates = visibleSimilarMotionCandidates.filter(
-                  (candidate) => candidate.layerIndex === layerIndex
-                )
+                const layerMovementCandidates =
+                  visibleMovementDetectionCandidates.filter(
+                    (candidate) => candidate.layerIndex === layerIndex
+                  )
+                const layerSimilarityCandidates =
+                  visibleSimilarMotionCandidates.filter(
+                    (candidate) => candidate.layerIndex === layerIndex
+                  )
+                const hasLayerCandidates =
+                  layerMovementCandidates.length > 0 ||
+                  layerSimilarityCandidates.length > 0
                 return (
                   <React.Fragment key={layerIndex}>
                     <tr
-                      className={`layer ${selectedLayerIndex === layerIndex ? 'selected' : ''} ${layerCandidates.length > 0 ? 'has-similarity-candidates' : ''}`}
+                      className={`layer ${selectedLayerIndex === layerIndex ? 'selected' : ''} ${hasLayerCandidates ? 'has-similarity-candidates' : ''}`}
                     >
                       <th
                         onClick={() => handleLayerClick(layerIndex)}
@@ -1787,13 +1951,19 @@ ${tierElements.join('\n')}
                           ))}
                       </div>
                     </tr>
-                    {layerCandidates.length > 0 && (
-                      <tr className="layer similarity-candidate-layer">
+                    {layerMovementCandidates.length > 0 && (
+                      <tr className="layer similarity-candidate-layer movement-candidate-layer">
                         <th>
                           <div className="layer-name similarity-candidate-header">
                             <div className="similarity-candidate-title">
-                              <span>{'候補: '}{name}</span>
-                              <span>{layerCandidates.length}{'件'}</span>
+                              <span>
+                                {'動作候補: '}
+                                {name}
+                              </span>
+                              <span>
+                                {layerMovementCandidates.length}
+                                {'件'}
+                              </span>
                             </div>
                           </div>
                         </th>
@@ -1804,7 +1974,70 @@ ${tierElements.join('\n')}
                             position: 'relative'
                           }}
                         >
-                          {layerCandidates.map((candidate) => {
+                          {layerMovementCandidates.map((candidate) => {
+                            const hasConflict = hasAnnotationConflict(candidate)
+                            return (
+                              <div
+                                key={candidate.id}
+                                className={`similarity-candidate movement-detection-candidate ${hasConflict ? 'conflict' : ''}`}
+                                style={{
+                                  left: `${(candidate.startFrame - 1) * frameWidth}px`,
+                                  right: `${timelineWidth - (candidate.endFrame - 1) * frameWidth}px`
+                                }}
+                                title="動作範囲検出候補"
+                              >
+                                <span>{candidate.text}</span>
+                                <span>検出</span>
+                                <div className="similarity-candidate-actions">
+                                  {hasConflict ? (
+                                    <span>重複</span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        insertMovementDetectionCandidate(
+                                          candidate
+                                        )
+                                      }
+                                    >
+                                      挿入
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      removeMovementDetectionCandidate(
+                                        candidate.id
+                                      )
+                                    }
+                                  >
+                                    削除
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </tr>
+                    )}
+                    {layerSimilarityCandidates.length > 0 && (
+                      <tr className="layer similarity-candidate-layer">
+                        <th>
+                          <div className="layer-name similarity-candidate-header">
+                            <div className="similarity-candidate-title">
+                              <span>{'候補: '}{name}</span>
+                              <span>{layerSimilarityCandidates.length}{'件'}</span>
+                            </div>
+                          </div>
+                        </th>
+                        <div
+                          className="timeline similarity-candidate-timeline"
+                          style={{
+                            width: `${timelineWidth}px`,
+                            position: 'relative'
+                          }}
+                        >
+                          {layerSimilarityCandidates.map((candidate) => {
                             const hasConflict = hasAnnotationConflict(candidate)
                             return (
                               <div

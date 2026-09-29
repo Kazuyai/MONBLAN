@@ -1464,6 +1464,20 @@ button {
           }
         }
       }
+      .movement-candidate-toolbar {
+        border-color: #4f8884;
+        background: #1b3535;
+        .similarity-candidate-toolbar-summary span:last-child {
+          color: #bde7e3;
+        }
+        .similarity-candidate-toolbar-actions button {
+          border-color: #73aaa6;
+          background: #284644;
+          &:not(:disabled):hover {
+            background: #345b58;
+          }
+        }
+      }
       .timeline-container {
         flex: 1;
         display: flex;
@@ -1740,6 +1754,22 @@ button {
                   background: #b9dcff;
                   opacity: 0.8;
                 }
+                &.movement-detection-candidate {
+                  border-color: #8ed4ce;
+                  background: rgba(42, 116, 111, 0.82);
+                  &::before,
+                  &::after {
+                    background: #bce7e3;
+                  }
+                  &.conflict {
+                    border-color: #ffb36b;
+                    background: rgba(145, 76, 23, 0.78);
+                    &::before,
+                    &::after {
+                      background: #ffcf9c;
+                    }
+                  }
+                }
                 &::before {
                   left: 0;
                   border-left: solid 0.2rem #4f779f;
@@ -1905,6 +1935,15 @@ button {
                 background: #1f3448;
                 border-bottom-style: solid;
                 overflow: visible;
+              }
+            }
+            .movement-candidate-layer {
+              th {
+                background: #173130;
+                color: #bde7e3;
+              }
+              .similarity-candidate-timeline {
+                background: #203c3a;
               }
             }
         }
