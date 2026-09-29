@@ -128,13 +128,15 @@ AI環境が不足している場合でも、手動アノテーション機能は
 
 AI機能を使う場合のみ実施します。
 
-```powershell
-.\scripts\setup-python-env.ps1
-.\scripts\fetch-ai-repos.ps1
-.\scripts\check-ai-environment.ps1
-```
+1. アプリを起動して「AI環境セットアップ」タブを開く
+2. 画面に表示される順序で、保存先、Python環境、依存パッケージを準備する
+3. AlphaPoseとMotionBERTの本体を取得する
+4. 公式配布ページから学習済みモデルをダウンロードし、画面から選択して配置する
+5. 「AI APIを起動・再接続」を押し、AI機能が利用可能になったことを確認する
 
-checkpointの配置は利用者が各公式手順に従って行う必要があります。詳細は `docs/setup-ai-environment.md` を参照してください。
+Python 3.11または3.12、Git for Windows、NVIDIA GPUと対応ドライバーが事前に必要です。AI環境は `%LOCALAPPDATA%\Annotation Tool\ai` に作成され、通常はリポジトリ内やシステムのPython環境を変更しません。
+
+checkpointは利用者が各公式配布元から取得する必要があります。ライセンス、画面操作、手動復旧手順の詳細は `docs/setup-ai-environment.md` を参照してください。
 
 ## API単体起動
 
