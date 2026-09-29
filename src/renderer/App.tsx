@@ -77,6 +77,22 @@ const App = () => {
     }
   }, [])
 
+  const refreshApiStatus = async () => {
+    if (!window.electronAPI) {
+      throw new Error('Electron APIを利用できません。')
+    }
+    const status = await window.electronAPI.refreshApiStatus()
+    setApiStatus(status)
+  }
+
+  const restartApi = async () => {
+    if (!window.electronAPI) {
+      throw new Error('Electron APIを利用できません。')
+    }
+    const status = await window.electronAPI.restartApi()
+    setApiStatus(status)
+  }
+
   useEffect(() => {
     const previousVideoSrcs = previousVideoSrcsRef.current
     const currentVideoSrcs = new Set(videoSrcs)
@@ -209,6 +225,8 @@ const App = () => {
           selectionStartFrame={selectionStartFrame}
           selectionFrameWidth={selectionFrameWidth}
           selectedTimelineAnnotation={selectedTimelineAnnotation}
+          onRefreshApiStatus={refreshApiStatus}
+          onRestartApi={restartApi}
         />
       </div>
       <div id="divider" onMouseDown={startVerticalResizing}></div>

@@ -26,13 +26,21 @@ except ImportError:
     )
 
 
-def _path_status(name: str, path: str, kind: str) -> dict[str, Any]:
+def _path_status(
+    name: str,
+    path: str,
+    kind: str,
+    category: str,
+    group: str,
+) -> dict[str, Any]:
     """ファイルまたはディレクトリの存在確認結果を、UIで扱いやすい辞書にする。"""
     exists = os.path.isdir(path) if kind == "directory" else os.path.isfile(path)
     return {
         "name": name,
         "path": path,
         "kind": kind,
+        "category": category,
+        "group": group,
         "exists": exists,
         "ok": exists,
     }
@@ -45,6 +53,8 @@ def _cuda_status() -> dict[str, Any]:
     except Exception as error:
         return {
             "name": "CUDA / PyTorch",
+            "category": "runtime",
+            "group": "cuda-pytorch",
             "ok": False,
             "available": False,
             "error": f"PyTorch import failed: {error}",
@@ -53,6 +63,8 @@ def _cuda_status() -> dict[str, Any]:
     available = bool(torch.cuda.is_available())
     return {
         "name": "CUDA / PyTorch",
+        "category": "runtime",
+        "group": "cuda-pytorch",
         "ok": available,
         "available": available,
         "torch_version": getattr(torch, "__version__", None),
@@ -64,21 +76,53 @@ def _cuda_status() -> dict[str, Any]:
 def check_environment() -> dict[str, Any]:
     """AIパイプライン実行に必要なディレクトリ・スクリプト・重み・CUDAを確認する。"""
     checks = [
-        _path_status("Python executable", sys.executable, "file"),
-        _path_status("AlphaPose directory", ALPHAPOSE_DIR, "directory"),
-        _path_status("AlphaPose script", os.path.join(ALPHAPOSE_DIR, "scripts", "demo_inference.py"), "file"),
-        _path_status("AlphaPose checkpoint", ALPHAPOSE_CHECKPOINT, "file"),
-        _path_status("MotionBERT directory", MOTIONBERT_DIR, "directory"),
-        _path_status("MotionBERT script", os.path.join(MOTIONBERT_DIR, "infer_wild.py"), "file"),
-        _path_status("MotionBERT checkpoint", MOTIONBERT_CHECKPOINT, "file"),
-        _path_status("detect_movement directory", DETECT_MOVEMENT_DIR, "directory"),
-        _path_status("npy2csv script", os.path.join(DETECT_MOVEMENT_DIR, "npy2csv.py"), "file"),
+        _path_status("Python executable", sys.executable, "file", "runtime", "python"),
+        _path_status("AlphaPose directory", ALPHAPOSE_DIR, "directory", "external", "alphapose"),
+        _path_status(
+            "AlphaPose script",
+            os.path.join(ALPHAPOSE_DIR, "scripts", "demo_inference.py"),
+            "file",
+            "external",
+            "alphapose",
+        ),
+        _path_status("AlphaPose checkpoint", ALPHAPOSE_CHECKPOINT, "file", "external", "alphapose-model"),
+        _path_status("MotionBERT directory", MOTIONBERT_DIR, "directory", "external", "motionbert"),
+        _path_status(
+            "MotionBERT script",
+            os.path.join(MOTIONBERT_DIR, "infer_wild.py"),
+            "file",
+            "external",
+            "motionbert",
+        ),
+        _path_status("MotionBERT checkpoint", MOTIONBERT_CHECKPOINT, "file", "external", "motionbert-model"),
+        _path_status(
+            "detect_movement directory",
+            DETECT_MOVEMENT_DIR,
+            "directory",
+            "bundled",
+            "application-files",
+        ),
+        _path_status(
+            "npy2csv script",
+            os.path.join(DETECT_MOVEMENT_DIR, "npy2csv.py"),
+            "file",
+            "bundled",
+            "application-files",
+        ),
         _path_status(
             "cross product script",
             os.path.join(DETECT_MOVEMENT_DIR, "calc_keypoint_cross_product_rotate.py"),
             "file",
+            "bundled",
+            "application-files",
         ),
-        _path_status("movement detection script", os.path.join(DETECT_MOVEMENT_DIR, "detect_movement.py"), "file"),
+        _path_status(
+            "movement detection script",
+            os.path.join(DETECT_MOVEMENT_DIR, "detect_movement.py"),
+            "file",
+            "bundled",
+            "application-files",
+        ),
         _cuda_status(),
     ]
 

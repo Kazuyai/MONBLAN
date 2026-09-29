@@ -8,10 +8,15 @@ export interface ApiEnvironmentCheck {
   name: string
   path?: string
   kind?: string
+  category?: 'runtime' | 'external' | 'bundled'
+  group?: string
   exists?: boolean
   ok: boolean
   available?: boolean
   error?: string
+  torch_version?: string | null
+  cuda_version?: string | null
+  device_count?: number
 }
 
 export interface ApiEnvironmentStatus {

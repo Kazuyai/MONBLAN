@@ -12,8 +12,23 @@ import {
   AutoAnnotation,
   AudioVideoControls,
   ExportFile,
-  SimilarityCompletion
+  SimilarityCompletion,
+  AiEnvironmentSetup
 } from './settings_components'
+
+type SettingsTabId =
+  | 'open-file'
+  | 'auto-annotation'
+  | 'similarity-completion'
+  | 'play-speed'
+  | 'export-file'
+  | 'ai-environment'
+
+interface SettingsTab {
+  id: SettingsTabId
+  label: string
+  component: () => React.ReactNode
+}
 
 interface SettingsProps {
   setIsProcessing: (isProcessing: boolean) => void
@@ -35,6 +50,8 @@ interface SettingsProps {
   selectionStartFrame: number
   selectionFrameWidth: number
   selectedTimelineAnnotation: SelectedTimelineAnnotation | null
+  onRefreshApiStatus: () => Promise<void>
+  onRestartApi: () => Promise<void>
 }
 
 export const Settings: React.FC<SettingsProps> = ({
@@ -56,73 +73,114 @@ export const Settings: React.FC<SettingsProps> = ({
   currentFrame,
   selectionStartFrame,
   selectionFrameWidth,
-  selectedTimelineAnnotation
+  selectedTimelineAnnotation,
+  onRefreshApiStatus,
+  onRestartApi
 }) => {
-  const [selectedTabIndex, setSelectedTabIndex] = useState(0)
-  const [expandedTabIndex, setExpandedTabIndex] = useState<number | null>(null)
+  const [selectedTabId, setSelectedTabId] =
+    useState<SettingsTabId>('open-file')
+  const [expandedTabId, setExpandedTabId] =
+    useState<SettingsTabId | null>(null)
   const tabHeaderRef = useRef<HTMLDivElement>(null)
+  const aiAvailable =
+    apiStatus?.status === 'ready' && apiStatus.aiAvailable === true
 
-  const tabs = [
-    {
-      label: 'ファイルを開く',
-      component: () => (
-        <OpenFile
-          setIsProcessing={setIsProcessing}
-          setVideoSrcs={setVideoSrcs}
-          setFrameRate={setFrameRate}
-          onImportProjectJson={onImportProjectJson}
-        />
-      )
-    },
-    {
-      label: '動作範囲検出',
-      component: () => (
-        <AutoAnnotation
-          setIsProcessing={setIsProcessing}
-          setIsEditing={setIsEditing}
-          setAutoAnnotationResponseData={setAutoAnnotationResponseData}
-          apiStatus={apiStatus}
-          frameRate={frameRate}
-          videoSrcs={videoSrcs}
-          currentFrame={currentFrame}
-          selectionStartFrame={selectionStartFrame}
-          selectionFrameWidth={selectionFrameWidth}
-        />
-      )
-    },
-    {
-      label: '注釈補完',
-      component: () => (
-        <SimilarityCompletion
-          setIsProcessing={setIsProcessing}
-          setSimilarMotionCandidates={setSimilarMotionCandidates}
-          apiStatus={apiStatus}
-          frameRate={frameRate}
-          currentFrame={currentFrame}
-          selectedTimelineAnnotation={selectedTimelineAnnotation}
-          videoSrcs={videoSrcs}
-          selectionStartFrame={selectionStartFrame}
-          selectionFrameWidth={selectionFrameWidth}
-        />
-      )
-    },
-    {
-      label: '再生速度',
-      component: () => (
-        <AudioVideoControls playSpeed={playSpeed} setPlaySpeed={setPlaySpeed} />
-      )
-    },
-    {
-      label: 'ファイルをエクスポート',
-      component: () => (
-        <ExportFile
-          onExportCSV={onExportCSV}
-          onExportEAF={onExportEAF}
-          onExportProjectJson={onExportProjectJson}
-        />
-      )
+  const openFileTab: SettingsTab = {
+    label: 'ファイルを開く',
+    id: 'open-file',
+    component: () => (
+      <OpenFile
+        setIsProcessing={setIsProcessing}
+        setVideoSrcs={setVideoSrcs}
+        setFrameRate={setFrameRate}
+        onImportProjectJson={onImportProjectJson}
+      />
+    )
+  }
+  const autoAnnotationTab: SettingsTab = {
+    label: '動作範囲検出',
+    id: 'auto-annotation',
+    component: () => (
+      <AutoAnnotation
+        setIsProcessing={setIsProcessing}
+        setIsEditing={setIsEditing}
+        setAutoAnnotationResponseData={setAutoAnnotationResponseData}
+        apiStatus={apiStatus}
+        frameRate={frameRate}
+        videoSrcs={videoSrcs}
+        currentFrame={currentFrame}
+        selectionStartFrame={selectionStartFrame}
+        selectionFrameWidth={selectionFrameWidth}
+      />
+    )
+  }
+  const similarityCompletionTab: SettingsTab = {
+    label: '注釈補完',
+    id: 'similarity-completion',
+    component: () => (
+      <SimilarityCompletion
+        setIsProcessing={setIsProcessing}
+        setSimilarMotionCandidates={setSimilarMotionCandidates}
+        apiStatus={apiStatus}
+        frameRate={frameRate}
+        currentFrame={currentFrame}
+        selectedTimelineAnnotation={selectedTimelineAnnotation}
+        videoSrcs={videoSrcs}
+        selectionStartFrame={selectionStartFrame}
+        selectionFrameWidth={selectionFrameWidth}
+      />
+    )
+  }
+  const playSpeedTab: SettingsTab = {
+    label: '再生速度',
+    id: 'play-speed',
+    component: () => (
+      <AudioVideoControls playSpeed={playSpeed} setPlaySpeed={setPlaySpeed} />
+    )
+  }
+  const exportFileTab: SettingsTab = {
+    label: 'ファイルをエクスポート',
+    id: 'export-file',
+    component: () => (
+      <ExportFile
+        onExportCSV={onExportCSV}
+        onExportEAF={onExportEAF}
+        onExportProjectJson={onExportProjectJson}
+      />
+    )
+  }
+  const aiEnvironmentTab: SettingsTab = {
+    id: 'ai-environment',
+    label: aiAvailable ? 'AI環境' : 'AI環境セットアップ',
+    component: () => (
+      <AiEnvironmentSetup
+        apiStatus={apiStatus}
+        onRefresh={onRefreshApiStatus}
+        onRestart={onRestartApi}
+      />
+    )
+  }
+  const tabs: SettingsTab[] = aiAvailable
+    ? [
+        openFileTab,
+        autoAnnotationTab,
+        similarityCompletionTab,
+        playSpeedTab,
+        exportFileTab,
+        aiEnvironmentTab
+      ]
+    : [openFileTab, aiEnvironmentTab, playSpeedTab, exportFileTab]
+  const tabIds = tabs.map((tab) => tab.id).join(',')
+
+  useEffect(() => {
+    const visibleTabIds = new Set(tabIds.split(','))
+    if (!visibleTabIds.has(selectedTabId)) {
+      setSelectedTabId('ai-environment')
     }
-  ]
+    if (expandedTabId !== null && !visibleTabIds.has(expandedTabId)) {
+      setExpandedTabId(null)
+    }
+  }, [expandedTabId, selectedTabId, tabIds])
 
   useEffect(() => {
     const tabHeader = tabHeaderRef.current
@@ -148,21 +206,21 @@ export const Settings: React.FC<SettingsProps> = ({
     return () => {
       window.removeEventListener('resize', updateScrollWidth)
     }
-  }, [])
+  }, [tabIds])
 
   useEffect(() => {
-    if (expandedTabIndex === null) return
+    if (expandedTabId === null) return
     const handleEscape = (event: KeyboardEvent) => {
       if (
         event.key === 'Escape' &&
         !document.querySelector('.analysis-step-dialog-backdrop')
       ) {
-        setExpandedTabIndex(null)
+        setExpandedTabId(null)
       }
     }
     document.addEventListener('keydown', handleEscape)
     return () => document.removeEventListener('keydown', handleEscape)
-  }, [expandedTabIndex])
+  }, [expandedTabId])
 
   const keepFocusInExpandedTab = (
     event: React.KeyboardEvent<HTMLDivElement>
@@ -212,11 +270,11 @@ export const Settings: React.FC<SettingsProps> = ({
       <section className="settings">
         {/* タブのヘッダー */}
         <div className="tab-header" ref={tabHeaderRef}>
-          {tabs.map((tab, index) => (
+          {tabs.map((tab) => (
             <div
-              key={index}
-              className={`tab-button ${selectedTabIndex === index ? 'active' : ''}`}
-              onClick={() => setSelectedTabIndex(index)}
+              key={tab.id}
+              className={`tab-button ${selectedTabId === tab.id ? 'active' : ''}`}
+              onClick={() => setSelectedTabId(tab.id)}
             >
               {tab.label}
             </div>
@@ -225,33 +283,41 @@ export const Settings: React.FC<SettingsProps> = ({
 
         {/* タブのコンテンツ */}
         <div className="tab-content">
-          {tabs.map((tab, index) => (
+          {tabs.map((tab) => (
             <div
-              key={index}
-              className={`tab-panel${expandedTabIndex === index ? ' expanded' : ''}`}
-              style={{ display: selectedTabIndex === index ? 'flex' : 'none' }}
-              role={expandedTabIndex === index ? 'dialog' : undefined}
-              aria-modal={expandedTabIndex === index ? true : undefined}
-              aria-labelledby={expandedTabIndex === index ? `settings-tab-title-${index}` : undefined}
-              onKeyDown={expandedTabIndex === index ? keepFocusInExpandedTab : undefined}
+              key={tab.id}
+              className={`tab-panel${expandedTabId === tab.id ? ' expanded' : ''}`}
+              style={{ display: selectedTabId === tab.id ? 'flex' : 'none' }}
+              role={expandedTabId === tab.id ? 'dialog' : undefined}
+              aria-modal={expandedTabId === tab.id ? true : undefined}
+              aria-labelledby={
+                expandedTabId === tab.id
+                  ? `settings-tab-title-${tab.id}`
+                  : undefined
+              }
+              onKeyDown={
+                expandedTabId === tab.id ? keepFocusInExpandedTab : undefined
+              }
             >
               <div className="tab-panel-toolbar">
-                {expandedTabIndex === index && (
-                  <h2 id={`settings-tab-title-${index}`}>{tab.label}</h2>
+                {expandedTabId === tab.id && (
+                  <h2 id={`settings-tab-title-${tab.id}`}>{tab.label}</h2>
                 )}
                 <button
                   type="button"
                   className="tab-panel-expand-button"
                   aria-label={
-                    expandedTabIndex === index
+                    expandedTabId === tab.id
                       ? `${tab.label}の拡大表示を閉じる`
                       : `${tab.label}を拡大表示`
                   }
                   onClick={() =>
-                    setExpandedTabIndex(expandedTabIndex === index ? null : index)
+                    setExpandedTabId(
+                      expandedTabId === tab.id ? null : tab.id
+                    )
                   }
                 >
-                  {expandedTabIndex === index ? '×' : '拡大表示'}
+                  {expandedTabId === tab.id ? '×' : '拡大表示'}
                 </button>
               </div>
               <div className="tab-panel-body">{tab.component()}</div>
@@ -259,11 +325,11 @@ export const Settings: React.FC<SettingsProps> = ({
           ))}
         </div>
       </section>
-      {expandedTabIndex !== null &&
+      {expandedTabId !== null &&
         createPortal(
           <div
             className="tab-panel-backdrop"
-            onMouseDown={() => setExpandedTabIndex(null)}
+            onMouseDown={() => setExpandedTabId(null)}
             aria-hidden="true"
           />,
           document.body
