@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import type {
   ApiEnvironmentCheck,
   ApiStatus,
+  AiSetupModel,
   AiSetupOperation,
   AiSetupStatus
 } from '../../../main/preload'
@@ -179,6 +180,29 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
   const cudaCheck = checks.find(
     (check) => getCheckGroup(check) === 'cuda-pytorch'
   )
+  const dedicatedGroupState: Record<
+    string,
+    { ready: boolean; path: string } | undefined
+  > = setupStatus
+    ? {
+        alphapose: {
+          ready: setupStatus.alphaPoseReady,
+          path: setupStatus.alphaPosePath
+        },
+        'alphapose-model': {
+          ready: setupStatus.alphaPoseModelReady,
+          path: setupStatus.alphaPoseModelPath
+        },
+        motionbert: {
+          ready: setupStatus.motionBertReady,
+          path: setupStatus.motionBertPath
+        },
+        'motionbert-model': {
+          ready: setupStatus.motionBertModelReady,
+          path: setupStatus.motionBertModelPath
+        }
+      }
+    : {}
 
   useEffect(() => {
     let isMounted = true
@@ -247,6 +271,12 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
 
   const setupIsRunning =
     pendingSetupOperation !== null || setupStatus?.phase === 'running'
+  const activeSetupOperation =
+    pendingSetupOperation ?? setupStatus?.operation ?? null
+  const setupCanBeCancelled =
+    setupIsRunning &&
+    activeSetupOperation !== 'install-alphapose-model' &&
+    activeSetupOperation !== 'install-motionbert-model'
 
   const cancelSetupOperation = async () => {
     if (!window.electronAPI) return
@@ -262,6 +292,40 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
       )
     } finally {
       setIsCancellingSetup(false)
+    }
+  }
+
+  const openModelPage = async (model: AiSetupModel) => {
+    try {
+      await window.electronAPI?.openAiSetupModelPage(model)
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : 'モデルの公式配布ページを開けませんでした。'
+      )
+    }
+  }
+
+  const installModel = async (model: AiSetupModel) => {
+    if (!window.electronAPI) return
+    const operation: AiSetupOperation =
+      model === 'alphapose'
+        ? 'install-alphapose-model'
+        : 'install-motionbert-model'
+    setActionError(null)
+    setPendingSetupOperation(operation)
+    try {
+      const status = await window.electronAPI.installAiSetupModel(model)
+      setSetupStatus(status)
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : 'モデルファイルを配置できませんでした。'
+      )
+    } finally {
+      setPendingSetupOperation(null)
     }
   }
 
@@ -451,6 +515,79 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
         </section>
       )}
 
+      {setupStatus?.alphaPoseReady && setupStatus.motionBertReady && (
+        <section className="ai-environment-card ai-python-setup">
+          <h3>学習済みモデルの配置</h3>
+          <ol className="ai-setup-step-list">
+            <li className={setupStatus.alphaPoseModelReady ? 'completed' : ''}>
+              <div className="ai-setup-step-header">
+                <div>
+                  <strong>6. AlphaPoseモデルを配置</strong>
+                  <span>{setupStatus.alphaPoseModelPath}</span>
+                  <span>
+                    公式配布ページからhalpe26_fast_res50_256x192.pthをダウンロードしてください。
+                  </span>
+                </div>
+                {!setupStatus.alphaPoseModelReady && (
+                  <div className="ai-setup-step-actions">
+                    <button
+                      type="button"
+                      disabled={setupIsRunning}
+                      onClick={() => openModelPage('alphapose')}
+                    >
+                      公式ページ
+                    </button>
+                    <button
+                      type="button"
+                      disabled={setupIsRunning}
+                      onClick={() => installModel('alphapose')}
+                    >
+                      {pendingSetupOperation === 'install-alphapose-model'
+                        ? '配置中…'
+                        : 'ファイルを選択'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </li>
+            <li className={setupStatus.motionBertModelReady ? 'completed' : ''}>
+              <div className="ai-setup-step-header">
+                <div>
+                  <strong>7. MotionBERTモデルを配置</strong>
+                  <span>{setupStatus.motionBertModelPath}</span>
+                  <span>
+                    公式配布ページからbest_epoch.binをダウンロードしてください。配置時にSHA-256を検証します。
+                  </span>
+                </div>
+                {!setupStatus.motionBertModelReady && (
+                  <div className="ai-setup-step-actions">
+                    <button
+                      type="button"
+                      disabled={setupIsRunning}
+                      onClick={() => openModelPage('motionbert')}
+                    >
+                      公式ページ
+                    </button>
+                    <button
+                      type="button"
+                      disabled={setupIsRunning}
+                      onClick={() => installModel('motionbert')}
+                    >
+                      {pendingSetupOperation === 'install-motionbert-model'
+                        ? '配置中…'
+                        : 'ファイルを選択'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </li>
+          </ol>
+          <p className="ai-environment-storage-note">
+            両モデルの配置後に「AI APIを起動・再接続」を押すと、専用AI環境へ切り替わります。
+          </p>
+        </section>
+      )}
+
       {setupStatus &&
         (setupStatus.message ||
           setupStatus.error ||
@@ -458,7 +595,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
           <section className="ai-environment-card ai-setup-progress">
             <div className="ai-setup-progress-header">
               <h3>セットアップ状況</h3>
-              {setupIsRunning && (
+              {setupCanBeCancelled && (
                 <div>
                   <span>処理中</span>
                   <button
@@ -503,9 +640,14 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
           <h3>セットアップ項目</h3>
           <ul className="ai-environment-check-list">
             {setupGroups.map((group) => {
-              const groupOk = group.checks.every((check) => check.ok)
+              const dedicatedState = dedicatedGroupState[group.id]
+              const groupOk =
+                group.checks.every((check) => check.ok) ||
+                dedicatedState?.ready === true
               const groupPresentation = environmentGroupPresentation[group.id]
-              const missingChecks = group.checks.filter((check) => !check.ok)
+              const missingChecks = groupOk
+                ? []
+                : group.checks.filter((check) => !check.ok)
               return (
                 <li key={group.id}>
                   <span
@@ -517,11 +659,15 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
                   <div>
                     <strong>{groupPresentation?.label ?? group.id}</strong>
                     <span>{groupPresentation?.description}</span>
-                    {missingChecks.map((check) => (
-                      <span key={`${check.name}-${check.path ?? ''}`}>
-                        {check.path ?? check.error ?? check.name}
-                      </span>
-                    ))}
+                    {dedicatedState ? (
+                      <span>{dedicatedState.path}</span>
+                    ) : (
+                      missingChecks.map((check) => (
+                        <span key={`${check.name}-${check.path ?? ''}`}>
+                          {check.path ?? check.error ?? check.name}
+                        </span>
+                      ))
+                    )}
                   </div>
                 </li>
               )

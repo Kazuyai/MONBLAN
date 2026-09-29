@@ -1,4 +1,5 @@
 import {
+  AiSetupModel,
   AiSetupOperation,
   AiSetupStatus,
   ApiStatus,
@@ -25,6 +26,8 @@ declare global {
         operation: AiSetupOperation
       ) => Promise<AiSetupStatus>
       cancelAiSetupOperation: () => Promise<AiSetupStatus>
+      installAiSetupModel: (model: AiSetupModel) => Promise<AiSetupStatus>
+      openAiSetupModelPage: (model: AiSetupModel) => Promise<void>
       onAiSetupStatusChanged: (
         callback: (status: AiSetupStatus) => void
       ) => () => void

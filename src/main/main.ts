@@ -5,8 +5,10 @@ import {
   cancelAiSetupOperation,
   getAiSetupRoot,
   getAiSetupStatus,
+  installAiSetupModel,
   runAiSetupOperation,
   setAiSetupStatusListener,
+  type AiSetupModel,
   type AiSetupOperation
 } from './aiSetup'
 import {
@@ -56,6 +58,52 @@ ipcMain.handle(
 )
 ipcMain.handle('ai-setup:cancel', async () =>
   cancelAiSetupOperation(app.getPath('userData'))
+)
+ipcMain.handle(
+  'ai-setup:install-model',
+  async (_event, model: AiSetupModel) => {
+    if (model !== 'alphapose' && model !== 'motionbert') {
+      throw new Error(`Unsupported AI model: ${String(model)}`)
+    }
+    const dialogOptions: Electron.OpenDialogOptions = {
+      title:
+        model === 'alphapose'
+          ? 'AlphaPoseモデルを選択'
+          : 'MotionBERTモデルを選択',
+      properties: ['openFile'],
+      filters: [
+        model === 'alphapose'
+          ? { name: 'AlphaPose model', extensions: ['pth'] }
+          : { name: 'MotionBERT model', extensions: ['bin'] }
+      ]
+    }
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions)
+    if (result.canceled || result.filePaths.length === 0) {
+      return getAiSetupStatus(app.getPath('userData'))
+    }
+    return installAiSetupModel(
+      model,
+      result.filePaths[0],
+      app.getPath('userData')
+    )
+  }
+)
+ipcMain.handle(
+  'ai-setup:open-model-page',
+  async (_event, model: AiSetupModel) => {
+    const modelPages: Record<AiSetupModel, string> = {
+      alphapose:
+        'https://drive.google.com/file/d/1S-ROA28de-1zvLv-hVfPFJ5tFBYOSITb/view?usp=sharing',
+      motionbert:
+        'https://huggingface.co/walterzhu/MotionBERT/blob/main/checkpoint/pose3d/FT_MB_lite_MB_ft_h36m_global_lite/best_epoch.bin'
+    }
+    if (model !== 'alphapose' && model !== 'motionbert') {
+      throw new Error(`Unsupported AI model: ${String(model)}`)
+    }
+    await shell.openExternal(modelPages[model])
+  }
 )
 
 setApiStatusListener((status) => {

@@ -2,6 +2,8 @@ import {
   ChildProcessWithoutNullStreams,
   spawn
 } from 'child_process'
+import { createHash } from 'crypto'
+import { createReadStream } from 'fs'
 import { promises as fs } from 'fs'
 import path from 'path'
 
@@ -12,7 +14,10 @@ export type AiSetupOperation =
   | 'install-python-dependencies'
   | 'fetch-alphapose'
   | 'fetch-motionbert'
+  | 'install-alphapose-model'
+  | 'install-motionbert-model'
 export type AiSetupPhase = 'idle' | 'running' | 'completed' | 'failed'
+export type AiSetupModel = 'alphapose' | 'motionbert'
 
 export interface AiSetupPythonStatus {
   available: boolean
@@ -28,8 +33,12 @@ export interface AiSetupStatus {
   dependenciesReady: boolean
   alphaPosePath: string
   alphaPoseReady: boolean
+  alphaPoseModelPath: string
+  alphaPoseModelReady: boolean
   motionBertPath: string
   motionBertReady: boolean
+  motionBertModelPath: string
+  motionBertModelReady: boolean
   python: AiSetupPythonStatus
   phase: AiSetupPhase
   operation: AiSetupOperation | null
@@ -46,6 +55,8 @@ interface PythonCommand {
 
 const MAX_LOG_LINES = 300
 const DEPENDENCIES_MARKER = '.dependencies-installed'
+const MOTIONBERT_MODEL_SHA256 =
+  '9811155371db4ca5d20f31a36a232d41012e12e1333882888a564d741861148f'
 
 let setupPhase: AiSetupPhase = 'idle'
 let currentOperation: AiSetupOperation | null = null
@@ -85,6 +96,18 @@ export const getAiSetupStatus = async (
   const venvPath = path.join(rootPath, 'venv')
   const alphaPosePath = path.join(rootPath, 'AlphaPose')
   const motionBertPath = path.join(rootPath, 'MotionBERT')
+  const alphaPoseModelPath = path.join(
+    alphaPosePath,
+    'pretrained_models',
+    'halpe26_fast_res50_256x192.pth'
+  )
+  const motionBertModelPath = path.join(
+    motionBertPath,
+    'checkpoint',
+    'pose3d',
+    'FT_MB_lite_MB_ft_h36m_global_lite',
+    'best_epoch.bin'
+  )
   return {
     rootPath,
     prepared: await pathExists(rootPath),
@@ -97,10 +120,14 @@ export const getAiSetupStatus = async (
     alphaPoseReady: await pathExists(
       path.join(alphaPosePath, 'scripts', 'demo_inference.py')
     ),
+    alphaPoseModelPath,
+    alphaPoseModelReady: await pathExists(alphaPoseModelPath),
     motionBertPath,
     motionBertReady: await pathExists(
       path.join(motionBertPath, 'infer_wild.py')
     ),
+    motionBertModelPath,
+    motionBertModelReady: await pathExists(motionBertModelPath),
     python: {
       available: detectedPython !== null,
       command: detectedPython?.command ?? null,
@@ -295,7 +322,102 @@ const operationMessages: Record<AiSetupOperation, string> = {
   'create-python-environment': '専用Python環境を作成しています。',
   'install-python-dependencies': 'AI機能に必要な依存関係をインストールしています。',
   'fetch-alphapose': 'AlphaPose本体を公式リポジトリから取得しています。',
-  'fetch-motionbert': 'MotionBERT本体を公式リポジトリから取得しています。'
+  'fetch-motionbert': 'MotionBERT本体を公式リポジトリから取得しています。',
+  'install-alphapose-model': 'AlphaPoseモデルを専用AI環境へ配置しています。',
+  'install-motionbert-model': 'MotionBERTモデルを専用AI環境へ配置しています。'
+}
+
+const getFileSha256 = (filePath: string) =>
+  new Promise<string>((resolve, reject) => {
+    const hash = createHash('sha256')
+    const stream = createReadStream(filePath)
+    stream.on('data', (chunk) => hash.update(chunk))
+    stream.on('error', reject)
+    stream.on('end', () => resolve(hash.digest('hex')))
+  })
+
+export const installAiSetupModel = async (
+  model: AiSetupModel,
+  sourcePath: string,
+  fallbackUserDataPath: string
+) => {
+  if (setupPhase === 'running') {
+    throw new Error('別のAI環境セットアップ処理を実行中です。')
+  }
+
+  const operation: AiSetupOperation =
+    model === 'alphapose'
+      ? 'install-alphapose-model'
+      : 'install-motionbert-model'
+  const status = await getAiSetupStatus(fallbackUserDataPath)
+  const modelDefinition =
+    model === 'alphapose'
+      ? {
+          destination: status.alphaPoseModelPath,
+          extension: '.pth',
+          minimumBytes: 1024 * 1024,
+          repositoryReady: status.alphaPoseReady
+        }
+      : {
+          destination: status.motionBertModelPath,
+          extension: '.bin',
+          minimumBytes: 10 * 1024 * 1024,
+          repositoryReady: status.motionBertReady
+        }
+
+  setupPhase = 'running'
+  currentOperation = operation
+  setupMessage = operationMessages[operation]
+  setupError = null
+  setupLogs = []
+  cancelRequested = false
+  await notifyStatus(fallbackUserDataPath)
+
+  const temporaryPath = `${modelDefinition.destination}.download-${Date.now()}`
+  try {
+    if (!modelDefinition.repositoryReady) {
+      throw new Error('先に外部AIプログラム本体を取得してください。')
+    }
+    if (path.extname(sourcePath).toLowerCase() !== modelDefinition.extension) {
+      throw new Error(
+        `${modelDefinition.extension}形式のモデルファイルを選択してください。`
+      )
+    }
+    const sourceStat = await fs.stat(sourcePath)
+    if (!sourceStat.isFile() || sourceStat.size < modelDefinition.minimumBytes) {
+      throw new Error('選択したファイルは有効なモデルファイルではありません。')
+    }
+    if (model === 'motionbert') {
+      appendLog('MotionBERTモデルの整合性を確認しています。', fallbackUserDataPath)
+      const digest = await getFileSha256(sourcePath)
+      if (digest !== MOTIONBERT_MODEL_SHA256) {
+        throw new Error(
+          'MotionBERTモデルのハッシュが公式配布ファイルと一致しません。'
+        )
+      }
+    }
+
+    await fs.mkdir(path.dirname(modelDefinition.destination), {
+      recursive: true
+    })
+    await fs.copyFile(sourcePath, temporaryPath)
+    await fs.rm(modelDefinition.destination, { force: true })
+    await fs.rename(temporaryPath, modelDefinition.destination)
+    appendLog(`配置先: ${modelDefinition.destination}`, fallbackUserDataPath)
+    setupPhase = 'completed'
+    currentOperation = null
+    setupMessage = 'モデルの配置が完了しました。'
+    return await notifyStatus(fallbackUserDataPath)
+  } catch (error) {
+    await fs.rm(temporaryPath, { force: true })
+    setupPhase = 'failed'
+    currentOperation = null
+    setupMessage = null
+    setupError = error instanceof Error ? error.message : String(error)
+    appendLog(setupError, fallbackUserDataPath)
+    await notifyStatus(fallbackUserDataPath)
+    throw error
+  }
 }
 
 export const runAiSetupOperation = async (
@@ -350,7 +472,10 @@ export const runAiSetupOperation = async (
         new Date().toISOString(),
         'utf8'
       )
-    } else {
+    } else if (
+      operation === 'fetch-alphapose' ||
+      operation === 'fetch-motionbert'
+    ) {
       if (!(await pathExists(path.join(rootPath, DEPENDENCIES_MARKER)))) {
         throw new Error('先にAI依存パッケージをインストールしてください。')
       }
@@ -360,6 +485,8 @@ export const runAiSetupOperation = async (
         projectRoot,
         fallbackUserDataPath
       )
+    } else {
+      throw new Error(`Unsupported AI setup operation: ${String(operation)}`)
     }
 
     setupPhase = 'completed'

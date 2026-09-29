@@ -98,6 +98,8 @@ git clone https://github.com/MVIG-SJTU/AlphaPose.git AlphaPose
 
 その後、AlphaPoseの公式手順に従って依存関係とモデルを用意する。Annotation Tool 側の環境診断では、少なくとも以下を確認する。
 
+アプリのセットアップ画面では「公式ページ」から配布ページを開き、ダウンロードした `halpe26_fast_res50_256x192.pth` を「ファイルを選択」で専用AI環境へ配置できる。AlphaPoseの利用条件を確認したうえで取得すること。
+
 - `API\AlphaPose`
 - `API\AlphaPose\scripts\demo_inference.py`
 - `API\AlphaPose\pretrained_models\halpe26_fast_res50_256x192.pth`
@@ -126,6 +128,8 @@ MotionBERTの重みは以下に配置する。
 ```text
 API\MotionBERT\checkpoint\pose3d\FT_MB_lite_MB_ft_h36m_global_lite\best_epoch.bin
 ```
+
+アプリのセットアップ画面では「公式ページ」からHugging Face上の公式配布ファイルを開き、ダウンロードした `best_epoch.bin` を「ファイルを選択」で専用AI環境へ配置できる。配置時には公式ファイルのSHA-256と照合する。
 
 Annotation Tool 側の環境診断では、少なくとも以下を確認する。
 

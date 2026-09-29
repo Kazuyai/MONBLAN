@@ -809,6 +809,14 @@ button {
                       opacity: 0.5;
                     }
                   }
+                  .ai-setup-step-actions {
+                    display: flex;
+                    flex: 0 0 auto;
+                    gap: 8rem;
+                    button {
+                      min-width: 92rem;
+                    }
+                  }
                 }
               }
               .ai-setup-progress {
