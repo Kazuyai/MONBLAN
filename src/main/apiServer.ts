@@ -1,4 +1,5 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process'
+import { existsSync } from 'fs'
 import http from 'http'
 import path from 'path'
 import log from 'electron-log'
@@ -153,7 +154,53 @@ const waitForApiReady = async () => {
     : new Error('API startup timed out')
 }
 
-export const startApiServer = async (projectRoot: string) => {
+const getManagedApiRuntime = (aiRoot?: string) => {
+  const configuredPython = process.env.ANNOTATION_TOOL_PYTHON
+  if (!aiRoot) {
+    return { python: configuredPython || 'python', env: process.env }
+  }
+
+  const venvPython = path.join(aiRoot, 'venv', 'Scripts', 'python.exe')
+  const requiredPaths = [
+    path.join(aiRoot, '.dependencies-installed'),
+    venvPython,
+    path.join(aiRoot, 'AlphaPose', 'scripts', 'demo_inference.py'),
+    path.join(
+      aiRoot,
+      'AlphaPose',
+      'pretrained_models',
+      'halpe26_fast_res50_256x192.pth'
+    ),
+    path.join(aiRoot, 'MotionBERT', 'infer_wild.py'),
+    path.join(
+      aiRoot,
+      'MotionBERT',
+      'checkpoint',
+      'pose3d',
+      'FT_MB_lite_MB_ft_h36m_global_lite',
+      'best_epoch.bin'
+    )
+  ]
+  const dedicatedEnvironmentReady = requiredPaths.every(existsSync)
+  if (!dedicatedEnvironmentReady) {
+    return { python: configuredPython || 'python', env: process.env }
+  }
+
+  const python = configuredPython || venvPython
+  return {
+    python,
+    env: {
+      ...process.env,
+      ANNOTATION_TOOL_AI_HOME: aiRoot,
+      ANNOTATION_TOOL_PYTHON: python
+    }
+  }
+}
+
+export const startApiServer = async (
+  projectRoot: string,
+  aiRoot?: string
+) => {
   try {
     // 既にユーザーがAPIを起動している場合は、そのプロセスを再利用する。
     await refreshApiEnvironment()
@@ -175,8 +222,9 @@ export const startApiServer = async (projectRoot: string) => {
     error: null
   })
 
+  const runtime = getManagedApiRuntime(aiRoot)
   apiProcess = spawn(
-    process.env.ANNOTATION_TOOL_PYTHON || 'python',
+    runtime.python,
     [
       '-m',
       'uvicorn',
@@ -188,7 +236,7 @@ export const startApiServer = async (projectRoot: string) => {
     ],
     {
       cwd: projectRoot,
-      env: process.env
+      env: runtime.env
     }
   )
 
@@ -232,6 +280,26 @@ export const stopApiServer = () => {
     apiProcess.kill()
   }
   apiProcess = null
+}
+
+export const restartApiServer = async (
+  projectRoot: string,
+  aiRoot?: string
+) => {
+  const runningProcess = apiProcess
+  updateStatus({ status: 'stopped' })
+  if (runningProcess && !runningProcess.killed) {
+    const processExited = new Promise<void>((resolve) =>
+      runningProcess.once('exit', () => resolve())
+    )
+    runningProcess.kill()
+    apiProcess = null
+    await Promise.race([
+      processExited,
+      sleep(3000)
+    ])
+  }
+  return startApiServer(projectRoot, aiRoot)
 }
 
 export const getProjectRoot = (appPath: string) => {

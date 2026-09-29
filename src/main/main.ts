@@ -3,6 +3,7 @@ import { app, dialog, BrowserWindow, shell, ipcMain } from 'electron'
 import log from 'electron-log'
 import {
   cancelAiSetupOperation,
+  getAiSetupRoot,
   getAiSetupStatus,
   runAiSetupOperation,
   setAiSetupStatusListener,
@@ -12,6 +13,7 @@ import {
   getApiStatus,
   getProjectRoot,
   refreshApiEnvironment,
+  restartApiServer,
   setApiStatusListener,
   startApiServer,
   stopApiServer
@@ -35,7 +37,10 @@ ipcMain.handle('api:refresh-status', async () => {
   }
 })
 ipcMain.handle('api:restart', async () =>
-  startApiServer(getProjectRoot(app.getAppPath()))
+  restartApiServer(
+    getProjectRoot(app.getAppPath()),
+    getAiSetupRoot(app.getPath('userData'))
+  )
 )
 ipcMain.handle('ai-setup:get-status', async () =>
   getAiSetupStatus(app.getPath('userData'))
@@ -185,7 +190,10 @@ app.on('window-all-closed', () => {
 app
   .whenReady()
   .then(() => {
-    startApiServer(getProjectRoot(app.getAppPath())).catch((error) => {
+    startApiServer(
+      getProjectRoot(app.getAppPath()),
+      getAiSetupRoot(app.getPath('userData'))
+    ).catch((error) => {
       log.error('Failed to start API server', error)
     })
     createWindow()

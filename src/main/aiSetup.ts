@@ -10,6 +10,8 @@ export type AiSetupOperation =
   | 'check-python'
   | 'create-python-environment'
   | 'install-python-dependencies'
+  | 'fetch-alphapose'
+  | 'fetch-motionbert'
 export type AiSetupPhase = 'idle' | 'running' | 'completed' | 'failed'
 
 export interface AiSetupPythonStatus {
@@ -24,6 +26,10 @@ export interface AiSetupStatus {
   venvPath: string
   venvReady: boolean
   dependenciesReady: boolean
+  alphaPosePath: string
+  alphaPoseReady: boolean
+  motionBertPath: string
+  motionBertReady: boolean
   python: AiSetupPythonStatus
   phase: AiSetupPhase
   operation: AiSetupOperation | null
@@ -77,6 +83,8 @@ export const getAiSetupStatus = async (
 ): Promise<AiSetupStatus> => {
   const rootPath = getAiSetupRoot(fallbackUserDataPath)
   const venvPath = path.join(rootPath, 'venv')
+  const alphaPosePath = path.join(rootPath, 'AlphaPose')
+  const motionBertPath = path.join(rootPath, 'MotionBERT')
   return {
     rootPath,
     prepared: await pathExists(rootPath),
@@ -84,6 +92,14 @@ export const getAiSetupStatus = async (
     venvReady: await pathExists(getVenvPythonPath(rootPath)),
     dependenciesReady: await pathExists(
       path.join(rootPath, DEPENDENCIES_MARKER)
+    ),
+    alphaPosePath,
+    alphaPoseReady: await pathExists(
+      path.join(alphaPosePath, 'scripts', 'demo_inference.py')
+    ),
+    motionBertPath,
+    motionBertReady: await pathExists(
+      path.join(motionBertPath, 'infer_wild.py')
     ),
     python: {
       available: detectedPython !== null,
@@ -246,11 +262,40 @@ const runSetupScript = async (
   await runCommand('powershell.exe', args, fallbackUserDataPath, projectRoot)
 }
 
+const runRepositoryFetchScript = async (
+  operation: 'fetch-alphapose' | 'fetch-motionbert',
+  rootPath: string,
+  projectRoot: string,
+  fallbackUserDataPath: string
+) => {
+  if (process.platform !== 'win32') {
+    throw new Error('AIリポジトリの自動取得は現在Windowsのみ対応しています。')
+  }
+  const scriptPath = path.join(projectRoot, 'scripts', 'fetch-ai-repos.ps1')
+  if (!(await pathExists(scriptPath))) {
+    throw new Error(`取得スクリプトが見つかりません: ${scriptPath}`)
+  }
+
+  const args = [
+    '-NoProfile',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    scriptPath,
+    '-AiRoot',
+    rootPath,
+    operation === 'fetch-alphapose' ? '-SkipMotionBert' : '-SkipAlphaPose'
+  ]
+  await runCommand('powershell.exe', args, fallbackUserDataPath, projectRoot)
+}
+
 const operationMessages: Record<AiSetupOperation, string> = {
   'prepare-storage': 'AI環境の保存先を準備しています。',
   'check-python': 'Python 3.11または3.12を確認しています。',
   'create-python-environment': '専用Python環境を作成しています。',
-  'install-python-dependencies': 'AI機能に必要な依存関係をインストールしています。'
+  'install-python-dependencies': 'AI機能に必要な依存関係をインストールしています。',
+  'fetch-alphapose': 'AlphaPose本体を公式リポジトリから取得しています。',
+  'fetch-motionbert': 'MotionBERT本体を公式リポジトリから取得しています。'
 }
 
 export const runAiSetupOperation = async (
@@ -262,7 +307,9 @@ export const runAiSetupOperation = async (
     'prepare-storage',
     'check-python',
     'create-python-environment',
-    'install-python-dependencies'
+    'install-python-dependencies',
+    'fetch-alphapose',
+    'fetch-motionbert'
   ]
   if (!supportedOperations.includes(operation)) {
     throw new Error(`Unsupported AI setup operation: ${String(operation)}`)
@@ -292,7 +339,7 @@ export const runAiSetupOperation = async (
     } else if (operation === 'create-python-environment') {
       await fs.mkdir(rootPath, { recursive: true })
       await runSetupScript(rootPath, projectRoot, fallbackUserDataPath, true)
-    } else {
+    } else if (operation === 'install-python-dependencies') {
       if (!(await pathExists(getVenvPythonPath(rootPath)))) {
         throw new Error('先に専用Python環境を作成してください。')
       }
@@ -302,6 +349,16 @@ export const runAiSetupOperation = async (
         path.join(rootPath, DEPENDENCIES_MARKER),
         new Date().toISOString(),
         'utf8'
+      )
+    } else {
+      if (!(await pathExists(path.join(rootPath, DEPENDENCIES_MARKER)))) {
+        throw new Error('先にAI依存パッケージをインストールしてください。')
+      }
+      await runRepositoryFetchScript(
+        operation,
+        rootPath,
+        projectRoot,
+        fallbackUserDataPath
       )
     }
 

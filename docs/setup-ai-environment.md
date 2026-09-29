@@ -81,6 +81,8 @@ pip install -r API\requirements.txt
 
 `API\AlphaPose` にAlphaPoseを配置する。
 
+アプリの「AI環境セットアップ」画面を使用する場合は、「AlphaPose本体を取得」の「取得」を押すと、専用のAI環境保存先へ公式リポジトリを取得できる。
+
 補助スクリプトを使う場合は以下を実行する。
 
 ```powershell
@@ -103,6 +105,8 @@ git clone https://github.com/MVIG-SJTU/AlphaPose.git AlphaPose
 ## MotionBERT
 
 `API\MotionBERT` にMotionBERTを配置する。
+
+アプリの「AI環境セットアップ」画面を使用する場合は、「MotionBERT本体を取得」の「取得」を押すと、専用のAI環境保存先へ公式リポジトリを取得できる。
 
 補助スクリプトを使う場合は以下を実行する。
 

@@ -398,6 +398,59 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
         </section>
       )}
 
+      {setupStatus?.dependenciesReady && (
+        <section className="ai-environment-card ai-python-setup">
+          <h3>外部AIプログラムの取得</h3>
+          <ol className="ai-setup-step-list">
+            <li className={setupStatus.alphaPoseReady ? 'completed' : ''}>
+              <div className="ai-setup-step-header">
+                <div>
+                  <strong>4. AlphaPose本体を取得</strong>
+                  <span>{setupStatus.alphaPosePath}</span>
+                  <span>
+                    公式リポジトリから取得します。AlphaPoseの利用条件は非商用用途に限定されています。
+                  </span>
+                </div>
+                {!setupStatus.alphaPoseReady && (
+                  <button
+                    type="button"
+                    disabled={setupIsRunning}
+                    onClick={() => runSetupOperation('fetch-alphapose')}
+                  >
+                    {pendingSetupOperation === 'fetch-alphapose'
+                      ? '取得中…'
+                      : '取得'}
+                  </button>
+                )}
+              </div>
+            </li>
+            <li className={setupStatus.motionBertReady ? 'completed' : ''}>
+              <div className="ai-setup-step-header">
+                <div>
+                  <strong>5. MotionBERT本体を取得</strong>
+                  <span>{setupStatus.motionBertPath}</span>
+                  <span>公式リポジトリから取得します。</span>
+                </div>
+                {!setupStatus.motionBertReady && (
+                  <button
+                    type="button"
+                    disabled={setupIsRunning}
+                    onClick={() => runSetupOperation('fetch-motionbert')}
+                  >
+                    {pendingSetupOperation === 'fetch-motionbert'
+                      ? '取得中…'
+                      : '取得'}
+                  </button>
+                )}
+              </div>
+            </li>
+          </ol>
+          <p className="ai-environment-storage-note">
+            本体の取得後に、各プロジェクトが配布する学習済みモデルを所定の場所へ配置します。
+          </p>
+        </section>
+      )}
+
       {setupStatus &&
         (setupStatus.message ||
           setupStatus.error ||
