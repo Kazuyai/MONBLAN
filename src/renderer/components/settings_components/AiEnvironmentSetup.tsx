@@ -316,25 +316,35 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
         <section className="ai-environment-card ai-python-setup">
           <h3>Python環境の準備</h3>
           <ol className="ai-setup-step-list">
-            <li className={setupStatus.python.available ? 'completed' : ''}>
+            <li
+              className={
+                setupStatus.python.available || setupStatus.venvReady
+                  ? 'completed'
+                  : ''
+              }
+            >
               <div className="ai-setup-step-header">
                 <div>
                   <strong>1. Pythonを確認</strong>
                   <span>
                     {setupStatus.python.available
                       ? `Python ${setupStatus.python.version} (${setupStatus.python.command})`
+                      : setupStatus.venvReady
+                        ? '専用Python環境を確認済みです。'
                       : 'Python 3.11または3.12が必要です。'}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  disabled={setupIsRunning}
-                  onClick={() => runSetupOperation('check-python')}
-                >
-                  {pendingSetupOperation === 'check-python'
-                    ? '確認中…'
-                    : '確認'}
-                </button>
+                {!setupStatus.python.available && !setupStatus.venvReady && (
+                  <button
+                    type="button"
+                    disabled={setupIsRunning}
+                    onClick={() => runSetupOperation('check-python')}
+                  >
+                    {pendingSetupOperation === 'check-python'
+                      ? '確認中…'
+                      : '確認'}
+                  </button>
+                )}
               </div>
             </li>
             <li className={setupStatus.venvReady ? 'completed' : ''}>
@@ -343,19 +353,19 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
                   <strong>2. 専用Python環境を作成</strong>
                   <span>{setupStatus.venvPath}</span>
                 </div>
-                <button
-                  type="button"
-                  disabled={setupIsRunning || !setupStatus.python.available}
-                  onClick={() =>
-                    runSetupOperation('create-python-environment')
-                  }
-                >
-                  {pendingSetupOperation === 'create-python-environment'
-                    ? '作成中…'
-                    : setupStatus.venvReady
-                      ? '再確認'
+                {!setupStatus.venvReady && (
+                  <button
+                    type="button"
+                    disabled={setupIsRunning || !setupStatus.python.available}
+                    onClick={() =>
+                      runSetupOperation('create-python-environment')
+                    }
+                  >
+                    {pendingSetupOperation === 'create-python-environment'
+                      ? '作成中…'
                       : '作成'}
-                </button>
+                  </button>
+                )}
               </div>
             </li>
             <li className={setupStatus.dependenciesReady ? 'completed' : ''}>
@@ -366,19 +376,19 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
                     ダウンロード容量が大きく、完了まで時間がかかる場合があります。
                   </span>
                 </div>
-                <button
-                  type="button"
-                  disabled={setupIsRunning || !setupStatus.venvReady}
-                  onClick={() =>
-                    runSetupOperation('install-python-dependencies')
-                  }
-                >
-                  {pendingSetupOperation === 'install-python-dependencies'
-                    ? '導入中…'
-                    : setupStatus.dependenciesReady
-                      ? '再インストール'
+                {!setupStatus.dependenciesReady && (
+                  <button
+                    type="button"
+                    disabled={setupIsRunning || !setupStatus.venvReady}
+                    onClick={() =>
+                      runSetupOperation('install-python-dependencies')
+                    }
+                  >
+                    {pendingSetupOperation === 'install-python-dependencies'
+                      ? '導入中…'
                       : 'インストール'}
-                </button>
+                  </button>
+                )}
               </div>
             </li>
           </ol>
