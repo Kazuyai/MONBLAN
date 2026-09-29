@@ -405,10 +405,12 @@ def run_alphapose(video_file_path: str, job_dir: str) -> subprocess.CompletedPro
 
 def run_motionbert(video_file_path: str, json_path: str, job_dir: str, focus: str) -> subprocess.CompletedProcess:
     """MotionBERTで指定人物の3D姿勢推定を実行し、X3D.npy を job_dir に出力する。"""
+    runner_path = os.path.join(os.path.dirname(__file__), "motionbert_runner.py")
     return _run_subprocess(
         [
             sys.executable,
-            "infer_wild.py",
+            runner_path,
+            os.path.join(MOTIONBERT_DIR, "infer_wild.py"),
             "--vid_path",
             video_file_path,
             "--json_path",

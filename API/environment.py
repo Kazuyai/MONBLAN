@@ -123,6 +123,13 @@ def check_environment() -> dict[str, Any]:
             "bundled",
             "application-files",
         ),
+        _path_status(
+            "MotionBERT Windows runner",
+            os.path.join(os.path.dirname(__file__), "motionbert_runner.py"),
+            "file",
+            "bundled",
+            "application-files",
+        ),
         _cuda_status(),
     ]
 

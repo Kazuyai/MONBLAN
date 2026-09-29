@@ -267,9 +267,16 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   }
 
   const formatApiErrorSummary = (error: ApiErrorPayload): string => {
+    if (
+      error.stderr?.includes('An attempt has been made to start a new process') ||
+      error.stderr?.includes('DataLoader worker')
+    ) {
+      return 'MotionBERTのデータ読み込み処理を開始できませんでした。アプリを再起動してから、もう一度実行してください。'
+    }
+
     return (
-      error.stderr ||
       error.error ||
+      error.stderr?.trim().split(/\r?\n/).filter(Boolean).at(-1) ||
       error.message ||
       '類似動作検出に失敗しました。'
     )
