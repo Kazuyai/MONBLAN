@@ -42,7 +42,7 @@ const API_BASE_URL = `http://${API_HOST}:${API_PORT}`
 const API_START_TIMEOUT_MS = 30000
 const API_POLL_INTERVAL_MS = 500
 const API_REQUEST_TIMEOUT_MS = 3000
-const API_ENVIRONMENT_TIMEOUT_MS = 15000
+const API_ENVIRONMENT_TIMEOUT_MS = 120000
 
 let apiProcess: ChildProcessWithoutNullStreams | null = null
 let apiStatus: ApiStatus = {
@@ -114,16 +114,19 @@ export const refreshApiEnvironment = async (options = { force: false }) => {
     return environmentRefreshPromise
   }
 
-  environmentRefreshPromise = refreshApiEnvironmentRequest().finally(() => {
+  environmentRefreshPromise = refreshApiEnvironmentRequest(
+    options.force
+  ).finally(() => {
     environmentRefreshPromise = null
   })
 
   return environmentRefreshPromise
 }
 
-const refreshApiEnvironmentRequest = async () => {
+const refreshApiEnvironmentRequest = async (force: boolean) => {
+  const refreshQuery = force ? '?refresh=true' : ''
   const environment = await requestJson<ApiEnvironmentStatus>(
-    `${API_BASE_URL}/environment/`,
+    `${API_BASE_URL}/environment/${refreshQuery}`,
     API_ENVIRONMENT_TIMEOUT_MS
   )
   updateStatus({
@@ -141,7 +144,8 @@ const waitForApiReady = async () => {
 
   while (Date.now() - startedAt < API_START_TIMEOUT_MS) {
     try {
-      await refreshApiEnvironment()
+      await requestJson<{ status: string }>(`${API_BASE_URL}/health/`)
+      updateStatus({ status: 'ready', error: null })
       return apiStatus
     } catch (error) {
       lastError = error
@@ -203,8 +207,13 @@ export const startApiServer = async (
 ) => {
   try {
     // 既にユーザーがAPIを起動している場合は、そのプロセスを再利用する。
-    await refreshApiEnvironment()
-    updateStatus({ managed: false })
+    await waitForApiReady()
+    updateStatus({
+      managed: false,
+      aiAvailable: null,
+      environment: null,
+      error: null
+    })
     return apiStatus
   } catch {
     // 未起動ならElectron管理プロセスとして起動する。

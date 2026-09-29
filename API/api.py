@@ -3,6 +3,7 @@
 重い処理は pipeline.py に委譲し、このファイルではルーティング、一時ファイル管理、ログ、エラー整形だけを扱う。
 """
 
+import asyncio
 import json
 import os
 import subprocess
@@ -66,6 +67,8 @@ app.add_middleware(
 )
 
 LOG_FILE = os.path.join(BASE_DIR, "api_log.txt")
+environment_status_cache: dict | None = None
+environment_status_lock = asyncio.Lock()
 
 
 class VideoPathRequest(BaseModel):
@@ -150,10 +153,24 @@ def _format_subprocess_error(error: subprocess.CalledProcessError, job_dir: str 
     return response
 
 
+@app.get("/health/")
+async def get_health_status():
+    """ElectronからAPIプロセスの起動完了だけを軽量に確認する。"""
+    return {"status": "ok"}
+
+
 @app.get("/environment/")
-async def get_environment_status():
+async def get_environment_status(refresh: bool = False):
     """AI自動アノテーション機能を利用できる環境か診断する。"""
-    return check_environment()
+    global environment_status_cache
+
+    if environment_status_cache is not None and not refresh:
+        return environment_status_cache
+
+    async with environment_status_lock:
+        if environment_status_cache is None or refresh:
+            environment_status_cache = await asyncio.to_thread(check_environment)
+        return environment_status_cache
 
 
 @app.post("/get_framerate/")
