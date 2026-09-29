@@ -106,6 +106,10 @@ const requestJson = <T>(
 }
 
 export const refreshApiEnvironment = async (options = { force: false }) => {
+  if (apiStatus.status === 'starting') {
+    await waitForApiReady()
+  }
+
   if (!options.force && apiStatus.status === 'ready' && apiStatus.environment) {
     return apiStatus
   }
@@ -205,10 +209,19 @@ export const startApiServer = async (
   projectRoot: string,
   aiRoot?: string
 ) => {
+  updateStatus({
+    status: 'starting',
+    managed: false,
+    aiAvailable: null,
+    environment: null,
+    error: null
+  })
+
   try {
     // 既にユーザーがAPIを起動している場合は、そのプロセスを再利用する。
-    await waitForApiReady()
+    await requestJson<{ status: string }>(`${API_BASE_URL}/health/`)
     updateStatus({
+      status: 'ready',
       managed: false,
       aiAvailable: null,
       environment: null,
@@ -220,6 +233,7 @@ export const startApiServer = async (
   }
 
   if (apiProcess && !apiProcess.killed) {
+    updateStatus({ managed: true })
     return waitForApiReady()
   }
 
