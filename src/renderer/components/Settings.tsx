@@ -59,6 +59,20 @@ interface SettingsProps {
   onAnalysisRangePreviewChange: (range: AnalysisFrameRange | null) => void
 }
 
+const PanelSizeIcon: React.FC<{ expanded: boolean }> = ({ expanded }) => (
+  <svg
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {expanded ? (
+      <path d="M4 4l6 6m0 0V6m0 4H6m14-6-6 6m0 0V6m0 4h4M4 20l6-6m0 0v4m0-4H6m14 6-6-6m0 0v4m0-4h4" />
+    ) : (
+      <path d="M10 10 4 4m0 0h5M4 4v5m10 1 6-6m0 0h-5m5 0v5M10 14l-6 6m0 0h5m-5 0v-5m10-1 6 6m0 0h-5m5 0v-5" />
+    )}
+  </svg>
+)
+
 export const Settings: React.FC<SettingsProps> = ({
   setIsProcessing,
   setVideoSrcs,
@@ -334,8 +348,13 @@ export const Settings: React.FC<SettingsProps> = ({
                   className="tab-panel-expand-button"
                   aria-label={
                     expandedTabId === tab.id
-                      ? `${tab.label}の拡大表示を閉じる`
-                      : `${tab.label}を拡大表示`
+                      ? `${tab.label}を元の表示に戻す`
+                      : `${tab.label}のパネルを拡大する`
+                  }
+                  title={
+                    expandedTabId === tab.id
+                      ? '元の表示に戻す'
+                      : 'パネルを拡大'
                   }
                   onClick={() =>
                     setExpandedTabId(
@@ -343,7 +362,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     )
                   }
                 >
-                  {expandedTabId === tab.id ? '×' : '拡大表示'}
+                  <PanelSizeIcon expanded={expandedTabId === tab.id} />
                 </button>
               </div>
               <div className="tab-panel-body">{tab.component()}</div>

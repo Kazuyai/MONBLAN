@@ -106,7 +106,8 @@ export const AnalysisSteps: React.FC<AnalysisStepsProps> = ({
             className="analysis-step-back"
             onClick={(event) => openBackDialog(currentStep - 1, event.currentTarget)}
           >
-            ‹ 前のステップに戻る
+            <span aria-hidden="true">←</span>
+            前のステップへ
           </button>
         )}
       </nav>
