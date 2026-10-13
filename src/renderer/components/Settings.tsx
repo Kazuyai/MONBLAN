@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ApiStatus } from '../../main/preload'
 import type {
+  AnalysisFrameRange,
   AnnotationProject,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
@@ -46,6 +47,7 @@ interface SettingsProps {
   setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void
   apiStatus: ApiStatus | null
   frameRate: number
+  videoDuration: number
   currentFrame: number
   selectionStartFrame: number
   selectionFrameWidth: number
@@ -54,6 +56,7 @@ interface SettingsProps {
   onCreateTimelineLayer: (name: string) => number | null
   onRefreshApiStatus: () => Promise<void>
   onRestartApi: () => Promise<void>
+  onAnalysisRangePreviewChange: (range: AnalysisFrameRange | null) => void
 }
 
 export const Settings: React.FC<SettingsProps> = ({
@@ -72,6 +75,7 @@ export const Settings: React.FC<SettingsProps> = ({
   setSimilarMotionCandidates,
   apiStatus,
   frameRate,
+  videoDuration,
   currentFrame,
   selectionStartFrame,
   selectionFrameWidth,
@@ -79,7 +83,8 @@ export const Settings: React.FC<SettingsProps> = ({
   timelineLayerNames,
   onCreateTimelineLayer,
   onRefreshApiStatus,
-  onRestartApi
+  onRestartApi,
+  onAnalysisRangePreviewChange
 }) => {
   const [selectedTabId, setSelectedTabId] =
     useState<SettingsTabId>('open-file')
@@ -111,12 +116,15 @@ export const Settings: React.FC<SettingsProps> = ({
         setAutoAnnotationResponseData={setAutoAnnotationResponseData}
         apiStatus={apiStatus}
         frameRate={frameRate}
+        videoDuration={videoDuration}
         videoSrcs={videoSrcs}
         currentFrame={currentFrame}
         selectionStartFrame={selectionStartFrame}
         selectionFrameWidth={selectionFrameWidth}
         timelineLayerNames={timelineLayerNames}
         onCreateTimelineLayer={onCreateTimelineLayer}
+        isActive={selectedTabId === 'auto-annotation'}
+        onAnalysisRangePreviewChange={onAnalysisRangePreviewChange}
       />
     )
   }
@@ -129,11 +137,14 @@ export const Settings: React.FC<SettingsProps> = ({
         setSimilarMotionCandidates={setSimilarMotionCandidates}
         apiStatus={apiStatus}
         frameRate={frameRate}
+        videoDuration={videoDuration}
         currentFrame={currentFrame}
         selectedTimelineAnnotation={selectedTimelineAnnotation}
         videoSrcs={videoSrcs}
         selectionStartFrame={selectionStartFrame}
         selectionFrameWidth={selectionFrameWidth}
+        isActive={selectedTabId === 'similarity-completion'}
+        onAnalysisRangePreviewChange={onAnalysisRangePreviewChange}
       />
     )
   }
@@ -187,6 +198,15 @@ export const Settings: React.FC<SettingsProps> = ({
       setExpandedTabId(null)
     }
   }, [expandedTabId, selectedTabId, tabIds])
+
+  useEffect(() => {
+    if (
+      selectedTabId !== 'auto-annotation' &&
+      selectedTabId !== 'similarity-completion'
+    ) {
+      onAnalysisRangePreviewChange(null)
+    }
+  }, [onAnalysisRangePreviewChange, selectedTabId])
 
   useEffect(() => {
     const tabHeader = tabHeaderRef.current

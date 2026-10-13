@@ -60,6 +60,11 @@ export interface TimelineAnnotationResult {
   layerIndex: number
 }
 
+export interface AnalysisFrameRange {
+  startFrame: number
+  endFrame: number
+}
+
 export interface SelectedTimelineAnnotation extends TimelineAnnotationResult {
   id: string
 }

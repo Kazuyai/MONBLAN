@@ -1,5 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { ApiStatus } from '../../../main/preload'
+import type { AnalysisFrameRange } from '../../types'
+import {
+  AnalysisRangeSelector,
+  type AnalysisRangeMode
+} from './AnalysisRangeSelector'
 import { AnalysisSteps } from './AnalysisSteps'
 
 interface SettingsProps {
@@ -16,12 +21,15 @@ interface SettingsProps {
   ) => void
   apiStatus: ApiStatus | null
   frameRate: number
+  videoDuration: number
   videoSrcs: string[]
   currentFrame: number
   selectionStartFrame: number
   selectionFrameWidth: number
   timelineLayerNames: string[]
   onCreateTimelineLayer: (name: string) => number | null
+  isActive: boolean
+  onAnalysisRangePreviewChange: (range: AnalysisFrameRange | null) => void
 }
 
 interface KeyPoint {
@@ -48,7 +56,6 @@ interface ApiErrorPayload {
   job_dir?: string
 }
 
-type AnalysisRangeMode = 'full' | 'selection' | 'manual'
 const MIN_MOVEMENT_ANALYSIS_FRAMES = 5
 
 const getApiStatusMessage = (apiStatus: ApiStatus | null) => {
@@ -77,12 +84,15 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   setAutoAnnotationResponseData,
   apiStatus,
   frameRate,
+  videoDuration,
   videoSrcs,
   currentFrame,
   selectionStartFrame,
   selectionFrameWidth,
   timelineLayerNames,
-  onCreateTimelineLayer
+  onCreateTimelineLayer,
+  isActive,
+  onAnalysisRangePreviewChange
 }) => {
   const videoSrc = videoSrcs[0]
   // 画像サイズ
@@ -441,7 +451,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     }
   }
 
-  const getAnalysisFrameRange = () => {
+  const getAnalysisFrameRange = useCallback(() => {
     if (confirmedAnalysisRange !== undefined) {
       return confirmedAnalysisRange
     }
@@ -449,26 +459,20 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       return null
     }
 
-    if (analysisRangeMode === 'manual') {
-      if (manualAnalysisStartFrame === null || manualAnalysisEndFrame === null) {
-        return null
-      }
-
-      return {
-        startFrame: Math.min(manualAnalysisStartFrame, manualAnalysisEndFrame),
-        endFrame: Math.max(manualAnalysisStartFrame, manualAnalysisEndFrame)
-      }
-    }
-
-    if (selectionStartFrame <= 0 || selectionFrameWidth <= 0) {
+    if (manualAnalysisStartFrame === null || manualAnalysisEndFrame === null) {
       return null
     }
 
     return {
-      startFrame: selectionStartFrame,
-      endFrame: selectionStartFrame + selectionFrameWidth - 1
+      startFrame: Math.min(manualAnalysisStartFrame, manualAnalysisEndFrame),
+      endFrame: Math.max(manualAnalysisStartFrame, manualAnalysisEndFrame)
     }
-  }
+  }, [
+    analysisRangeMode,
+    confirmedAnalysisRange,
+    manualAnalysisEndFrame,
+    manualAnalysisStartFrame
+  ])
 
   const formatFrameTime = (frame: number) => {
     if (!Number.isFinite(frameRate) || frameRate <= 0) {
@@ -477,22 +481,38 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     return `${((frame - 1) / frameRate).toFixed(3)}s`
   }
 
+  const formatAnalysisEndTime = (frame: number) => {
+    if (!Number.isFinite(frameRate) || frameRate <= 0) {
+      return '-'
+    }
+    return `${(frame / frameRate).toFixed(3)}s`
+  }
+
   const getAnalysisRangeMessage = () => {
     const analysisFrameRange = getAnalysisFrameRange()
     if (analysisRangeMode === 'full') {
       return '分析対象: 動画全体'
     }
     if (analysisFrameRange) {
-      const displayEndFrame =
-        analysisRangeMode === 'selection'
-          ? analysisFrameRange.endFrame + 1
-          : analysisFrameRange.endFrame
-      return `分析対象: ${formatFrameTime(analysisFrameRange.startFrame)}–${formatFrameTime(displayEndFrame)}（${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f）`
+      return `分析対象: ${formatFrameTime(analysisFrameRange.startFrame)}–${formatAnalysisEndTime(analysisFrameRange.endFrame)}（${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f）`
     }
-    return analysisRangeMode === 'selection'
-      ? '分析対象: タイムライン上で範囲を選択してください'
-      : '分析対象: 再生位置から開始と終了を設定してください'
+    return '分析対象: 開始位置と終了位置を指定してください'
   }
+
+  useEffect(() => {
+    if (!isActive) return
+    onAnalysisRangePreviewChange(
+      analysisRangeMode === 'partial' ? getAnalysisFrameRange() : null
+    )
+  }, [
+    analysisRangeMode,
+    confirmedAnalysisRange,
+    getAnalysisFrameRange,
+    isActive,
+    manualAnalysisEndFrame,
+    manualAnalysisStartFrame,
+    onAnalysisRangePreviewChange
+  ])
 
   const getUploadedHumanImages = (file: File) => {
     const formData = new FormData()
@@ -679,12 +699,9 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       return
     }
     const analysisFrameRange = getAnalysisFrameRange()
-    if (analysisRangeMode !== 'full' && !analysisFrameRange) {
+    if (analysisRangeMode === 'partial' && !analysisFrameRange) {
       setApiError({
-        message:
-          analysisRangeMode === 'selection'
-            ? 'タイムライン上で分析範囲を選択してください。'
-            : '分析範囲の開始位置と終了位置を設定してください。'
+        message: '分析範囲の開始位置と終了位置を設定してください。'
       })
       return
     }
@@ -807,78 +824,25 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       />
       {step > 0 && <p className="analysis-range-message">{getAnalysisRangeMessage()}</p>}
       {step === 0 && <>
-      <p className="analysis-range-message">
-        {getAnalysisRangeMessage()}
-      </p>
-      <div className="analysis-range-controls">
-        <label>
-          <input
-            type="radio"
-            name="auto-analysis-range-mode"
-            checked={analysisRangeMode === 'full'}
-            onChange={() => setAnalysisRangeMode('full')}
-          />
-          動画全体
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="auto-analysis-range-mode"
-            checked={analysisRangeMode === 'selection'}
-            onChange={() => setAnalysisRangeMode('selection')}
-          />
-          タイムラインの選択範囲
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="auto-analysis-range-mode"
-            checked={analysisRangeMode === 'manual'}
-            onChange={() => setAnalysisRangeMode('manual')}
-          />
-          再生位置で開始・終了
-        </label>
-        {analysisRangeMode === 'manual' && (
-          <div className="manual-analysis-range-controls">
-            <button
-              className="secondary-action"
-              type="button"
-              onClick={() => setManualAnalysisStartFrame(currentFrame)}
-            >
-              現在位置を開始に設定
-            </button>
-            <button
-              className="secondary-action"
-              type="button"
-              onClick={() => setManualAnalysisEndFrame(currentFrame)}
-            >
-              現在位置を終了に設定
-            </button>
-            <button
-              className="secondary-action"
-              type="button"
-              onClick={() => {
-                setManualAnalysisStartFrame(null)
-                setManualAnalysisEndFrame(null)
-              }}
-            >
-              クリア
-            </button>
-            <span>
-              {manualAnalysisStartFrame !== null
-                ? `開始: ${formatFrameTime(manualAnalysisStartFrame)}（${manualAnalysisStartFrame}f）`
-                : '開始: 未設定'}
-              {' / '}
-              {manualAnalysisEndFrame !== null
-                ? `終了: ${formatFrameTime(manualAnalysisEndFrame)}（${manualAnalysisEndFrame}f）`
-                : '終了: 未設定'}
-            </span>
-          </div>
-        )}
-      </div>
+      <AnalysisRangeSelector
+        idPrefix="auto"
+        mode={analysisRangeMode}
+        onModeChange={setAnalysisRangeMode}
+        frameRate={frameRate}
+        videoDuration={videoDuration}
+        currentFrame={currentFrame}
+        selectionStartFrame={selectionStartFrame}
+        selectionFrameWidth={selectionFrameWidth}
+        startFrame={manualAnalysisStartFrame}
+        endFrame={manualAnalysisEndFrame}
+        onRangeChange={(startFrame, endFrame) => {
+          setManualAnalysisStartFrame(startFrame)
+          setManualAnalysisEndFrame(endFrame)
+        }}
+      />
       <button className="primary-action analysis-next" type="button" onClick={() => {
         const range = getAnalysisFrameRange()
-        if (analysisRangeMode !== 'full' && !range) {
+        if (analysisRangeMode === 'partial' && !range) {
           setApiError({ message: '分析区間を指定してください。' })
           return
         }

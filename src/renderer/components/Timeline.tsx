@@ -10,6 +10,7 @@ import React, {
 import { v4 as uuidv4 } from 'uuid'
 import Annotation from './Annotation'
 import type {
+  AnalysisFrameRange,
   AnnotationProject,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
@@ -26,6 +27,7 @@ interface TimelineProps {
   setCurrentFrame: Dispatch<SetStateAction<number>>
   selectionStartFrame: number
   selectionFrameWidth: number
+  analysisRangePreview: AnalysisFrameRange | null
   setSelectionStartFrame: Dispatch<SetStateAction<number>>
   setSelectionFrameWidth: Dispatch<SetStateAction<number>>
   isPlaying?: boolean
@@ -92,6 +94,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       setCurrentFrame,
       selectionStartFrame,
       selectionFrameWidth,
+      analysisRangePreview,
       setSelectionStartFrame,
       setSelectionFrameWidth,
       isPlaying,
@@ -198,6 +201,30 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const selectionStartTime = (selectionStartFrame - 1) / frameRate
     const selectionEndTime = selectionEndFrame / frameRate
     const selectionDuration = selectionFrameWidth / frameRate
+    const normalizedAnalysisRangePreview = analysisRangePreview
+      ? {
+          startFrame: Math.max(
+            1,
+            Math.min(
+              totalFrames,
+              Math.min(
+                analysisRangePreview.startFrame,
+                analysisRangePreview.endFrame
+              )
+            )
+          ),
+          endFrame: Math.max(
+            1,
+            Math.min(
+              totalFrames,
+              Math.max(
+                analysisRangePreview.startFrame,
+                analysisRangePreview.endFrame
+              )
+            )
+          )
+        }
+      : null
     const hasTimelineContent =
       videoSrcs.length > 0 || annotations.length > 0 || videoDuration > 0
 
@@ -1903,6 +1930,29 @@ ${tierElements.join('\n')}
                   className="playhead"
                   style={{ left: `${playheadLeft}px` }}
                 ></div>
+                {normalizedAnalysisRangePreview && (
+                  <div
+                    className="analysis-range-preview"
+                    style={{
+                      left: `calc(140rem + ${(normalizedAnalysisRangePreview.startFrame - 1) * frameWidth}px)`,
+                      width: `${(normalizedAnalysisRangePreview.endFrame - normalizedAnalysisRangePreview.startFrame + 1) * frameWidth}px`
+                    }}
+                  >
+                    <div className="analysis-range-preview-label">
+                      <span>分析範囲</span>
+                      <strong>
+                        {formatTimelineTime(
+                          (normalizedAnalysisRangePreview.startFrame - 1) /
+                            frameRate
+                        )}{' '}
+                        –{' '}
+                        {formatTimelineTime(
+                          normalizedAnalysisRangePreview.endFrame / frameRate
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+                )}
                 {/* 選択範囲を表示 */}
                 {hasSelectionRange && selectionWidth !== 0 && (
                   <div

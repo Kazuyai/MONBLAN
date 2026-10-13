@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ApiStatus } from '../main/preload'
 import type {
+  AnalysisFrameRange,
   AnnotationProject,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
@@ -24,6 +25,8 @@ const App = () => {
 
   const [selectionStartFrame, setSelectionStartFrame] = useState<number>(0)
   const [selectionFrameWidth, setSelectionFrameWidth] = useState<number>(0)
+  const [analysisRangePreview, setAnalysisRangePreview] =
+    useState<AnalysisFrameRange | null>(null)
 
   const [autoAnnotationResponseData, setAutoAnnotationResponseData] = useState<
     TimelineAnnotationResult[]
@@ -147,6 +150,7 @@ const App = () => {
     setIsPartiallyPlaying(false)
     setSelectionStartFrame(0)
     setSelectionFrameWidth(0)
+    setAnalysisRangePreview(null)
     setAutoAnnotationResponseData([])
     setSimilarMotionCandidates([])
     setSelectedTimelineAnnotation(null)
@@ -231,6 +235,7 @@ const App = () => {
           setSimilarMotionCandidates={setSimilarMotionCandidates}
           apiStatus={apiStatus}
           frameRate={frameRate}
+          videoDuration={videoDuration}
           currentFrame={currentFrame}
           selectionStartFrame={selectionStartFrame}
           selectionFrameWidth={selectionFrameWidth}
@@ -239,6 +244,7 @@ const App = () => {
           onCreateTimelineLayer={handleCreateTimelineLayer}
           onRefreshApiStatus={refreshApiStatus}
           onRestartApi={restartApi}
+          onAnalysisRangePreviewChange={setAnalysisRangePreview}
         />
       </div>
       <div id="divider" onMouseDown={startVerticalResizing}></div>
@@ -253,6 +259,7 @@ const App = () => {
         setCurrentFrame={setCurrentFrame}
         selectionStartFrame={selectionStartFrame}
         selectionFrameWidth={selectionFrameWidth}
+        analysisRangePreview={analysisRangePreview}
         setSelectionStartFrame={setSelectionStartFrame}
         setSelectionFrameWidth={setSelectionFrameWidth}
         isPlaying={isPlaying}
