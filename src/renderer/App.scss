@@ -1890,8 +1890,11 @@ button {
           flex-wrap: wrap;
           gap: 10rem;
           font-size: 14rem;
-          span:last-child {
+          span:last-child:not(.conflict-count) {
             color: #bfe3ff;
+          }
+          .conflict-count {
+            color: #ffcf9c;
           }
         }
         .similarity-candidate-toolbar-actions {
@@ -1920,7 +1923,7 @@ button {
       .movement-candidate-toolbar {
         border-color: #4f8884;
         background: #1b3535;
-        .similarity-candidate-toolbar-summary span:last-child {
+        .similarity-candidate-toolbar-summary span:last-child:not(.conflict-count) {
           color: #bde7e3;
         }
         .similarity-candidate-toolbar-actions button {
@@ -2289,10 +2292,28 @@ button {
                     &:hover {
                       background: #444;
                     }
+                    &.overwrite {
+                      border-color: #c9823f;
+                      background: #4a2d19;
+                      color: #ffe2c2;
+                      &:hover {
+                        background: #684025;
+                      }
+                    }
                   }
                   span {
                     border-color: #ffb36b;
                     color: #ffdfbf;
+                    &.conflict-label {
+                      min-width: 0;
+                      padding-inline: 3rem;
+                      border: 0;
+                      border-radius: 0;
+                      background: transparent;
+                      color: #ffcf9c;
+                      font-weight: 600;
+                      cursor: default;
+                    }
                   }
                 }
               }
@@ -2320,9 +2341,14 @@ button {
             left: 30rem;
             width: 100rem;
             height: var(--timeline-container-height);
-            background-color: rgba(0, 120, 215, 0.3);
-            z-index: 8;
             pointer-events: none;
+            &::before {
+              content: '';
+              position: absolute;
+              inset: 0;
+              background-color: rgba(0, 120, 215, 0.3);
+              z-index: 8;
+            }
             .selection-range-label {
               position: absolute;
               top: 6rem;
@@ -2344,6 +2370,7 @@ button {
               font-weight: 600;
               line-height: 1.2;
               white-space: nowrap;
+              z-index: 40;
               span:last-child {
                 padding-left: 8rem;
                 border-left: 1rem solid #ffffff55;
@@ -2388,6 +2415,7 @@ button {
                 background: #1f3448;
                 border-bottom-style: solid;
                 overflow: visible;
+                z-index: auto;
               }
             }
             .movement-candidate-layer {

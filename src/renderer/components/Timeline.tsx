@@ -305,41 +305,85 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }
     }
 
+    const annotationsOverlap = (
+      first: Pick<AnnotationType, 'startFrame' | 'endFrame'>,
+      second: Pick<AnnotationType, 'startFrame' | 'endFrame'>
+    ) =>
+      first.startFrame < second.endFrame &&
+      first.endFrame > second.startFrame
+
     // アノテーションの重なりをチェックする関数を追加
     const canInsertAnnotation = (
       newAnnotation: AnnotationType,
       layerAnnotations: AnnotationType[]
     ): boolean => {
       for (const annotation of layerAnnotations) {
-        if (annotation.id !== newAnnotation.id) {
-          if (
-            newAnnotation.startFrame < annotation.endFrame &&
-            newAnnotation.endFrame > annotation.startFrame
-          ) {
-            // 重なりがある
-            return false
-          }
+        if (
+          annotation.id !== newAnnotation.id &&
+          annotationsOverlap(newAnnotation, annotation)
+        ) {
+          // 重なりがある
+          return false
         }
       }
       return true
     }
 
-    const hasAnnotationConflict = (
+    const getConflictingAnnotations = (
       candidate: AnnotationCandidate,
       candidateLayerAnnotations = annotations.filter(
         (annotation) => annotation.layerIndex === candidate.layerIndex
       )
     ) => {
-      return !canInsertAnnotation(
-        {
-          id: candidate.id,
-          startFrame: candidate.startFrame,
-          endFrame: candidate.endFrame,
-          text: candidate.text,
-          layerIndex: candidate.layerIndex
-        },
-        candidateLayerAnnotations
+      return candidateLayerAnnotations.filter(
+        (annotation) =>
+          annotation.id !== candidate.id &&
+          annotationsOverlap(candidate, annotation)
       )
+    }
+
+    const hasAnnotationConflict = (
+      candidate: AnnotationCandidate,
+      candidateLayerAnnotations?: AnnotationType[]
+    ) =>
+      getConflictingAnnotations(candidate, candidateLayerAnnotations).length > 0
+
+    const toAnnotation = (candidate: AnnotationCandidate): AnnotationType => ({
+      id: candidate.id,
+      startFrame: candidate.startFrame,
+      endFrame: candidate.endFrame,
+      text: candidate.text,
+      layerIndex: candidate.layerIndex
+    })
+
+    const partitionInsertableCandidates = <T extends AnnotationCandidate,>(
+      candidates: T[]
+    ) => {
+      const annotationsByLayer = new Map<number, AnnotationType[]>()
+      annotations.forEach((annotation) => {
+        const layerAnnotations =
+          annotationsByLayer.get(annotation.layerIndex) ?? []
+        layerAnnotations.push(annotation)
+        annotationsByLayer.set(annotation.layerIndex, layerAnnotations)
+      })
+
+      const insertable: T[] = []
+      const conflicting: T[] = []
+      candidates.forEach((candidate) => {
+        const layerAnnotations =
+          annotationsByLayer.get(candidate.layerIndex) ?? []
+        if (hasAnnotationConflict(candidate, layerAnnotations)) {
+          conflicting.push(candidate)
+          return
+        }
+        insertable.push(candidate)
+        annotationsByLayer.set(candidate.layerIndex, [
+          ...layerAnnotations,
+          toAnnotation(candidate)
+        ])
+      })
+
+      return { insertable, conflicting }
     }
 
     const isInsertedCandidateStillPresent = (
@@ -364,6 +408,10 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       visibleSimilarMotionCandidates.filter(
         (candidate) => !hasAnnotationConflict(candidate)
       )
+    const conflictingSimilarMotionCandidates =
+      visibleSimilarMotionCandidates.filter((candidate) =>
+        hasAnnotationConflict(candidate)
+      )
     const visibleMovementDetectionCandidates =
       movementDetectionCandidates.filter(
         (candidate) =>
@@ -373,6 +421,10 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const insertableMovementDetectionCandidates =
       visibleMovementDetectionCandidates.filter(
         (candidate) => !hasAnnotationConflict(candidate)
+      )
+    const conflictingMovementDetectionCandidates =
+      visibleMovementDetectionCandidates.filter((candidate) =>
+        hasAnnotationConflict(candidate)
       )
 
     const removeSimilarMotionCandidate = (candidateId: string) => {
@@ -384,36 +436,17 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const insertSimilarMotionCandidates = (
       candidatesToInsert: SimilarMotionCandidate[]
     ) => {
-      const annotationsByLayer = new Map<number, AnnotationType[]>()
-      annotations.forEach((annotation) => {
-        const layerAnnotations =
-          annotationsByLayer.get(annotation.layerIndex) ?? []
-        layerAnnotations.push(annotation)
-        annotationsByLayer.set(annotation.layerIndex, layerAnnotations)
-      })
-
-      const insertableCandidates: SimilarMotionCandidate[] = []
-      candidatesToInsert.forEach((candidate) => {
-        const layerAnnotations =
-          annotationsByLayer.get(candidate.layerIndex) ?? []
-        if (hasAnnotationConflict(candidate, layerAnnotations)) {
-          return
-        }
-        insertableCandidates.push(candidate)
-        annotationsByLayer.set(candidate.layerIndex, [
-          ...layerAnnotations,
-          {
-            id: candidate.id,
-            startFrame: candidate.startFrame,
-            endFrame: candidate.endFrame,
-            text: candidate.text,
-            layerIndex: candidate.layerIndex
-          }
-        ])
-      })
+      const {
+        insertable: insertableCandidates,
+        conflicting: conflictingCandidates
+      } = partitionInsertableCandidates(candidatesToInsert)
 
       if (insertableCandidates.length === 0) {
-        showTimelineNotice('挿入できる類似候補がありません。')
+        showTimelineNotice(
+          conflictingCandidates.length > 0
+            ? `${conflictingCandidates.length}件の類似候補は既存注釈と重複するため挿入しませんでした。`
+            : '挿入できる類似候補がありません。'
+        )
         return
       }
 
@@ -428,13 +461,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         if (candidate.layerName) {
           nextLayerNames[candidate.layerIndex] = candidate.layerName
         }
-        nextAnnotations.push({
-          id: candidate.id,
-          startFrame: candidate.startFrame,
-          endFrame: candidate.endFrame,
-          text: candidate.text,
-          layerIndex: candidate.layerIndex
-        })
+        nextAnnotations.push(toAnnotation(candidate))
       })
 
       setState({
@@ -449,9 +476,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
             : candidate
         )
       )
+      const skippedMessage =
+        conflictingCandidates.length > 0
+          ? ` 重複する${conflictingCandidates.length}件はスキップしました。`
+          : ''
       showTimelineNotice(
-        `${insertableCandidates.length}件の類似候補を挿入しました。`,
-        'success'
+        `${insertableCandidates.length}件の類似候補を挿入しました。${skippedMessage}`,
+        conflictingCandidates.length > 0 ? 'warning' : 'success'
       )
     }
 
@@ -470,36 +501,17 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const insertMovementDetectionCandidates = (
       candidatesToInsert: MovementDetectionCandidate[]
     ) => {
-      const annotationsByLayer = new Map<number, AnnotationType[]>()
-      annotations.forEach((annotation) => {
-        const layerAnnotations =
-          annotationsByLayer.get(annotation.layerIndex) ?? []
-        layerAnnotations.push(annotation)
-        annotationsByLayer.set(annotation.layerIndex, layerAnnotations)
-      })
-
-      const insertableCandidates: MovementDetectionCandidate[] = []
-      candidatesToInsert.forEach((candidate) => {
-        const layerAnnotations =
-          annotationsByLayer.get(candidate.layerIndex) ?? []
-        if (hasAnnotationConflict(candidate, layerAnnotations)) {
-          return
-        }
-        insertableCandidates.push(candidate)
-        annotationsByLayer.set(candidate.layerIndex, [
-          ...layerAnnotations,
-          {
-            id: candidate.id,
-            startFrame: candidate.startFrame,
-            endFrame: candidate.endFrame,
-            text: candidate.text,
-            layerIndex: candidate.layerIndex
-          }
-        ])
-      })
+      const {
+        insertable: insertableCandidates,
+        conflicting: conflictingCandidates
+      } = partitionInsertableCandidates(candidatesToInsert)
 
       if (insertableCandidates.length === 0) {
-        showTimelineNotice('挿入できる動作検出候補がありません。')
+        showTimelineNotice(
+          conflictingCandidates.length > 0
+            ? `${conflictingCandidates.length}件の動作検出候補は既存注釈と重複するため挿入しませんでした。`
+            : '挿入できる動作検出候補がありません。'
+        )
         return
       }
 
@@ -507,13 +519,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       setState({
         annotations: [
           ...annotations,
-          ...insertableCandidates.map((candidate) => ({
-            id: candidate.id,
-            startFrame: candidate.startFrame,
-            endFrame: candidate.endFrame,
-            text: candidate.text,
-            layerIndex: candidate.layerIndex
-          }))
+          ...insertableCandidates.map(toAnnotation)
         ],
         layerNames: [...layerNames]
       })
@@ -524,9 +530,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
             : candidate
         )
       )
+      const skippedMessage =
+        conflictingCandidates.length > 0
+          ? ` 重複する${conflictingCandidates.length}件はスキップしました。`
+          : ''
       showTimelineNotice(
-        `${insertableCandidates.length}件の動作検出候補を挿入しました。`,
-        'success'
+        `${insertableCandidates.length}件の動作検出候補を挿入しました。${skippedMessage}`,
+        conflictingCandidates.length > 0 ? 'warning' : 'success'
       )
     }
 
@@ -534,6 +544,64 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       candidate: MovementDetectionCandidate
     ) => {
       insertMovementDetectionCandidates([candidate])
+    }
+
+    const overwriteCandidate = (
+      candidate: AnnotationCandidate,
+      candidateLabel: string,
+      markAccepted: (candidateId: string) => void
+    ) => {
+      const conflictingAnnotations = getConflictingAnnotations(candidate)
+      if (conflictingAnnotations.length === 0) {
+        showTimelineNotice('上書きする既存注釈がありません。')
+        return
+      }
+
+      const conflictingIds = new Set(
+        conflictingAnnotations.map((annotation) => annotation.id)
+      )
+      const nextState = {
+        ...state,
+        annotations: [
+          ...annotations.filter(
+            (annotation) => !conflictingIds.has(annotation.id)
+          ),
+          toAnnotation(candidate)
+        ]
+      }
+
+      pushToUndoStack(state)
+      setState(nextState)
+      removeInvalidAnnotationSelection(nextState)
+      markAccepted(candidate.id)
+      showTimelineNotice(
+        `${conflictingAnnotations.length}件の既存注釈を${candidateLabel}で上書きしました。`,
+        'warning'
+      )
+    }
+
+    const overwriteSimilarMotionCandidate = (
+      candidate: SimilarMotionCandidate
+    ) => {
+      overwriteCandidate(candidate, '類似候補', (candidateId) => {
+        setSimilarMotionCandidates((current) =>
+          current.map((item) =>
+            item.id === candidateId ? { ...item, status: 'accepted' } : item
+          )
+        )
+      })
+    }
+
+    const overwriteMovementDetectionCandidate = (
+      candidate: MovementDetectionCandidate
+    ) => {
+      overwriteCandidate(candidate, '動作検出候補', (candidateId) => {
+        setMovementDetectionCandidates((current) =>
+          current.map((item) =>
+            item.id === candidateId ? { ...item, status: 'accepted' } : item
+          )
+        )
+      })
     }
 
     // 位置からフレームインデックスを計算する関数を追加
@@ -1675,6 +1743,9 @@ ${tierElements.join('\n')}
             <div className="similarity-candidate-toolbar-summary">
               <span>{`動作検出候補: ${visibleMovementDetectionCandidates.length}件`}</span>
               <span>{`挿入可能: ${insertableMovementDetectionCandidates.length}件`}</span>
+              {conflictingMovementDetectionCandidates.length > 0 && (
+                <span className="conflict-count">{`重複: ${conflictingMovementDetectionCandidates.length}件`}</span>
+              )}
             </div>
             <div className="similarity-candidate-toolbar-actions">
               <button
@@ -1682,7 +1753,7 @@ ${tierElements.join('\n')}
                 disabled={insertableMovementDetectionCandidates.length === 0}
                 onClick={() =>
                   insertMovementDetectionCandidates(
-                    insertableMovementDetectionCandidates
+                    visibleMovementDetectionCandidates
                   )
                 }
               >
@@ -1705,13 +1776,16 @@ ${tierElements.join('\n')}
             <div className="similarity-candidate-toolbar-summary">
               <span>{`類似候補: ${visibleSimilarMotionCandidates.length}件`}</span>
               <span>{`挿入可能: ${insertableSimilarMotionCandidates.length}件`}</span>
+              {conflictingSimilarMotionCandidates.length > 0 && (
+                <span className="conflict-count">{`重複: ${conflictingSimilarMotionCandidates.length}件`}</span>
+              )}
             </div>
             <div className="similarity-candidate-toolbar-actions">
               <button
                 type="button"
                 disabled={insertableSimilarMotionCandidates.length === 0}
                 onClick={() =>
-                  insertSimilarMotionCandidates(insertableSimilarMotionCandidates)
+                  insertSimilarMotionCandidates(visibleSimilarMotionCandidates)
                 }
               >
                 すべて挿入
@@ -1998,13 +2072,32 @@ ${tierElements.join('\n')}
                                   left: `${(candidate.startFrame - 1) * frameWidth}px`,
                                   right: `${timelineWidth - (candidate.endFrame - 1) * frameWidth}px`
                                 }}
-                                title="動作範囲検出候補"
+                                title={
+                                  hasConflict
+                                    ? '動作範囲検出候補・既存注釈と重複'
+                                    : '動作範囲検出候補'
+                                }
                               >
                                 <span>{candidate.text}</span>
                                 <span>検出</span>
                                 <div className="similarity-candidate-actions">
                                   {hasConflict ? (
-                                    <span>重複</span>
+                                    <>
+                                      <span className="conflict-label">
+                                        ⚠ 既存注釈と重複
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="overwrite"
+                                        onClick={() =>
+                                          overwriteMovementDetectionCandidate(
+                                            candidate
+                                          )
+                                        }
+                                      >
+                                        上書きして挿入
+                                      </button>
+                                    </>
                                   ) : (
                                     <button
                                       type="button"
@@ -2061,13 +2154,28 @@ ${tierElements.join('\n')}
                                   left: `${(candidate.startFrame - 1) * frameWidth}px`,
                                   right: `${timelineWidth - (candidate.endFrame - 1) * frameWidth}px`
                                 }}
-                                title={`類似度: ${candidate.similarity.toFixed(3)}`}
+                                title={`類似度: ${candidate.similarity.toFixed(3)}${hasConflict ? '・既存注釈と重複' : ''}`}
                               >
                                 <span>{candidate.text}</span>
                                 <span>{candidate.similarity.toFixed(2)}</span>
                                 <div className="similarity-candidate-actions">
                                   {hasConflict ? (
-                                    <span>重複</span>
+                                    <>
+                                      <span className="conflict-label">
+                                        ⚠ 既存注釈と重複
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="overwrite"
+                                        onClick={() =>
+                                          overwriteSimilarMotionCandidate(
+                                            candidate
+                                          )
+                                        }
+                                      >
+                                        上書きして挿入
+                                      </button>
+                                    </>
                                   ) : (
                                     <button
                                       type="button"
