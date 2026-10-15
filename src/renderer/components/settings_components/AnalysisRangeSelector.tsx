@@ -145,7 +145,7 @@ export const AnalysisRangeSelector: React.FC<
             onChange={() => onModeChange('full')}
           />
           <span>
-            <strong>動画全体</strong>
+            <strong>全体分析</strong>
             <small>動画の先頭から末尾まで分析します</small>
           </span>
         </label>

@@ -245,12 +245,12 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   const getAnalysisRangeMessage = () => {
     const analysisFrameRange = getAnalysisFrameRange()
     if (analysisRangeMode === 'full') {
-      return '分析対象: 動画全体'
+      return '分析範囲: 動画全体'
     }
     if (analysisFrameRange) {
-      return `分析対象: ${formatFrameTime(analysisFrameRange.startFrame)}–${formatAnalysisEndTime(analysisFrameRange.endFrame)}（${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f）`
+      return `分析範囲: ${formatFrameTime(analysisFrameRange.startFrame)}–${formatAnalysisEndTime(analysisFrameRange.endFrame)}（${analysisFrameRange.startFrame}–${analysisFrameRange.endFrame}f）`
     }
-    return '分析対象: 開始位置と終了位置を指定してください'
+    return '分析範囲: 開始位置と終了位置を指定してください'
   }
 
   useEffect(() => {
