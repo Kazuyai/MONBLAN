@@ -573,14 +573,14 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
           <p>指定区間に映る人物は1人ですか？複数人ですか？</p>
           <div className="button-container">
             <button
-              className="primary-action"
+              className="secondary-action"
               disabled={!isAiReady}
               onClick={() => getHumanImages(true)}
             >
               1人
             </button>
             <button
-              className="primary-action"
+              className="secondary-action"
               disabled={!isAiReady}
               onClick={() => getHumanImages(false)}
             >

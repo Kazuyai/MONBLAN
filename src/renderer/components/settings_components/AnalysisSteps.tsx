@@ -130,7 +130,11 @@ export const AnalysisSteps: React.FC<AnalysisStepsProps> = ({
               <button type="button" autoFocus onClick={() => setPendingStep(null)}>
                 キャンセル
               </button>
-              <button type="button" onClick={confirmBack}>
+              <button
+                type="button"
+                className="danger-action"
+                onClick={confirmBack}
+              >
                 設定を破棄して戻る
               </button>
             </div>

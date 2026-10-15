@@ -1719,7 +1719,7 @@ ${tierElements.join('\n')}
           <button className="danger-action" onClick={deleteLayer}>
             注釈層削除
           </button>
-          <button className="primary-action" onClick={addAnnotation}>
+          <button className="secondary-action" onClick={addAnnotation}>
             注釈追加
           </button>
           <button className="danger-action" onClick={deleteAnnotation}>

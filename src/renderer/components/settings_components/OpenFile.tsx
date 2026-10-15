@@ -301,7 +301,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
         </label>
         <div className="file-open-actions">
           <button
-            className="file-open-button"
+            className="file-open-button primary-action"
             disabled={!hasSelectedFiles}
             onClick={() => openFile()}
           >
