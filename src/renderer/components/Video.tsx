@@ -48,7 +48,14 @@ export const Video: React.FC<VideoProps> = ({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (isEditing) return
+      const eventTarget = event.target
+      const isTextEntryTarget =
+        eventTarget instanceof Element &&
+        eventTarget.closest(
+          'input, textarea, select, [contenteditable="true"]'
+        ) !== null
+
+      if (isEditing || isTextEntryTarget) return
 
       videoRefs.current.forEach((video) => {
         if (!video) return
@@ -61,7 +68,6 @@ export const Video: React.FC<VideoProps> = ({
             video.currentTime = Math.min(video.duration, video.currentTime + 5)
             break
           case 'Space':
-            if (isEditing) return
             event.preventDefault()
             setIsPlaying?.((prev) => !prev)
             setPlaySpeed?.(1)

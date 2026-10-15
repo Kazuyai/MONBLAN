@@ -2350,8 +2350,12 @@ button {
                 font-size: 15rem;
               }
               input {
+                position: relative;
+                z-index: 1;
                 width: 100%;
                 height: 100%;
+                cursor: text;
+                user-select: text;
               }
             }
             .timeline {
