@@ -15,9 +15,15 @@ export type AiSetupOperation =
   | 'fetch-alphapose'
   | 'fetch-motionbert'
   | 'install-alphapose-model'
+  | 'install-alphapose-detector-model'
+  | 'install-alphapose-tracker-model'
   | 'install-motionbert-model'
 export type AiSetupPhase = 'idle' | 'running' | 'completed' | 'failed'
-export type AiSetupModel = 'alphapose' | 'motionbert'
+export type AiSetupModel =
+  | 'alphapose'
+  | 'alphapose-detector'
+  | 'alphapose-tracker'
+  | 'motionbert'
 
 export interface AiSetupPythonStatus {
   available: boolean
@@ -35,6 +41,10 @@ export interface AiSetupStatus {
   alphaPoseReady: boolean
   alphaPoseModelPath: string
   alphaPoseModelReady: boolean
+  alphaPoseDetectorModelPath: string
+  alphaPoseDetectorModelReady: boolean
+  alphaPoseTrackerModelPath: string
+  alphaPoseTrackerModelReady: boolean
   motionBertPath: string
   motionBertReady: boolean
   motionBertModelPath: string
@@ -101,6 +111,19 @@ export const getAiSetupStatus = async (
     'pretrained_models',
     'halpe26_fast_res50_256x192.pth'
   )
+  const alphaPoseTrackerModelPath = path.join(
+    alphaPosePath,
+    'trackers',
+    'weights',
+    'osnet_ain_x1_0_msmt17_256x128_amsgrad_ep50_lr0.0015_coslr_b64_fb10_softmax_labsmth_flip_jitter.pth'
+  )
+  const alphaPoseDetectorModelPath = path.join(
+    alphaPosePath,
+    'detector',
+    'yolo',
+    'data',
+    'yolov3-spp.weights'
+  )
   const motionBertModelPath = path.join(
     motionBertPath,
     'checkpoint',
@@ -122,6 +145,10 @@ export const getAiSetupStatus = async (
     ),
     alphaPoseModelPath,
     alphaPoseModelReady: await pathExists(alphaPoseModelPath),
+    alphaPoseDetectorModelPath,
+    alphaPoseDetectorModelReady: await pathExists(alphaPoseDetectorModelPath),
+    alphaPoseTrackerModelPath,
+    alphaPoseTrackerModelReady: await pathExists(alphaPoseTrackerModelPath),
     motionBertPath,
     motionBertReady: await pathExists(
       path.join(motionBertPath, 'infer_wild.py')
@@ -324,6 +351,10 @@ const operationMessages: Record<AiSetupOperation, string> = {
   'fetch-alphapose': 'AlphaPose本体を公式リポジトリから取得しています。',
   'fetch-motionbert': 'MotionBERT本体を公式リポジトリから取得しています。',
   'install-alphapose-model': 'AlphaPoseモデルを専用AI環境へ配置しています。',
+  'install-alphapose-detector-model':
+    'AlphaPose人物検出モデルを専用AI環境へ配置しています。',
+  'install-alphapose-tracker-model':
+    'AlphaPose人物追跡モデルを専用AI環境へ配置しています。',
   'install-motionbert-model': 'MotionBERTモデルを専用AI環境へ配置しています。'
 }
 
@@ -348,7 +379,11 @@ export const installAiSetupModel = async (
   const operation: AiSetupOperation =
     model === 'alphapose'
       ? 'install-alphapose-model'
-      : 'install-motionbert-model'
+      : model === 'alphapose-detector'
+        ? 'install-alphapose-detector-model'
+      : model === 'alphapose-tracker'
+        ? 'install-alphapose-tracker-model'
+        : 'install-motionbert-model'
   const status = await getAiSetupStatus(fallbackUserDataPath)
   const modelDefinition =
     model === 'alphapose'
@@ -358,12 +393,26 @@ export const installAiSetupModel = async (
           minimumBytes: 1024 * 1024,
           repositoryReady: status.alphaPoseReady
         }
-      : {
-          destination: status.motionBertModelPath,
-          extension: '.bin',
-          minimumBytes: 10 * 1024 * 1024,
-          repositoryReady: status.motionBertReady
-        }
+      : model === 'alphapose-detector'
+        ? {
+            destination: status.alphaPoseDetectorModelPath,
+            extension: '.weights',
+            minimumBytes: 100 * 1024 * 1024,
+            repositoryReady: status.alphaPoseReady
+          }
+        : model === 'alphapose-tracker'
+        ? {
+            destination: status.alphaPoseTrackerModelPath,
+            extension: '.pth',
+            minimumBytes: 10 * 1024 * 1024,
+            repositoryReady: status.alphaPoseReady
+          }
+        : {
+            destination: status.motionBertModelPath,
+            extension: '.bin',
+            minimumBytes: 10 * 1024 * 1024,
+            repositoryReady: status.motionBertReady
+          }
 
   setupPhase = 'running'
   currentOperation = operation

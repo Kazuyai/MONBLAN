@@ -55,9 +55,10 @@ AI 実行環境の診断結果を返します。Electron 側はこのレスポ�
 主なチェック項目:
 
 - Python executable
-- AlphaPose directory / script / checkpoint
+- AlphaPose directory / script / pose checkpoint / detector checkpoint / tracker checkpoint
 - MotionBERT directory / script / checkpoint
 - detect_movement directory / scripts
+- AlphaPose / MotionBERT compatibility runners
 - CUDA / PyTorch
 
 ### `POST /get_framerate/`
@@ -194,6 +195,7 @@ Electronアプリが利用する `*_from_path` 系エンドポイントでは、
 - 通常のアップロード系エンドポイント `/get_human_images/` と `/items/` は、一時アップロードファイルを使うためキャッシュ対象外です。
 - 動画ファイルが更新されると、サイズまたは更新時刻が変わるため別キャッシュとして扱います。
 - キャッシュはOSの一時ディレクトリ配下 `annotation-tool-alphapose-cache` に保存され、APIプロセス終了時には自動削除されません。不要になった場合は手動削除できます。
+- キャッシュが存在する場合は AlphaPose 自体を起動しないため、人物追跡モデルが不足していても過去の結果を利用できる場合があります。キャッシュがない動画・分析区間では人物追跡モデルが必須です。
 
 ## MotionBERT結果の再利用
 

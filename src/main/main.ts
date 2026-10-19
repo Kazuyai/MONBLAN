@@ -62,19 +62,30 @@ ipcMain.handle('ai-setup:cancel', async () =>
 ipcMain.handle(
   'ai-setup:install-model',
   async (_event, model: AiSetupModel) => {
-    if (model !== 'alphapose' && model !== 'motionbert') {
+    if (
+      model !== 'alphapose' &&
+      model !== 'alphapose-detector' &&
+      model !== 'alphapose-tracker' &&
+      model !== 'motionbert'
+    ) {
       throw new Error(`Unsupported AI model: ${String(model)}`)
     }
     const dialogOptions: Electron.OpenDialogOptions = {
       title:
         model === 'alphapose'
           ? 'AlphaPoseモデルを選択'
-          : 'MotionBERTモデルを選択',
+          : model === 'alphapose-detector'
+            ? 'AlphaPose人物検出モデルを選択'
+          : model === 'alphapose-tracker'
+            ? 'AlphaPose人物追跡モデルを選択'
+            : 'MotionBERTモデルを選択',
       properties: ['openFile'],
       filters: [
-        model === 'alphapose'
-          ? { name: 'AlphaPose model', extensions: ['pth'] }
-          : { name: 'MotionBERT model', extensions: ['bin'] }
+        model === 'motionbert'
+          ? { name: 'MotionBERT model', extensions: ['bin'] }
+          : model === 'alphapose-detector'
+            ? { name: 'AlphaPose detector model', extensions: ['weights'] }
+          : { name: 'AlphaPose model', extensions: ['pth'] }
       ]
     }
     const result = mainWindow
@@ -96,10 +107,19 @@ ipcMain.handle(
     const modelPages: Record<AiSetupModel, string> = {
       alphapose:
         'https://drive.google.com/file/d/1S-ROA28de-1zvLv-hVfPFJ5tFBYOSITb/view?usp=sharing',
+      'alphapose-detector':
+        'https://drive.google.com/open?id=1D47msNOOiJKvPOXlnpyzdKA3k6E97NTC',
+      'alphapose-tracker':
+        'https://drive.google.com/file/d/1myNKfr2cXqiHZVXaaG8ZAq_U2UpeOLfG/view?usp=share_link',
       motionbert:
         'https://huggingface.co/walterzhu/MotionBERT/blob/main/checkpoint/pose3d/FT_MB_lite_MB_ft_h36m_global_lite/best_epoch.bin'
     }
-    if (model !== 'alphapose' && model !== 'motionbert') {
+    if (
+      model !== 'alphapose' &&
+      model !== 'alphapose-detector' &&
+      model !== 'alphapose-tracker' &&
+      model !== 'motionbert'
+    ) {
       throw new Error(`Unsupported AI model: ${String(model)}`)
     }
     await shell.openExternal(modelPages[model])

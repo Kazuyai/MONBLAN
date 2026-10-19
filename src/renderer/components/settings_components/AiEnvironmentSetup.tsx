@@ -49,20 +49,30 @@ const environmentGroupPresentation: Record<
     description: 'AlphaPoseが姿勢推定に使用する学習済みモデルです。',
     order: 3
   },
+  'alphapose-detector-model': {
+    label: 'AlphaPose人物検出モデル',
+    description: '動画内から人物を検出するYOLOの学習済みモデルです。',
+    order: 4
+  },
+  'alphapose-tracker-model': {
+    label: 'AlphaPose人物追跡モデル',
+    description: '動画内で人物を追跡し、人物IDを維持するための学習済みモデルです。',
+    order: 5
+  },
   motionbert: {
     label: 'MotionBERT本体',
     description: '2次元姿勢を3次元姿勢へ変換する外部プログラムです。',
-    order: 4
+    order: 6
   },
   'motionbert-model': {
     label: 'MotionBERTモデル',
     description: 'MotionBERTが姿勢推定に使用する学習済みモデルです。',
-    order: 5
+    order: 7
   },
   'application-files': {
     label: 'アプリ内AI処理ファイル',
     description: 'Annotation Toolに同梱される処理ファイルです。',
-    order: 6
+    order: 8
   }
 }
 
@@ -89,6 +99,10 @@ const getCheckGroup = (check: ApiEnvironmentCheck) => {
   if (check.name === 'Python executable') return 'python'
   if (check.name === 'CUDA / PyTorch') return 'cuda-pytorch'
   if (check.name === 'AlphaPose checkpoint') return 'alphapose-model'
+  if (check.name === 'AlphaPose detector checkpoint')
+    return 'alphapose-detector-model'
+  if (check.name === 'AlphaPose tracker checkpoint')
+    return 'alphapose-tracker-model'
   if (check.name.startsWith('AlphaPose')) return 'alphapose'
   if (check.name === 'MotionBERT checkpoint') return 'motionbert-model'
   if (check.name.startsWith('MotionBERT')) return 'motionbert'
@@ -193,6 +207,14 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
           ready: setupStatus.alphaPoseModelReady,
           path: setupStatus.alphaPoseModelPath
         },
+        'alphapose-detector-model': {
+          ready: setupStatus.alphaPoseDetectorModelReady,
+          path: setupStatus.alphaPoseDetectorModelPath
+        },
+        'alphapose-tracker-model': {
+          ready: setupStatus.alphaPoseTrackerModelReady,
+          path: setupStatus.alphaPoseTrackerModelPath
+        },
         motionbert: {
           ready: setupStatus.motionBertReady,
           path: setupStatus.motionBertPath
@@ -276,6 +298,8 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
   const setupCanBeCancelled =
     setupIsRunning &&
     activeSetupOperation !== 'install-alphapose-model' &&
+    activeSetupOperation !== 'install-alphapose-detector-model' &&
+    activeSetupOperation !== 'install-alphapose-tracker-model' &&
     activeSetupOperation !== 'install-motionbert-model'
 
   const cancelSetupOperation = async () => {
@@ -312,7 +336,11 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
     const operation: AiSetupOperation =
       model === 'alphapose'
         ? 'install-alphapose-model'
-        : 'install-motionbert-model'
+        : model === 'alphapose-detector'
+          ? 'install-alphapose-detector-model'
+        : model === 'alphapose-tracker'
+          ? 'install-alphapose-tracker-model'
+          : 'install-motionbert-model'
     setActionError(null)
     setPendingSetupOperation(operation)
     try {
@@ -550,10 +578,82 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
                 )}
               </div>
             </li>
+            <li
+              className={
+                setupStatus.alphaPoseDetectorModelReady ? 'completed' : ''
+              }
+            >
+              <div className="ai-setup-step-header">
+                <div>
+                  <strong>7. AlphaPose人物検出モデルを配置</strong>
+                  <span>{setupStatus.alphaPoseDetectorModelPath}</span>
+                  <span>
+                    公式配布ページからyolov3-spp.weightsをダウンロードしてください。
+                  </span>
+                </div>
+                {!setupStatus.alphaPoseDetectorModelReady && (
+                  <div className="ai-setup-step-actions">
+                    <button
+                      type="button"
+                      disabled={setupIsRunning}
+                      onClick={() => openModelPage('alphapose-detector')}
+                    >
+                      公式ページ
+                    </button>
+                    <button
+                      type="button"
+                      disabled={setupIsRunning}
+                      onClick={() => installModel('alphapose-detector')}
+                    >
+                      {pendingSetupOperation ===
+                      'install-alphapose-detector-model'
+                        ? '配置中…'
+                        : 'ファイルを選択'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </li>
+            <li
+              className={
+                setupStatus.alphaPoseTrackerModelReady ? 'completed' : ''
+              }
+            >
+              <div className="ai-setup-step-header">
+                <div>
+                  <strong>8. AlphaPose人物追跡モデルを配置</strong>
+                  <span>{setupStatus.alphaPoseTrackerModelPath}</span>
+                  <span>
+                    公式配布ページから人物追跡用のReIDモデルをダウンロードしてください。
+                  </span>
+                </div>
+                {!setupStatus.alphaPoseTrackerModelReady && (
+                  <div className="ai-setup-step-actions">
+                    <button
+                      type="button"
+                      disabled={setupIsRunning}
+                      onClick={() => openModelPage('alphapose-tracker')}
+                    >
+                      公式ページ
+                    </button>
+                    <button
+                      type="button"
+                      disabled={setupIsRunning}
+                      onClick={() => installModel('alphapose-tracker')}
+                    >
+                      {pendingSetupOperation ===
+                      'install-alphapose-tracker-model'
+                        ? '配置中…'
+                        : 'ファイルを選択'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </li>
             <li className={setupStatus.motionBertModelReady ? 'completed' : ''}>
               <div className="ai-setup-step-header">
                 <div>
-                  <strong>7. MotionBERTモデルを配置</strong>
+                  <strong>9. MotionBERTモデルを配置</strong>
                   <span>{setupStatus.motionBertModelPath}</span>
                   <span>
                     公式配布ページからbest_epoch.binをダウンロードしてください。配置時にSHA-256を検証します。
@@ -583,7 +683,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
             </li>
           </ol>
           <p className="ai-environment-storage-note">
-            両モデルの配置後に「AI APIを起動・再接続」を押すと、専用AI環境へ切り替わります。
+            すべてのモデルの配置後に「AI APIを起動・再接続」を押すと、専用AI環境へ切り替わります。
           </p>
         </section>
       )}

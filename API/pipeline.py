@@ -22,9 +22,23 @@ import cv2
 import numpy as np
 
 try:
-    from .paths import ALPHAPOSE_DIR, DETECT_MOVEMENT_DIR, MOTIONBERT_CHECKPOINT, MOTIONBERT_DIR
+    from .paths import (
+        ALPHAPOSE_DIR,
+        ALPHAPOSE_DETECTOR_CHECKPOINT,
+        ALPHAPOSE_TRACKER_CHECKPOINT,
+        DETECT_MOVEMENT_DIR,
+        MOTIONBERT_CHECKPOINT,
+        MOTIONBERT_DIR,
+    )
 except ImportError:
-    from paths import ALPHAPOSE_DIR, DETECT_MOVEMENT_DIR, MOTIONBERT_CHECKPOINT, MOTIONBERT_DIR
+    from paths import (
+        ALPHAPOSE_DIR,
+        ALPHAPOSE_DETECTOR_CHECKPOINT,
+        ALPHAPOSE_TRACKER_CHECKPOINT,
+        DETECT_MOVEMENT_DIR,
+        MOTIONBERT_CHECKPOINT,
+        MOTIONBERT_DIR,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -342,29 +356,32 @@ def prepare_analysis_input(
     return analysis_video_path, local_results_path, analysis_range["startFrame"] - 1
 
 
-def _save_subprocess_log(job_dir: str, step_name: str, stdout: str, stderr: str):
-    """外部スクリプト失敗時の標準出力・標準エラーを調査用に保存する。"""
-    if stdout:
-        stdout_path = os.path.join(job_dir, f"{step_name}_stdout.log")
-        with open(stdout_path, "w", encoding="utf-8") as file:
-            file.write(stdout)
-    if stderr:
-        stderr_path = os.path.join(job_dir, f"{step_name}_stderr.log")
-        with open(stderr_path, "w", encoding="utf-8") as file:
-            file.write(stderr)
-
-
 def _run_subprocess(args: list[str], cwd: str, job_dir: str, step_name: str) -> subprocess.CompletedProcess:
     """外部Pythonスクリプトを実行し、失敗時はログを残して例外化する。"""
-    result = subprocess.run(
-        args,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
+    stdout_path = os.path.join(job_dir, f"{step_name}_stdout.log")
+    stderr_path = os.path.join(job_dir, f"{step_name}_stderr.log")
+    process_environment = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    with (
+        open(stdout_path, "w", encoding="utf-8") as stdout_file,
+        open(stderr_path, "w", encoding="utf-8") as stderr_file,
+    ):
+        process = subprocess.Popen(
+            args,
+            cwd=cwd,
+            env=process_environment,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+        )
+        returncode = process.wait()
+
+    with open(stdout_path, "r", encoding="utf-8", errors="replace") as file:
+        stdout = file.read()
+    with open(stderr_path, "r", encoding="utf-8", errors="replace") as file:
+        stderr = file.read()
+    result = subprocess.CompletedProcess(args, returncode, stdout, stderr)
 
     if result.returncode != 0:
-        _save_subprocess_log(job_dir, step_name, result.stdout, result.stderr)
         logger.error(
             "Step '%s' failed (returncode=%d)\nstderr: %s",
             step_name,
@@ -378,15 +395,29 @@ def _run_subprocess(args: list[str], cwd: str, job_dir: str, step_name: str) -> 
             stderr=result.stderr,
         )
 
+    os.remove(stdout_path)
+    os.remove(stderr_path)
     return result
 
 
 def run_alphapose(video_file_path: str, job_dir: str) -> subprocess.CompletedProcess:
     """AlphaPoseで2D姿勢推定を実行し、alphapose-results.json を job_dir に出力する。"""
+    if not os.path.isfile(ALPHAPOSE_DETECTOR_CHECKPOINT):
+        raise FileNotFoundError(
+            "AlphaPoseの人物検出モデルが見つかりません。"
+            "AI環境セットアップからAlphaPose人物検出モデルを配置してください: "
+            f"{ALPHAPOSE_DETECTOR_CHECKPOINT}"
+        )
+    if not os.path.isfile(ALPHAPOSE_TRACKER_CHECKPOINT):
+        raise FileNotFoundError(
+            "AlphaPoseの人物追跡モデルが見つかりません。"
+            "AI環境セットアップからAlphaPose人物追跡モデルを配置してください: "
+            f"{ALPHAPOSE_TRACKER_CHECKPOINT}"
+        )
     return _run_subprocess(
         [
             sys.executable,
-            "scripts/demo_inference.py",
+            os.path.join(os.path.dirname(__file__), "alphapose_runner.py"),
             "--cfg",
             "configs/halpe_26/resnet/256x192_res50_lr1e-3_1x.yaml",
             "--checkpoint",

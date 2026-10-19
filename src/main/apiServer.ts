@@ -1,4 +1,8 @@
-import { ChildProcessWithoutNullStreams, spawn } from 'child_process'
+import {
+  ChildProcessWithoutNullStreams,
+  spawn,
+  spawnSync
+} from 'child_process'
 import { existsSync } from 'fs'
 import http from 'http'
 import path from 'path'
@@ -55,6 +59,18 @@ let apiStatus: ApiStatus = {
 }
 let statusListener: ((status: ApiStatus) => void) | null = null
 let environmentRefreshPromise: Promise<ApiStatus> | null = null
+
+const terminateApiProcess = (childProcess: ChildProcessWithoutNullStreams) => {
+  if (process.platform === 'win32' && childProcess.pid) {
+    spawnSync(
+      'taskkill.exe',
+      ['/pid', String(childProcess.pid), '/t', '/f'],
+      { windowsHide: true }
+    )
+    return
+  }
+  childProcess.kill()
+}
 
 export const setApiStatusListener = (listener: (status: ApiStatus) => void) => {
   statusListener = listener
@@ -171,23 +187,7 @@ const getManagedApiRuntime = (aiRoot?: string) => {
   const venvPython = path.join(aiRoot, 'venv', 'Scripts', 'python.exe')
   const requiredPaths = [
     path.join(aiRoot, '.dependencies-installed'),
-    venvPython,
-    path.join(aiRoot, 'AlphaPose', 'scripts', 'demo_inference.py'),
-    path.join(
-      aiRoot,
-      'AlphaPose',
-      'pretrained_models',
-      'halpe26_fast_res50_256x192.pth'
-    ),
-    path.join(aiRoot, 'MotionBERT', 'infer_wild.py'),
-    path.join(
-      aiRoot,
-      'MotionBERT',
-      'checkpoint',
-      'pose3d',
-      'FT_MB_lite_MB_ft_h36m_global_lite',
-      'best_epoch.bin'
-    )
+    venvPython
   ]
   const dedicatedEnvironmentReady = requiredPaths.every(existsSync)
   if (!dedicatedEnvironmentReady) {
@@ -300,7 +300,7 @@ export const stopApiServer = () => {
   updateStatus({ status: 'stopped' })
 
   if (apiProcess && !apiProcess.killed) {
-    apiProcess.kill()
+    terminateApiProcess(apiProcess)
   }
   apiProcess = null
 }
@@ -315,7 +315,7 @@ export const restartApiServer = async (
     const processExited = new Promise<void>((resolve) =>
       runningProcess.once('exit', () => resolve())
     )
-    runningProcess.kill()
+    terminateApiProcess(runningProcess)
     apiProcess = null
     await Promise.race([
       processExited,

@@ -11,7 +11,9 @@ from typing import Any
 try:
     from .paths import (
         ALPHAPOSE_CHECKPOINT,
+        ALPHAPOSE_DETECTOR_CHECKPOINT,
         ALPHAPOSE_DIR,
+        ALPHAPOSE_TRACKER_CHECKPOINT,
         DETECT_MOVEMENT_DIR,
         MOTIONBERT_CHECKPOINT,
         MOTIONBERT_DIR,
@@ -19,7 +21,9 @@ try:
 except ImportError:
     from paths import (
         ALPHAPOSE_CHECKPOINT,
+        ALPHAPOSE_DETECTOR_CHECKPOINT,
         ALPHAPOSE_DIR,
+        ALPHAPOSE_TRACKER_CHECKPOINT,
         DETECT_MOVEMENT_DIR,
         MOTIONBERT_CHECKPOINT,
         MOTIONBERT_DIR,
@@ -86,6 +90,20 @@ def check_environment() -> dict[str, Any]:
             "alphapose",
         ),
         _path_status("AlphaPose checkpoint", ALPHAPOSE_CHECKPOINT, "file", "external", "alphapose-model"),
+        _path_status(
+            "AlphaPose detector checkpoint",
+            ALPHAPOSE_DETECTOR_CHECKPOINT,
+            "file",
+            "external",
+            "alphapose-detector-model",
+        ),
+        _path_status(
+            "AlphaPose tracker checkpoint",
+            ALPHAPOSE_TRACKER_CHECKPOINT,
+            "file",
+            "external",
+            "alphapose-tracker-model",
+        ),
         _path_status("MotionBERT directory", MOTIONBERT_DIR, "directory", "external", "motionbert"),
         _path_status(
             "MotionBERT script",
@@ -126,6 +144,13 @@ def check_environment() -> dict[str, Any]:
         _path_status(
             "MotionBERT Windows runner",
             os.path.join(os.path.dirname(__file__), "motionbert_runner.py"),
+            "file",
+            "bundled",
+            "application-files",
+        ),
+        _path_status(
+            "AlphaPose compatibility runner",
+            os.path.join(os.path.dirname(__file__), "alphapose_runner.py"),
             "file",
             "bundled",
             "application-files",

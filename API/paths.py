@@ -23,6 +23,19 @@ ALPHAPOSE_CHECKPOINT = os.path.join(
     "pretrained_models",
     "halpe26_fast_res50_256x192.pth",
 )
+ALPHAPOSE_DETECTOR_CHECKPOINT = os.path.join(
+    ALPHAPOSE_DIR,
+    "detector",
+    "yolo",
+    "data",
+    "yolov3-spp.weights",
+)
+ALPHAPOSE_TRACKER_CHECKPOINT = os.path.join(
+    ALPHAPOSE_DIR,
+    "trackers",
+    "weights",
+    "osnet_ain_x1_0_msmt17_256x128_amsgrad_ep50_lr0.0015_coslr_b64_fb10_softmax_labsmth_flip_jitter.pth",
+)
 
 # MotionBERT infer_wild.py のデフォルト評価重み。実行時にも明示指定して診断結果と揃える。
 MOTIONBERT_CHECKPOINT = os.path.join(
