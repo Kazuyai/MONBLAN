@@ -82,6 +82,7 @@ class AnalysisRange(BaseModel):
 
 class HumanImagesPathRequest(VideoPathRequest):
     analysisRange: AnalysisRange | None = None
+    singlePerson: bool = False
 
 
 class ItemsPathRequest(VideoPathRequest):
@@ -89,6 +90,7 @@ class ItemsPathRequest(VideoPathRequest):
     analysisStartFrame: int | None = None
     analysisEndFrame: int | None = None
     analysisRange: AnalysisRange | None = None
+    singlePerson: bool = False
 
 
 class SimilarMotionTemplate(BaseModel):
@@ -105,6 +107,7 @@ class SimilarMotionPathRequest(VideoPathRequest):
     layerName: str
     layerIndex: int
     analysisRange: AnalysisRange | None = None
+    singlePerson: bool = False
 
 
 def analysis_range_dict(value: AnalysisRange | None) -> dict | None:
@@ -214,7 +217,11 @@ async def get_framerate_from_path(request: VideoPathRequest):
 
 
 @app.post("/get_human_images/")
-async def get_human_images(file: UploadFile = File(...), analysisRange: str | None = Form(None)):
+async def get_human_images(
+    file: UploadFile = File(...),
+    analysisRange: str | None = Form(None),
+    singlePerson: bool = Form(False),
+):
     """AlphaPoseの検出結果から、各フレームの代表人物画像を切り出して返す。"""
     start_time = time.time()
     temp_filename = None
@@ -226,10 +233,14 @@ async def get_human_images(file: UploadFile = File(...), analysisRange: str | No
 
         selected_range = normalize_analysis_range(temp_filename, json.loads(analysisRange) if analysisRange else None)
         if selected_range is None:
-            people = extract_human_people(temp_filename, job_dir)
+            people = extract_human_people(
+                temp_filename, job_dir, single_person=singlePerson
+            )
         else:
             clip_path = create_analysis_video(temp_filename, selected_range, job_dir)
-            people = extract_human_people(clip_path, job_dir)
+            people = extract_human_people(
+                clip_path, job_dir, single_person=singlePerson
+            )
         image_data_list = [person["image"] for person in people]
 
         end_time = time.time()
@@ -286,7 +297,12 @@ async def get_human_images_from_path(request: HumanImagesPathRequest):
             else:
                 clip_path, alphapose_results_path, alphapose_cache_hit = get_cached_analysis_results(video_path, selected_range)
 
-        people = extract_human_people(clip_path, job_dir, alphapose_results_path)
+        people = extract_human_people(
+            clip_path,
+            job_dir,
+            alphapose_results_path,
+            single_person=request.singlePerson,
+        )
         image_data_list = [person["image"] for person in people]
 
         end_time = time.time()
@@ -331,6 +347,7 @@ async def create_item(
     analysisStartFrame: int | None = Form(None),
     analysisEndFrame: int | None = Form(None),
     analysisRange: str | None = Form(None),
+    singlePerson: bool = Form(False),
 ):
     """AlphaPose、MotionBERT、動作検出を順に実行し、自動アノテーション範囲を返す。"""
     start_time = time.time()
@@ -349,6 +366,7 @@ async def create_item(
             analysis_start_frame=analysisStartFrame,
             analysis_end_frame=analysisEndFrame,
             analysis_range=json.loads(analysisRange) if analysisRange else None,
+            single_person=singlePerson,
         )
 
         end_time = time.time()
@@ -412,6 +430,7 @@ async def create_item_from_path(request: ItemsPathRequest, response: Response):
             analysis_range=analysis_range,
             use_motionbert_cache=True,
             pipeline_metadata=pipeline_metadata,
+            single_person=request.singlePerson,
         )
 
         motionbert_cache = pipeline_metadata.get("motionbertCache", {})
@@ -499,6 +518,7 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             layer_index=request.layerIndex,
             job_dir=job_dir,
             alphapose_results_path=alphapose_results_path,
+            single_person=request.singlePerson,
         )
 
         end_time = time.time()

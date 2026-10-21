@@ -316,9 +316,10 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     )
   }
 
-  const getUploadedHumanImages = (file: File) => {
+  const getUploadedHumanImages = (file: File, single: boolean) => {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('singlePerson', String(single))
     if (confirmedAnalysisRange) {
       formData.append('analysisRange', JSON.stringify(confirmedAnalysisRange))
     }
@@ -329,13 +330,17 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     })
   }
 
-  const getHumanImagesFromPath = (filePath: string) => {
+  const getHumanImagesFromPath = (filePath: string, single: boolean) => {
     return fetch('http://127.0.0.1:8000/get_human_images_from_path/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ file_path: filePath, analysisRange: confirmedAnalysisRange })
+      body: JSON.stringify({
+        file_path: filePath,
+        analysisRange: confirmedAnalysisRange,
+        singlePerson: single
+      })
     })
   }
 
@@ -359,11 +364,11 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
 
     try {
       let response = filePath
-        ? await getHumanImagesFromPath(filePath)
-        : await getUploadedHumanImages(file as File)
+        ? await getHumanImagesFromPath(filePath, single)
+        : await getUploadedHumanImages(file as File, single)
 
       if (file && filePath && response.status === 404) {
-        response = await getUploadedHumanImages(file)
+        response = await getUploadedHumanImages(file, single)
       }
 
       if (!response.ok) {
@@ -454,6 +459,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
               }
             ],
             analysisRange: analysisFrameRange,
+            singlePerson: isHumanCountSingle === true,
             layerName: confirmedTemplate.layerName,
             layerIndex: confirmedTemplate.layerIndex
           })

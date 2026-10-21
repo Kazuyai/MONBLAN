@@ -326,16 +326,48 @@ def slice_alphapose_results(
     return output_path
 
 
+def _single_person_results(results: list[dict]) -> list[dict]:
+    """各フレームで面積最大の検出だけを残し、同一人物IDへ統一する。"""
+    grouped_by_frame: dict[str, list[dict]] = {}
+    for item in results:
+        image_id = str(item.get("image_id", ""))
+        grouped_by_frame.setdefault(image_id, []).append(item)
+
+    normalized_results = []
+    for items in grouped_by_frame.values():
+        largest_item = max(
+            items,
+            key=lambda item: float(item["box"][2]) * float(item["box"][3]),
+        )
+        normalized_results.append({**largest_item, "idx": 1})
+    return normalized_results
+
+
+def create_single_person_results(results_path: str, job_dir: str) -> str:
+    """AlphaPose結果を1人用に正規化し、キャッシュ原本とは別のファイルへ保存する。"""
+    with open(results_path, "r", encoding="utf-8") as file:
+        results = json.load(file)
+    output_path = os.path.join(job_dir, "alphapose-single-person-results.json")
+    with open(output_path, "w", encoding="utf-8") as file:
+        json.dump(_single_person_results(results), file)
+    return output_path
+
+
 def prepare_analysis_input(
     video_file_path: str,
     analysis_range: dict | None,
     job_dir: str,
     alphapose_results_path: str | None = None,
+    single_person: bool = False,
 ) -> tuple[str, str, int]:
     if analysis_range is None:
         if alphapose_results_path is None:
             run_alphapose(video_file_path, job_dir)
             alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
+        if single_person:
+            alphapose_results_path = create_single_person_results(
+                alphapose_results_path, job_dir
+            )
         return video_file_path, alphapose_results_path, 0
 
     analysis_video_path = create_analysis_video(video_file_path, analysis_range, job_dir)
@@ -353,6 +385,8 @@ def prepare_analysis_input(
     else:
         run_alphapose(analysis_video_path, job_dir)
         local_results_path = os.path.join(job_dir, "alphapose-results.json")
+    if single_person:
+        local_results_path = create_single_person_results(local_results_path, job_dir)
     return analysis_video_path, local_results_path, analysis_range["startFrame"] - 1
 
 
@@ -741,6 +775,7 @@ def extract_human_people(
     video_file_path: str,
     job_dir: str,
     alphapose_results_path: str | None = None,
+    single_person: bool = False,
 ) -> list[dict]:
     if alphapose_results_path is None:
         run_alphapose(video_file_path, job_dir)
@@ -748,6 +783,8 @@ def extract_human_people(
 
     with open(alphapose_results_path, "r", encoding="utf-8") as file:
         alphapose_results = json.load(file)
+    if single_person:
+        alphapose_results = _single_person_results(alphapose_results)
 
     people = []
     for item in _largest_person_per_frame(alphapose_results):
@@ -787,6 +824,7 @@ def run_pose_pipeline(
     analysis_range: dict | None = None,
     use_motionbert_cache: bool = False,
     pipeline_metadata: dict | None = None,
+    single_person: bool = False,
 ) -> list[dict]:
     """自動アノテーション用の全パイプラインを実行し、検出された動作区間を返す。"""
     owns_job_dir = job_dir is None
@@ -819,6 +857,7 @@ def run_pose_pipeline(
             selected_range,
             job_dir,
             alphapose_results_path,
+            single_person,
         )
 
         # MotionBERTは対象人物をfocusで指定するため、humanIdごとにレイヤーを処理する。
@@ -896,6 +935,7 @@ def run_similarity_pipeline(
     job_dir: str | None = None,
     alphapose_results_path: str | None = None,
     analysis_range: dict | None = None,
+    single_person: bool = False,
 ) -> dict:
     """人物・関節・テンプレート区間を指定して、類似動作候補を返す。"""
     owns_job_dir = job_dir is None
@@ -927,6 +967,7 @@ def run_similarity_pipeline(
             selected_range,
             job_dir,
             alphapose_results_path,
+            single_person,
         )
         pose_file_path, motionbert_cache_hit = get_cached_motionbert_results(
             video_file_path,

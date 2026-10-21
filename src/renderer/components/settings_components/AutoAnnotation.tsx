@@ -514,9 +514,10 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     onAnalysisRangePreviewChange
   ])
 
-  const getUploadedHumanImages = (file: File) => {
+  const getUploadedHumanImages = (file: File, single: boolean) => {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('singlePerson', String(single))
     if (confirmedAnalysisRange) {
       formData.append('analysisRange', JSON.stringify(confirmedAnalysisRange))
     }
@@ -527,13 +528,17 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     })
   }
 
-  const getHumanImagesFromPath = (filePath: string) => {
+  const getHumanImagesFromPath = (filePath: string, single: boolean) => {
     return fetch('http://127.0.0.1:8000/get_human_images_from_path/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ file_path: filePath, analysisRange: confirmedAnalysisRange })
+      body: JSON.stringify({
+        file_path: filePath,
+        analysisRange: confirmedAnalysisRange,
+        singlePerson: single
+      })
     })
   }
 
@@ -544,6 +549,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       'autoAnnotationLayer',
       JSON.stringify(getAutoAnnotationRequestLayers())
     )
+    formData.append('singlePerson', String(isHumanCountSingle === true))
     const analysisFrameRange = getAnalysisFrameRange()
     if (analysisFrameRange) {
       formData.append('analysisRange', JSON.stringify(analysisFrameRange))
@@ -565,7 +571,8 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       body: JSON.stringify({
         file_path: filePath,
         autoAnnotationLayer: getAutoAnnotationRequestLayers(),
-        analysisRange: analysisFrameRange
+        analysisRange: analysisFrameRange,
+        singlePerson: isHumanCountSingle === true
       })
     })
   }
@@ -602,7 +609,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       setApiError(null)
 
       try {
-        const response = await getHumanImagesFromPath(storedVideoPath)
+        const response = await getHumanImagesFromPath(storedVideoPath, single)
 
         if (!response.ok) {
           setApiError(await readApiError(response))
@@ -632,11 +639,11 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       try {
         const filePath = getElectronFilePath(file)
         let response = filePath
-          ? await getHumanImagesFromPath(filePath)
-          : await getUploadedHumanImages(file)
+          ? await getHumanImagesFromPath(filePath, single)
+          : await getUploadedHumanImages(file, single)
 
         if (filePath && response.status === 404) {
-          response = await getUploadedHumanImages(file)
+          response = await getUploadedHumanImages(file, single)
         }
 
         if (!response.ok) {
