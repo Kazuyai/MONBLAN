@@ -1,15 +1,16 @@
-﻿# Annotation Tool
+﻿# MONBLAN
 
-Annotation Tool は、動画に対してタイムラインベースでアノテーションを付与するデスクトップアプリケーションです。
+MONBLAN（Motion-based Layered Annotator）は、動画に対してタイムラインベースでアノテーションを付与するデスクトップアプリケーションです。
 Electron + React + TypeScript による手動アノテーション機能と、ローカル FastAPI + AlphaPose + MotionBERT によるAI自動アノテーション機能を持ちます。
 
-研究用途を想定しています。商用利用は想定していません。
+主に研究用途を想定しています。MONBLAN本体はApache License 2.0ですが、AI機能で利用するAlphaPoseには別途非商用条件があります。
 
 ## 重要な注意
 
 - すべての処理はローカル環境で完結します。クラウドAPIには依存しません。
 - 手動アノテーション機能は、AI環境が未セットアップでも利用できる方針です。
-- AI自動アノテーション機能を使うには、Python、CUDA、PyTorch、AlphaPose、MotionBERT、各checkpointの追加セットアップが必要です。
+- AI自動アノテーション機能を使うには、Python、Git、PyTorch、AlphaPose、MotionBERT、各checkpointの追加セットアップが必要です。
+- CUDA対応GPUを推奨します。GPUがない環境でもCPU実行できますが、処理に長時間かかることがあります。
 - AlphaPose、MotionBERT、各checkpointはこのリポジトリに同梱しません。利用者が各公式配布元から取得してください。
 - このプロジェクト本体のライセンスと、外部AIリポジトリ・モデル重みのライセンスは別です。利用条件は各公式配布元で確認してください。
 - このREADMEと関連ドキュメントは技術的な利用方針を示すものであり、法的助言ではありません。
@@ -18,9 +19,9 @@ Electron + React + TypeScript による手動アノテーション機能と、�
 
 | 機能 | 現時点の対象 |
 | --- | --- |
-| 手動アノテーション | Windowsを主対象。Electronアプリとして動作。 |
-| AI自動アノテーション | Windows + NVIDIA GPU + CUDA を正式対象。 |
-| macOS | 現時点では手動アノテーションのみ対象。AI機能は非対応扱い。 |
+| 手動アノテーション | 初期ベータ版はWindowsを対象。Electronアプリとして動作。 |
+| AI自動アノテーション | Windowsを対象。NVIDIA GPU + CUDAを推奨し、CPU実行も許可。 |
+| macOS | 現時点では配布・AI機能ともに正式対象外。 |
 | Linux | 将来的な候補。現時点では正式対象外。 |
 | Docker | 将来的なAI API安定化オプション。現時点では主経路にしない。 |
 
@@ -92,10 +93,10 @@ docs/
 
 ### AI API
 
-- Python 3.11 または 3.12
+- Python 3.11
 - FastAPI
 - PyTorch 2.3.0 + CUDA 11.8
-- NVIDIA GPU + CUDA実行環境
+- NVIDIA GPU + CUDA実行環境（推奨）
 - AlphaPose
 - MotionBERT
 
@@ -129,12 +130,12 @@ AI環境が不足している場合でも、手動アノテーション機能は
 AI機能を使う場合のみ実施します。
 
 1. アプリを起動して「AI環境セットアップ」タブを開く
-2. 画面に表示される順序で、保存先、Python環境、依存パッケージを準備する
-3. AlphaPoseとMotionBERTの本体を取得する
+2. 画面に表示される順序で、保存先、Python 3.11、Git、依存パッケージを準備する
+3. 各ライセンスを確認し、AlphaPoseとMotionBERTの本体を公式リポジトリから取得する
 4. 公式配布ページから学習済みモデルをダウンロードし、画面から選択して配置する
 5. 「AI APIを起動・再接続」を押し、AI機能が利用可能になったことを確認する
 
-Python 3.11または3.12、Git for Windows、NVIDIA GPUと対応ドライバーが事前に必要です。AI環境は `%LOCALAPPDATA%\Annotation Tool\ai` に作成され、通常はリポジトリ内やシステムのPython環境を変更しません。
+Python 3.11とGit for Windowsが事前に必要です。NVIDIA GPUと対応ドライバーは任意ですが、利用を推奨します。AI環境は `%LOCALAPPDATA%\MONBLAN\ai` に作成され、通常はリポジトリ内やシステムのPython環境を変更しません。
 
 checkpointは利用者が各公式配布元から取得する必要があります。ライセンス、画面操作、手動復旧手順の詳細は `docs/setup-ai-environment.md` を参照してください。
 
@@ -161,7 +162,7 @@ yarn build
 Windows向けインストーラー作成:
 
 ```bash
-yarn dist
+yarn dist:windows
 ```
 
 現時点のインストーラーは、AI環境を完全に同梱するものではありません。AI機能を使うには、インストール後に別途AI環境セットアップが必要です。
@@ -195,6 +196,6 @@ public化や配布前には、最低限以下を確認します。
 
 ## ライセンス
 
-`package.json` ではこのプロジェクト本体のライセンスを MIT としています。
+MONBLAN本体はApache License 2.0で公開します。詳細は`LICENSE`と`NOTICE`を参照してください。
 
 ただし、AlphaPose、MotionBERT、各checkpoint、その他外部依存関係にはそれぞれ別のライセンスがあります。特にAI機能を使う場合は、利用者が各公式配布元のライセンスと利用条件を確認してください。

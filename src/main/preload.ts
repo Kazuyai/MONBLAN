@@ -3,11 +3,17 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type {
   AiSetupModel,
+  AiSetupComponent,
   AiSetupOperation,
   AiSetupStatus
 } from './aiSetup'
 
-export type { AiSetupModel, AiSetupOperation, AiSetupStatus } from './aiSetup'
+export type {
+  AiSetupComponent,
+  AiSetupModel,
+  AiSetupOperation,
+  AiSetupStatus
+} from './aiSetup'
 
 export type Channels = 'ipc-example'
 
@@ -20,6 +26,7 @@ export interface ApiEnvironmentCheck {
   exists?: boolean
   ok: boolean
   available?: boolean
+  required?: boolean
   error?: string
   torch_version?: string | null
   cuda_version?: string | null
@@ -30,6 +37,7 @@ export interface ApiEnvironmentStatus {
   ai_available: boolean
   checks: ApiEnvironmentCheck[]
   missing: ApiEnvironmentCheck[]
+  warnings?: ApiEnvironmentCheck[]
 }
 
 export interface ApiStatus {
@@ -85,12 +93,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   restartApi: (): Promise<ApiStatus> => ipcRenderer.invoke('api:restart'),
   getAiSetupStatus: (): Promise<AiSetupStatus> =>
     ipcRenderer.invoke('ai-setup:get-status'),
-  runAiSetupOperation: (
-    operation: AiSetupOperation
-  ): Promise<AiSetupStatus> =>
+  runAiSetupOperation: (operation: AiSetupOperation): Promise<AiSetupStatus> =>
     ipcRenderer.invoke('ai-setup:run-operation', operation),
   cancelAiSetupOperation: (): Promise<AiSetupStatus> =>
     ipcRenderer.invoke('ai-setup:cancel'),
+  acceptAiSetupLicense: (component: AiSetupComponent): Promise<AiSetupStatus> =>
+    ipcRenderer.invoke('ai-setup:accept-license', component),
+  openAiSetupLicensePage: (component: AiSetupComponent): Promise<void> =>
+    ipcRenderer.invoke('ai-setup:open-license-page', component),
   installAiSetupModel: (model: AiSetupModel): Promise<AiSetupStatus> =>
     ipcRenderer.invoke('ai-setup:install-model', model),
   openAiSetupModelPage: (model: AiSetupModel): Promise<void> =>

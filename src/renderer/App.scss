@@ -1059,6 +1059,34 @@ button {
                       min-width: 92rem;
                     }
                   }
+                  .ai-license-confirmation {
+                    display: flex;
+                    align-items: center;
+                    gap: 7rem;
+                    margin-top: 8rem;
+                    color: #ccc;
+                    font-size: 12rem;
+                    input {
+                      flex: 0 0 auto;
+                      width: 15rem;
+                      height: 15rem;
+                    }
+                    span {
+                      display: inline;
+                      margin: 0;
+                    }
+                    button {
+                      display: inline;
+                      min-width: 0;
+                      min-height: 0;
+                      padding: 0;
+                      border: 0;
+                      background: transparent;
+                      color: #9fc4df;
+                      font: inherit;
+                      text-decoration: underline;
+                    }
+                  }
                 }
               }
               .ai-setup-progress {

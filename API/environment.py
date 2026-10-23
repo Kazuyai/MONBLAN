@@ -59,6 +59,7 @@ def _cuda_status() -> dict[str, Any]:
             "name": "CUDA / PyTorch",
             "category": "runtime",
             "group": "cuda-pytorch",
+            "required": True,
             "ok": False,
             "available": False,
             "error": f"PyTorch import failed: {error}",
@@ -69,6 +70,7 @@ def _cuda_status() -> dict[str, Any]:
         "name": "CUDA / PyTorch",
         "category": "runtime",
         "group": "cuda-pytorch",
+        "required": False,
         "ok": available,
         "available": available,
         "torch_version": getattr(torch, "__version__", None),
@@ -158,9 +160,19 @@ def check_environment() -> dict[str, Any]:
         _cuda_status(),
     ]
 
-    missing = [check for check in checks if not check["ok"]]
+    missing = [
+        check
+        for check in checks
+        if not check["ok"] and check.get("required", True)
+    ]
+    warnings = [
+        check
+        for check in checks
+        if not check["ok"] and not check.get("required", True)
+    ]
     return {
         "ai_available": not missing,
         "checks": checks,
         "missing": missing,
+        "warnings": warnings,
     }

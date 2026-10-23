@@ -1,11 +1,11 @@
 {
-  "name": "annotation-tool",
-  "version": "1.0.0",
-  "description": "Desktop annotation tool built with React, TypeScript, and Electron",
+  "name": "monblan",
+  "version": "0.1.0-beta.1",
+  "description": "Motion-based Layered Annotator",
   "main": "dist/main/main.js",
-  "author": "Your Name",
-  "license": "MIT",
-  "homepage": "./",
+  "author": "Kazuya Okamura",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Kazuyai/Annotation-Tool",
   "scripts": {
     "dev": "concurrently -k --names VITE,TS,ELECTRON -c blue,yellow,green \"yarn dev:react\" \"yarn dev:main\" \"yarn dev:electron\"",
     "dev:react": "vite --port 3001 --strictPort",
@@ -15,6 +15,7 @@
     "build:react": "vite build",
     "build:electron": "tsc -p tsconfig.main.json",
     "dist": "yarn build && electron-builder",
+    "dist:windows": "yarn build && electron-builder --win nsis --x64",
     "dist:dir": "yarn build && electron-builder --dir",
     "pack": "electron-builder --dir",
     "lint": "eslint src --ext .ts,.tsx",
@@ -60,8 +61,9 @@
     "uuid": "^10.0.0"
   },
   "build": {
-    "appId": "com.annotation-tool.app",
-    "productName": "Annotation Tool",
+    "appId": "com.monblan.app",
+    "productName": "MONBLAN",
+    "copyright": "Copyright © 2026 Kazuya Okamura",
     "directories": {
       "output": "release"
     },
@@ -76,6 +78,60 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "API",
+        "to": "runtime/API",
+        "filter": [
+          "**/*",
+          "!AlphaPose/**/*",
+          "!MotionBERT/**/*",
+          "!venv/**/*",
+          "!out/**/*",
+          "!build/**/*",
+          "!dist/**/*",
+          "!__pycache__/**/*",
+          "!**/__pycache__/**/*",
+          "!**/*.pyc",
+          "!**/*.pyo",
+          "!**/*.pyd",
+          "!**/*.pth",
+          "!**/*.pt",
+          "!**/*.bin",
+          "!**/*.onnx",
+          "!**/*.npy",
+          "!**/*.npz",
+          "!api_log.txt"
+        ]
+      },
+      {
+        "from": "scripts",
+        "to": "runtime/scripts",
+        "filter": [
+          "**/*.ps1"
+        ]
+      },
+      {
+        "from": "config",
+        "to": "runtime/config",
+        "filter": [
+          "**/*.json"
+        ]
+      },
+      {
+        "from": "licenses",
+        "to": "licenses",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "LICENSE",
+        "to": "licenses/LICENSE"
+      },
+      {
+        "from": "NOTICE",
+        "to": "licenses/NOTICE"
       }
     ],
     "mac": {
@@ -84,6 +140,7 @@
     },
     "win": {
       "icon": "assets/icon.ico",
+      "artifactName": "MONBLAN-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -92,6 +149,15 @@
           ]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MONBLAN",
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "icon": "assets/icon.png",

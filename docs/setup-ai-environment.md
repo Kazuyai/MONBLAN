@@ -1,6 +1,6 @@
 # AI環境セットアップ手順
 
-このドキュメントは、Annotation Tool のAI自動アノテーション機能をローカル環境で動かすための手順をまとめる。
+このドキュメントは、MONBLANのAI自動アノテーション機能をローカル環境で動かすための手順をまとめる。
 
 配布全体の方針は `distribution-policy.md` を参照する。
 
@@ -9,21 +9,21 @@
 現時点では、以下の環境を優先対象とする。
 
 - Windows
-- NVIDIA GPU
-- CUDA 11.8 系
-- Python 3.11 または 3.12
+- NVIDIA GPU（推奨）
+- CUDA 11.8 系（GPU実行時）
+- Python 3.11
 - PyTorch 2.3.0 + CUDA 11.8
 
-AI機能の正式対象は Windows + NVIDIA GPU + CUDA とする。macOS は現時点では手動アノテーション機能のみ対象であり、AI自動アノテーション機能は非対応扱いにする。
+AI機能の正式対象はWindowsとする。NVIDIA GPU + CUDAを推奨するが、利用できない場合も警告付きでCPU実行を許可する。macOSは現時点では配布・AI機能ともに非対応扱いにする。
 
 Docker 前提にはしない。GPU、CUDA、ドライバーの組み合わせはホスト環境の影響を受けるため、Windows上の専用Python環境を標準構成とする。
 
 ## 事前に用意するもの
 
-- Python 3.11または3.12
+- Python 3.11
 - Git for Windows
-- NVIDIA GPU
-- CUDA 11.8対応のNVIDIAドライバー
+- NVIDIA GPU（推奨）
+- CUDA 11.8対応のNVIDIAドライバー（GPU実行時）
 - 依存パッケージと外部リポジトリを取得できるネットワーク接続
 - AI環境とモデルを保存できる空き容量
 
@@ -34,14 +34,15 @@ PythonとGitは、インストール後に新しく起動したアプリから�
 通常の利用者はPowerShellを操作せず、アプリの「AI環境セットアップ」タブから以下の順序で進める。
 
 1. 「保存先を準備」を押す。
-2. 「Pythonを確認」でPython 3.11または3.12が認識されることを確認する。
-3. 専用Python環境を作成する。
-4. AI依存パッケージをインストールする。ダウンロード量が大きいため、完了まで画面を閉じない。
-5. AlphaPose本体とMotionBERT本体を取得する。
-6. 各モデルの「公式ページ」を開き、指定された学習済みモデルをダウンロードする。
-7. 「ファイルを選択」からモデルを配置する。
-8. 「AI APIを起動・再接続」を押す。
-9. 状態が「利用可能」になり、各セットアップ項目がチェック表示になることを確認する。
+2. 「Pythonを確認」でPython 3.11が認識されることを確認する。
+3. 「Gitを確認」でGit for Windowsが認識されることを確認する。
+4. 専用Python環境を作成する。
+5. AI依存パッケージをインストールする。ダウンロード量が大きいため、完了まで画面を閉じない。
+6. ライセンスを確認し、AlphaPose本体とMotionBERT本体を取得する。
+7. 各モデルの「公式ページ」を開き、指定された学習済みモデルをダウンロードする。
+8. 「ファイルを選択」からモデルを配置する。
+9. 「AI APIを起動・再接続」を押す。
+10. 状態が「利用可能」になり、各セットアップ項目がチェック表示になることを確認する。
 
 AlphaPoseは非商用用途に制限される。リポジトリとモデルを取得する前に、利用者自身が公式のライセンスと利用条件を確認すること。本リポジトリにはAlphaPose、MotionBERT、学習済みモデルを同梱しない。
 
@@ -50,7 +51,7 @@ AlphaPoseは非商用用途に制限される。リポジトリとモデルを�
 画面から構築したAI環境は、リポジトリではなく次の利用者専用領域に保存する。
 
 ```text
-%LOCALAPPDATA%\Annotation Tool\ai\
+%LOCALAPPDATA%\MONBLAN\ai\
 ```
 
 標準構成は次のとおり。
@@ -70,7 +71,7 @@ ai/
           best_epoch.bin
 ```
 
-`API\detect_movement`などAnnotation Tool本体の処理はリポジトリ側に保持する。専用AI環境がすべて揃うまでは、既存の動作可能なAI環境がある場合も自動的に置き換えない。
+`API\detect_movement`などMONBLAN本体の処理はリポジトリ側に保持する。
 
 ## 学習済みモデル
 
@@ -85,7 +86,7 @@ ai/
 ## セットアップに失敗した場合
 
 - 画面下部の「実行ログ」を開き、最初に表示されたエラーを確認する。
-- Pythonが見つからない場合はPython 3.11または3.12をインストールし、アプリを再起動してから再確認する。
+- Pythonが見つからない場合はPython 3.11をインストールし、アプリを再起動してから再確認する。
 - `git was not found`と表示された場合はGit for Windowsをインストールし、アプリを再起動する。
 - パッケージ取得に失敗した場合はネットワーク接続と空き容量を確認し、同じ手順を再実行する。
 - モデルを選択できない場合は、指定された拡張子と公式配布元を確認する。
@@ -130,7 +131,7 @@ python -m pip install --upgrade pip
 pip install -r API\requirements.txt
 ```
 
-`API\requirements.txt` は `torch==2.3.0+cu118` と `torchvision==0.18.0+cu118` を含む。CUDA 11.8 以外の環境では、この組み合わせを見直す必要がある。依存一覧にはこのツールの実行経路で直接使用するパッケージのみを記載し、推移依存は `pip` に解決させる。
+セットアップは動作確認済みバージョンを固定した`API\requirements-lock.txt`を使用する。`torch==2.3.0+cu118`と`torchvision==0.18.0+cu118`はCUDAが利用できない場合もCPU実行に使用できる。
 
 ## AlphaPose
 
@@ -151,7 +152,7 @@ cd API
 git clone https://github.com/MVIG-SJTU/AlphaPose.git AlphaPose
 ```
 
-その後、AlphaPoseの公式手順に従って依存関係とモデルを用意する。Annotation Tool 側の環境診断では、少なくとも以下を確認する。
+その後、AlphaPoseの公式手順に従って依存関係とモデルを用意する。MONBLAN側の環境診断では、少なくとも以下を確認する。
 
 アプリのセットアップ画面では「公式ページ」から配布ページを開き、ダウンロードした `halpe26_fast_res50_256x192.pth` を「ファイルを選択」で専用AI環境へ配置できる。AlphaPoseの利用条件を確認したうえで取得すること。
 
@@ -186,7 +187,7 @@ API\MotionBERT\checkpoint\pose3d\FT_MB_lite_MB_ft_h36m_global_lite\best_epoch.bi
 
 アプリのセットアップ画面では「公式ページ」からHugging Face上の公式配布ファイルを開き、ダウンロードした `best_epoch.bin` を「ファイルを選択」で専用AI環境へ配置できる。配置時には公式ファイルのSHA-256と照合する。
 
-Annotation Tool 側の環境診断では、少なくとも以下を確認する。
+MONBLAN側の環境診断では、少なくとも以下を確認する。
 
 - `API\MotionBERT`
 - `API\MotionBERT\infer_wild.py`
@@ -247,7 +248,7 @@ python -c "from API.environment import check_environment; import json; print(jso
 | `MotionBERT directory` | `API\MotionBERT` を配置する |
 | `MotionBERT script` | MotionBERT の配置内容を確認する |
 | `MotionBERT checkpoint` | `best_epoch.bin` を指定パスに配置する |
-| `CUDA / PyTorch` | PyTorch CUDA版、NVIDIAドライバ、CUDA互換性を確認する |
+| `CUDA / PyTorch` | PyTorchを必須確認し、CUDA・GPUが利用できない場合は警告を表示する |
 
 ## API起動確認
 

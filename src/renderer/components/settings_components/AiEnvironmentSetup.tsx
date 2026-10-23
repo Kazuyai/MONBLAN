@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import type {
   ApiEnvironmentCheck,
   ApiStatus,
+  AiSetupComponent,
   AiSetupModel,
   AiSetupOperation,
   AiSetupStatus
@@ -36,7 +37,8 @@ const environmentGroupPresentation: Record<
   },
   'cuda-pytorch': {
     label: 'PyTorch・CUDA・GPU',
-    description: 'GPUを使用して姿勢推定を実行するために必要です。',
+    description:
+      'PyTorchは必須です。CUDA対応GPUがない場合もCPUで実行できますが、処理に長時間かかることがあります。',
     order: 1
   },
   alphapose: {
@@ -56,7 +58,8 @@ const environmentGroupPresentation: Record<
   },
   'alphapose-tracker-model': {
     label: 'AlphaPose人物追跡モデル',
-    description: '動画内で人物を追跡し、人物IDを維持するための学習済みモデルです。',
+    description:
+      '動画内で人物を追跡し、人物IDを維持するための学習済みモデルです。',
     order: 5
   },
   motionbert: {
@@ -71,7 +74,7 @@ const environmentGroupPresentation: Record<
   },
   'application-files': {
     label: 'アプリ内AI処理ファイル',
-    description: 'Annotation Toolに同梱される処理ファイルです。',
+    description: 'MONBLANに同梱される処理ファイルです。',
     order: 8
   }
 }
@@ -88,7 +91,10 @@ const getCheckCategory = (
   ) {
     return 'bundled'
   }
-  if (check.name.startsWith('AlphaPose') || check.name.startsWith('MotionBERT')) {
+  if (
+    check.name.startsWith('AlphaPose') ||
+    check.name.startsWith('MotionBERT')
+  ) {
     return 'external'
   }
   return 'runtime'
@@ -162,6 +168,9 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
   const [isCancellingSetup, setIsCancellingSetup] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [setupStatus, setSetupStatus] = useState<AiSetupStatus | null>(null)
+  const [licenseChecks, setLicenseChecks] = useState<
+    Record<AiSetupComponent, boolean>
+  >({ alphapose: false, motionbert: false })
   const presentation = getStatusPresentation(apiStatus)
   const checks = apiStatus?.environment?.checks ?? []
   const aiAvailable =
@@ -187,8 +196,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
   )
   const bundledFailures = groupedChecks.filter(
     (group) =>
-      group.category === 'bundled' &&
-      group.checks.some((check) => !check.ok)
+      group.category === 'bundled' && group.checks.some((check) => !check.ok)
   )
   const pythonCheck = checks.find((check) => getCheckGroup(check) === 'python')
   const cudaCheck = checks.find(
@@ -291,6 +299,46 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
     }
   }
 
+  const fetchAiComponent = async (
+    component: AiSetupComponent,
+    operation: 'fetch-alphapose' | 'fetch-motionbert'
+  ) => {
+    if (!window.electronAPI) return
+    try {
+      const alreadyAccepted =
+        component === 'alphapose'
+          ? setupStatus?.alphaPoseLicenseAccepted
+          : setupStatus?.motionBertLicenseAccepted
+      if (!alreadyAccepted) {
+        if (!licenseChecks[component]) {
+          setActionError('利用条件を確認し、同意してください。')
+          return
+        }
+        const status = await window.electronAPI.acceptAiSetupLicense(component)
+        setSetupStatus(status)
+      }
+      await runSetupOperation(operation)
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : '利用条件の確認状態を保存できませんでした。'
+      )
+    }
+  }
+
+  const openLicensePage = async (component: AiSetupComponent) => {
+    try {
+      await window.electronAPI?.openAiSetupLicensePage(component)
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : '公式ライセンスページを開けませんでした。'
+      )
+    }
+  }
+
   const setupIsRunning =
     pendingSetupOperation !== null || setupStatus?.phase === 'running'
   const activeSetupOperation =
@@ -338,9 +386,9 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
         ? 'install-alphapose-model'
         : model === 'alphapose-detector'
           ? 'install-alphapose-detector-model'
-        : model === 'alphapose-tracker'
-          ? 'install-alphapose-tracker-model'
-          : 'install-motionbert-model'
+          : model === 'alphapose-tracker'
+            ? 'install-alphapose-tracker-model'
+            : 'install-motionbert-model'
     setActionError(null)
     setPendingSetupOperation(operation)
     try {
@@ -363,7 +411,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
         <div>
           <h2>{aiAvailable ? 'AI環境' : 'AI環境セットアップ'}</h2>
           <p>
-            AI機能に必要なPython、CUDA、外部プログラム、モデルを確認します。
+            AI機能に必要なPython、外部プログラム、モデルと、推奨GPU環境を確認します。
           </p>
         </div>
         <span className={`ai-environment-status ${presentation.className}`}>
@@ -378,9 +426,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
           <div className="ai-environment-storage-header">
             <div>
               <h3>AI環境の保存先</h3>
-              <p>
-                配布版でも書き込み可能な専用領域にAI環境を構築します。
-              </p>
+              <p>配布版でも書き込み可能な専用領域にAI環境を構築します。</p>
             </div>
             <span className={setupStatus.prepared ? 'prepared' : ''}>
               {setupStatus.prepared ? '準備済み' : '未準備'}
@@ -423,7 +469,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
                       ? `Python ${setupStatus.python.version} (${setupStatus.python.command})`
                       : setupStatus.venvReady
                         ? '専用Python環境を確認済みです。'
-                      : 'Python 3.11または3.12が必要です。'}
+                        : 'Python 3.11が必要です。'}
                   </span>
                 </div>
                 {!setupStatus.python.available && !setupStatus.venvReady && (
@@ -439,10 +485,31 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
                 )}
               </div>
             </li>
+            <li className={setupStatus.git.available ? 'completed' : ''}>
+              <div className="ai-setup-step-header">
+                <div>
+                  <strong>2. Gitを確認</strong>
+                  <span>
+                    {setupStatus.git.available
+                      ? `Git ${setupStatus.git.version} (${setupStatus.git.command})`
+                      : '外部AIプログラムを公式リポジトリから取得するために必要です。'}
+                  </span>
+                </div>
+                {!setupStatus.git.available && (
+                  <button
+                    type="button"
+                    disabled={setupIsRunning}
+                    onClick={() => runSetupOperation('check-git')}
+                  >
+                    {pendingSetupOperation === 'check-git' ? '確認中…' : '確認'}
+                  </button>
+                )}
+              </div>
+            </li>
             <li className={setupStatus.venvReady ? 'completed' : ''}>
               <div className="ai-setup-step-header">
                 <div>
-                  <strong>2. 専用Python環境を作成</strong>
+                  <strong>3. 専用Python環境を作成</strong>
                   <span>{setupStatus.venvPath}</span>
                 </div>
                 {!setupStatus.venvReady && (
@@ -463,7 +530,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
             <li className={setupStatus.dependenciesReady ? 'completed' : ''}>
               <div className="ai-setup-step-header">
                 <div>
-                  <strong>3. AI依存パッケージを導入</strong>
+                  <strong>4. AI依存パッケージを導入</strong>
                   <span>
                     ダウンロード容量が大きく、完了まで時間がかかる場合があります。
                   </span>
@@ -497,17 +564,47 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
             <li className={setupStatus.alphaPoseReady ? 'completed' : ''}>
               <div className="ai-setup-step-header">
                 <div>
-                  <strong>4. AlphaPose本体を取得</strong>
+                  <strong>5. AlphaPose本体を取得</strong>
                   <span>{setupStatus.alphaPosePath}</span>
                   <span>
                     公式リポジトリから取得します。AlphaPoseの利用条件は非商用用途に限定されています。
                   </span>
+                  {!setupStatus.alphaPoseLicenseAccepted && (
+                    <label className="ai-license-confirmation">
+                      <input
+                        type="checkbox"
+                        checked={licenseChecks.alphapose}
+                        onChange={(event) =>
+                          setLicenseChecks((current) => ({
+                            ...current,
+                            alphapose: event.target.checked
+                          }))
+                        }
+                      />
+                      <span>
+                        <button
+                          type="button"
+                          onClick={() => openLicensePage('alphapose')}
+                        >
+                          公式ライセンス
+                        </button>
+                        を確認し、利用条件に同意します
+                      </span>
+                    </label>
+                  )}
                 </div>
                 {!setupStatus.alphaPoseReady && (
                   <button
                     type="button"
-                    disabled={setupIsRunning}
-                    onClick={() => runSetupOperation('fetch-alphapose')}
+                    disabled={
+                      setupIsRunning ||
+                      !setupStatus.git.available ||
+                      (!setupStatus.alphaPoseLicenseAccepted &&
+                        !licenseChecks.alphapose)
+                    }
+                    onClick={() =>
+                      fetchAiComponent('alphapose', 'fetch-alphapose')
+                    }
                   >
                     {pendingSetupOperation === 'fetch-alphapose'
                       ? '取得中…'
@@ -519,15 +616,45 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
             <li className={setupStatus.motionBertReady ? 'completed' : ''}>
               <div className="ai-setup-step-header">
                 <div>
-                  <strong>5. MotionBERT本体を取得</strong>
+                  <strong>6. MotionBERT本体を取得</strong>
                   <span>{setupStatus.motionBertPath}</span>
                   <span>公式リポジトリから取得します。</span>
+                  {!setupStatus.motionBertLicenseAccepted && (
+                    <label className="ai-license-confirmation">
+                      <input
+                        type="checkbox"
+                        checked={licenseChecks.motionbert}
+                        onChange={(event) =>
+                          setLicenseChecks((current) => ({
+                            ...current,
+                            motionbert: event.target.checked
+                          }))
+                        }
+                      />
+                      <span>
+                        <button
+                          type="button"
+                          onClick={() => openLicensePage('motionbert')}
+                        >
+                          公式ライセンス
+                        </button>
+                        を確認し、利用条件に同意します
+                      </span>
+                    </label>
+                  )}
                 </div>
                 {!setupStatus.motionBertReady && (
                   <button
                     type="button"
-                    disabled={setupIsRunning}
-                    onClick={() => runSetupOperation('fetch-motionbert')}
+                    disabled={
+                      setupIsRunning ||
+                      !setupStatus.git.available ||
+                      (!setupStatus.motionBertLicenseAccepted &&
+                        !licenseChecks.motionbert)
+                    }
+                    onClick={() =>
+                      fetchAiComponent('motionbert', 'fetch-motionbert')
+                    }
                   >
                     {pendingSetupOperation === 'fetch-motionbert'
                       ? '取得中…'
@@ -550,7 +677,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
             <li className={setupStatus.alphaPoseModelReady ? 'completed' : ''}>
               <div className="ai-setup-step-header">
                 <div>
-                  <strong>6. AlphaPoseモデルを配置</strong>
+                  <strong>7. AlphaPoseモデルを配置</strong>
                   <span>{setupStatus.alphaPoseModelPath}</span>
                   <span>
                     公式配布ページからhalpe26_fast_res50_256x192.pthをダウンロードしてください。
@@ -585,7 +712,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
             >
               <div className="ai-setup-step-header">
                 <div>
-                  <strong>7. AlphaPose人物検出モデルを配置</strong>
+                  <strong>8. AlphaPose人物検出モデルを配置</strong>
                   <span>{setupStatus.alphaPoseDetectorModelPath}</span>
                   <span>
                     公式配布ページからyolov3-spp.weightsをダウンロードしてください。
@@ -621,7 +748,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
             >
               <div className="ai-setup-step-header">
                 <div>
-                  <strong>8. AlphaPose人物追跡モデルを配置</strong>
+                  <strong>9. AlphaPose人物追跡モデルを配置</strong>
                   <span>{setupStatus.alphaPoseTrackerModelPath}</span>
                   <span>
                     公式配布ページから人物追跡用のReIDモデルをダウンロードしてください。
@@ -653,7 +780,7 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
             <li className={setupStatus.motionBertModelReady ? 'completed' : ''}>
               <div className="ai-setup-step-header">
                 <div>
-                  <strong>9. MotionBERTモデルを配置</strong>
+                  <strong>10. MotionBERTモデルを配置</strong>
                   <span>{setupStatus.motionBertModelPath}</span>
                   <span>
                     公式配布ページからbest_epoch.binをダウンロードしてください。配置時にSHA-256を検証します。
@@ -683,7 +810,8 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
             </li>
           </ol>
           <p className="ai-environment-storage-note">
-            すべてのモデルの配置後に「AI APIを起動・再接続」を押すと、専用AI環境へ切り替わります。
+            すべてのモデルの配置後に「AI
+            APIを起動・再接続」を押すと、専用AI環境へ切り替わります。
           </p>
         </section>
       )}
@@ -744,6 +872,9 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
               const groupOk =
                 group.checks.every((check) => check.ok) ||
                 dedicatedState?.ready === true
+              const optionalWarning =
+                !groupOk &&
+                group.checks.every((check) => check.required === false)
               const groupPresentation = environmentGroupPresentation[group.id]
               const missingChecks = groupOk
                 ? []
@@ -752,7 +883,9 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
                 <li key={group.id}>
                   <span
                     className={`ai-environment-check-mark ${groupOk ? 'ok' : 'ng'}`}
-                    aria-label={groupOk ? '正常' : '不足'}
+                    aria-label={
+                      groupOk ? '正常' : optionalWarning ? '警告' : '不足'
+                    }
                   >
                     {groupOk ? '✓' : '!'}
                   </span>
@@ -834,7 +967,8 @@ const AiEnvironmentSetup: React.FC<AiEnvironmentSetupProps> = ({
             {checks.map((check) => (
               <li key={`${check.name}-${check.path ?? ''}`}>
                 <strong>
-                  {check.ok ? 'OK' : 'NG'}: {check.name}
+                  {check.ok ? 'OK' : check.required === false ? 'WARN' : 'NG'}:{' '}
+                  {check.name}
                 </strong>
                 {check.path && <span>{check.path}</span>}
                 {check.error && <span>{check.error}</span>}

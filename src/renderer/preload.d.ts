@@ -1,5 +1,6 @@
 import {
   AiSetupModel,
+  AiSetupComponent,
   AiSetupOperation,
   AiSetupStatus,
   ApiStatus,
@@ -26,6 +27,10 @@ declare global {
         operation: AiSetupOperation
       ) => Promise<AiSetupStatus>
       cancelAiSetupOperation: () => Promise<AiSetupStatus>
+      acceptAiSetupLicense: (
+        component: AiSetupComponent
+      ) => Promise<AiSetupStatus>
+      openAiSetupLicensePage: (component: AiSetupComponent) => Promise<void>
       installAiSetupModel: (model: AiSetupModel) => Promise<AiSetupStatus>
       openAiSetupModelPage: (model: AiSetupModel) => Promise<void>
       onAiSetupStatusChanged: (

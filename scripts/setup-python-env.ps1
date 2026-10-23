@@ -19,6 +19,12 @@ $environmentRoot = if ($AiRoot) {
 $venvDir = Join-Path $environmentRoot "venv"
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $requirementsPath = Join-Path $apiDir "requirements.txt"
+$lockedRequirementsPath = Join-Path $apiDir "requirements-lock.txt"
+$installRequirementsPath = if (Test-Path $lockedRequirementsPath) {
+  $lockedRequirementsPath
+} else {
+  $requirementsPath
+}
 
 if (-not (Test-Path $requirementsPath)) {
   Write-Host "[NG] requirements.txt was not found." -ForegroundColor Red
@@ -75,7 +81,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Installing API requirements..." -ForegroundColor Cyan
 Write-Host "This can take a long time because PyTorch, OpenMMLab, and CUDA-related packages are large."
-& $venvPython -m pip install -r $requirementsPath
+& $venvPython -m pip install -r $installRequirementsPath
 if ($LASTEXITCODE -ne 0) {
   Write-Host "[NG] Failed to install API requirements." -ForegroundColor Red
   exit $LASTEXITCODE

@@ -3,23 +3,25 @@ import { app, dialog, BrowserWindow, shell, ipcMain } from 'electron'
 import log from 'electron-log'
 import {
   cancelAiSetupOperation,
+  acceptAiSetupLicense,
   getAiSetupRoot,
   getAiSetupStatus,
   installAiSetupModel,
   runAiSetupOperation,
   setAiSetupStatusListener,
   type AiSetupModel,
+  type AiSetupComponent,
   type AiSetupOperation
 } from './aiSetup'
 import {
   getApiStatus,
-  getProjectRoot,
   refreshApiEnvironment,
   restartApiServer,
   setApiStatusListener,
   startApiServer,
   stopApiServer
 } from './apiServer'
+import { APP_ID, getRuntimePaths } from './runtimePaths'
 
 class AppUpdater {
   constructor() {
@@ -28,6 +30,20 @@ class AppUpdater {
 }
 
 let mainWindow: BrowserWindow | null = null
+
+const runtimePaths = getRuntimePaths(
+  app.isPackaged,
+  app.getAppPath(),
+  process.resourcesPath
+)
+
+const getAssetPath = (...paths: string[]): string => {
+  return path.join(runtimePaths.assetsRoot, ...paths)
+}
+
+const getWindowIconPath = (): string => {
+  return getAssetPath(process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+}
 
 ipcMain.handle('api:get-status', async () => getApiStatus())
 ipcMain.handle('api:refresh-status', async () => {
@@ -40,7 +56,7 @@ ipcMain.handle('api:refresh-status', async () => {
 })
 ipcMain.handle('api:restart', async () =>
   restartApiServer(
-    getProjectRoot(app.getAppPath()),
+    runtimePaths.runtimeRoot,
     getAiSetupRoot(app.getPath('userData'))
   )
 )
@@ -53,11 +69,39 @@ ipcMain.handle(
     runAiSetupOperation(
       operation,
       app.getPath('userData'),
-      getProjectRoot(app.getAppPath())
+      runtimePaths.runtimeRoot
     )
 )
 ipcMain.handle('ai-setup:cancel', async () =>
   cancelAiSetupOperation(app.getPath('userData'))
+)
+ipcMain.handle(
+  'ai-setup:accept-license',
+  async (_event, component: AiSetupComponent) => {
+    if (component !== 'alphapose' && component !== 'motionbert') {
+      throw new Error(`Unsupported AI component: ${String(component)}`)
+    }
+    return acceptAiSetupLicense(
+      component,
+      app.getPath('userData'),
+      runtimePaths.runtimeRoot
+    )
+  }
+)
+ipcMain.handle(
+  'ai-setup:open-license-page',
+  async (_event, component: AiSetupComponent) => {
+    const licensePages: Record<AiSetupComponent, string> = {
+      alphapose:
+        'https://github.com/MVIG-SJTU/AlphaPose/blob/c60106d19afb443e964df6f06ed1842962f5f1f7/LICENSE',
+      motionbert:
+        'https://github.com/Walter0807/MotionBERT/blob/1839f099ce9f128342c8f5499478ace328c0df4a/LICENSE'
+    }
+    if (component !== 'alphapose' && component !== 'motionbert') {
+      throw new Error(`Unsupported AI component: ${String(component)}`)
+    }
+    await shell.openExternal(licensePages[component])
+  }
 )
 ipcMain.handle(
   'ai-setup:install-model',
@@ -76,16 +120,16 @@ ipcMain.handle(
           ? 'AlphaPoseモデルを選択'
           : model === 'alphapose-detector'
             ? 'AlphaPose人物検出モデルを選択'
-          : model === 'alphapose-tracker'
-            ? 'AlphaPose人物追跡モデルを選択'
-            : 'MotionBERTモデルを選択',
+            : model === 'alphapose-tracker'
+              ? 'AlphaPose人物追跡モデルを選択'
+              : 'MotionBERTモデルを選択',
       properties: ['openFile'],
       filters: [
         model === 'motionbert'
           ? { name: 'MotionBERT model', extensions: ['bin'] }
           : model === 'alphapose-detector'
             ? { name: 'AlphaPose detector model', extensions: ['weights'] }
-          : { name: 'AlphaPose model', extensions: ['pth'] }
+            : { name: 'AlphaPose model', extensions: ['pth'] }
       ]
     }
     const result = mainWindow
@@ -97,7 +141,8 @@ ipcMain.handle(
     return installAiSetupModel(
       model,
       result.filePaths[0],
-      app.getPath('userData')
+      app.getPath('userData'),
+      runtimePaths.runtimeRoot
     )
   }
 )
@@ -175,19 +220,11 @@ const createWindow = async () => {
     await installExtensions()
   }
 
-  const RESOURCES_PATH = app.isPackaged
-    ? path.join(process.resourcesPath, 'assets')
-    : path.join(__dirname, '../../assets')
-
-  const getAssetPath = (...paths: string[]): string => {
-    return path.join(RESOURCES_PATH, ...paths)
-  }
-
   mainWindow = new BrowserWindow({
     show: false,
     width: 1600,
     height: 900,
-    icon: getAssetPath('icon.png'),
+    icon: getWindowIconPath(),
     webPreferences: {
       preload: app.isPackaged
         ? path.join(__dirname, 'preload.js')
@@ -195,6 +232,14 @@ const createWindow = async () => {
       webSecurity: false
     }
   })
+
+  if (process.platform === 'win32') {
+    mainWindow.setAppDetails({
+      appId: APP_ID,
+      appIconPath: getAssetPath('icon.ico'),
+      appIconIndex: 0
+    })
+  }
 
   mainWindow.maximize()
 
@@ -258,8 +303,12 @@ app.on('window-all-closed', () => {
 app
   .whenReady()
   .then(() => {
+    app.setAppUserModelId(APP_ID)
+    if (process.platform === 'darwin' && app.dock) {
+      app.dock.setIcon(getAssetPath('icon.png'))
+    }
     startApiServer(
-      getProjectRoot(app.getAppPath()),
+      runtimePaths.runtimeRoot,
       getAiSetupRoot(app.getPath('userData'))
     ).catch((error) => {
       log.error('Failed to start API server', error)
