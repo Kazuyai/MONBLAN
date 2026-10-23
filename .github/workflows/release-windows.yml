@@ -24,7 +24,7 @@ jobs:
       - run: yarn install --frozen-lockfile
       - run: yarn typecheck
       - run: yarn build
-      - run: yarn electron-builder --win nsis --x64
+      - run: yarn electron-builder --win nsis --x64 --publish never
 
       - name: Verify tag and package version
         if: github.event_name == 'push'
