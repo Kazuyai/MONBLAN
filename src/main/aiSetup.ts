@@ -1,15 +1,14 @@
-import {
-  ChildProcessWithoutNullStreams,
-  spawn
-} from 'child_process'
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process'
 import { createHash } from 'crypto'
 import { createReadStream } from 'fs'
 import { promises as fs } from 'fs'
 import path from 'path'
+import { getAiHome } from './runtimePaths'
 
 export type AiSetupOperation =
   | 'prepare-storage'
   | 'check-python'
+  | 'check-git'
   | 'create-python-environment'
   | 'install-python-dependencies'
   | 'fetch-alphapose'
@@ -24,8 +23,15 @@ export type AiSetupModel =
   | 'alphapose-detector'
   | 'alphapose-tracker'
   | 'motionbert'
+export type AiSetupComponent = 'alphapose' | 'motionbert'
 
 export interface AiSetupPythonStatus {
+  available: boolean
+  command: string | null
+  version: string | null
+}
+
+export interface AiSetupGitStatus {
   available: boolean
   command: string | null
   version: string | null
@@ -49,7 +55,10 @@ export interface AiSetupStatus {
   motionBertReady: boolean
   motionBertModelPath: string
   motionBertModelReady: boolean
+  alphaPoseLicenseAccepted: boolean
+  motionBertLicenseAccepted: boolean
   python: AiSetupPythonStatus
+  git: AiSetupGitStatus
   phase: AiSetupPhase
   operation: AiSetupOperation | null
   message: string | null
@@ -63,26 +72,63 @@ interface PythonCommand {
   pythonVersion: string
 }
 
+interface GitCommand {
+  command: string
+  version: string
+}
+
+interface AiRepositoryDefinition {
+  repositoryUrl: string
+  revision: string
+}
+
+interface AiComponentsManifest {
+  components: {
+    alphapose: AiRepositoryDefinition
+    motionbert: AiRepositoryDefinition
+  }
+  models: {
+    alphapose: { sha256: string }
+    alphaposeDetector: { sha256: string }
+    alphaposeTracker: { sha256: string }
+    motionbert: { sha256: string }
+  }
+}
+
+interface AiEnvironmentState {
+  schemaVersion: number
+  acceptedLicenses?: Partial<
+    Record<AiSetupComponent, { acceptedAt: string; revision: string }>
+  >
+  dependencies?: {
+    installedAt: string
+    schemaVersion: number
+    pythonVersion: string
+  }
+  components?: Partial<
+    Record<AiSetupComponent, { installedAt: string; revision: string }>
+  >
+  models?: Partial<
+    Record<AiSetupModel, { installedAt: string; sha256: string }>
+  >
+}
+
 const MAX_LOG_LINES = 300
 const DEPENDENCIES_MARKER = '.dependencies-installed'
-const MOTIONBERT_MODEL_SHA256 =
-  '9811155371db4ca5d20f31a36a232d41012e12e1333882888a564d741861148f'
-
+const ENVIRONMENT_FILE = 'environment.json'
 let setupPhase: AiSetupPhase = 'idle'
 let currentOperation: AiSetupOperation | null = null
 let setupMessage: string | null = null
 let setupError: string | null = null
 let setupLogs: string[] = []
 let detectedPython: PythonCommand | null = null
+let detectedGit: GitCommand | null = null
 let statusListener: ((status: AiSetupStatus) => void) | null = null
 let activeSetupProcess: ChildProcessWithoutNullStreams | null = null
 let cancelRequested = false
 
 export const getAiSetupRoot = (fallbackUserDataPath: string) => {
-  const localAppData = process.env.LOCALAPPDATA
-  return localAppData
-    ? path.join(localAppData, 'Annotation Tool', 'ai')
-    : path.join(fallbackUserDataPath, 'ai')
+  return getAiHome(fallbackUserDataPath)
 }
 
 const pathExists = async (targetPath: string) => {
@@ -92,6 +138,45 @@ const pathExists = async (targetPath: string) => {
   } catch {
     return false
   }
+}
+
+const readEnvironmentState = async (
+  rootPath: string
+): Promise<AiEnvironmentState> => {
+  try {
+    return JSON.parse(
+      await fs.readFile(path.join(rootPath, ENVIRONMENT_FILE), 'utf8')
+    ) as AiEnvironmentState
+  } catch {
+    return { schemaVersion: 1 }
+  }
+}
+
+const writeEnvironmentState = async (
+  rootPath: string,
+  state: AiEnvironmentState
+) => {
+  const targetPath = path.join(rootPath, ENVIRONMENT_FILE)
+  const temporaryPath = `${targetPath}.tmp`
+  await fs.writeFile(
+    temporaryPath,
+    `${JSON.stringify(state, null, 2)}\n`,
+    'utf8'
+  )
+  await fs.rm(targetPath, { force: true })
+  await fs.rename(temporaryPath, targetPath)
+}
+
+const readAiManifest = async (
+  projectRoot: string
+): Promise<AiComponentsManifest> => {
+  const manifestPath = path.join(projectRoot, 'config', 'ai-components.json')
+  if (!(await pathExists(manifestPath))) {
+    throw new Error(`AI構成ファイルが見つかりません: ${manifestPath}`)
+  }
+  return JSON.parse(
+    await fs.readFile(manifestPath, 'utf8')
+  ) as AiComponentsManifest
 }
 
 const getVenvPythonPath = (rootPath: string) =>
@@ -131,6 +216,7 @@ export const getAiSetupStatus = async (
     'FT_MB_lite_MB_ft_h36m_global_lite',
     'best_epoch.bin'
   )
+  const environmentState = await readEnvironmentState(rootPath)
   return {
     rootPath,
     prepared: await pathExists(rootPath),
@@ -155,10 +241,21 @@ export const getAiSetupStatus = async (
     ),
     motionBertModelPath,
     motionBertModelReady: await pathExists(motionBertModelPath),
+    alphaPoseLicenseAccepted: Boolean(
+      environmentState.acceptedLicenses?.alphapose
+    ),
+    motionBertLicenseAccepted: Boolean(
+      environmentState.acceptedLicenses?.motionbert
+    ),
     python: {
       available: detectedPython !== null,
       command: detectedPython?.command ?? null,
       version: detectedPython?.version ?? null
+    },
+    git: {
+      available: detectedGit !== null,
+      command: detectedGit?.command ?? null,
+      version: detectedGit?.version ?? null
     },
     phase: setupPhase,
     operation: currentOperation,
@@ -181,10 +278,7 @@ const notifyStatus = async (fallbackUserDataPath: string) => {
 }
 
 const stripAnsi = (value: string) =>
-  value.replace(
-    new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'),
-    ''
-  )
+  value.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
 
 const appendLog = (value: string, fallbackUserDataPath: string) => {
   const lines = stripAnsi(value)
@@ -222,7 +316,9 @@ const runCommand = (
         resolve()
         return
       }
-      reject(new Error(`${command} が終了コード ${code ?? '不明'} で終了しました。`))
+      reject(
+        new Error(`${command} が終了コード ${code ?? '不明'} で終了しました。`)
+      )
     })
   })
 
@@ -251,23 +347,25 @@ const probeCommand = (command: string, args: string[]) =>
 
 const detectPython = async (): Promise<PythonCommand> => {
   const candidates = [
-    ...(process.env.ANNOTATION_TOOL_PYTHON
+    ...(process.env.MONBLAN_PYTHON || process.env.ANNOTATION_TOOL_PYTHON
       ? [
           {
-            command: process.env.ANNOTATION_TOOL_PYTHON,
+            command:
+              process.env.MONBLAN_PYTHON ||
+              process.env.ANNOTATION_TOOL_PYTHON ||
+              '',
             args: ['--version']
           }
         ]
       : []),
     { command: 'py', args: ['-3.11', '--version'] },
-    { command: 'py', args: ['-3.12', '--version'] },
     { command: 'python', args: ['--version'] }
   ]
 
   for (const candidate of candidates) {
     try {
       const output = await probeCommand(candidate.command, candidate.args)
-      const match = output.match(/Python\s+(3\.(11|12)\.\d+)/i)
+      const match = output.match(/Python\s+(3\.(11)\.\d+)/i)
       if (!match) continue
       return {
         command: candidate.command,
@@ -280,8 +378,21 @@ const detectPython = async (): Promise<PythonCommand> => {
   }
 
   throw new Error(
-    'Python 3.11または3.12が見つかりません。Pythonをインストールしてから再確認してください。'
+    'Python 3.11が見つかりません。Python 3.11をインストールしてから再確認してください。'
   )
+}
+
+const detectGit = async (): Promise<GitCommand> => {
+  try {
+    const output = await probeCommand('git', ['--version'])
+    const match = output.match(/git version\s+(.+)/i)
+    if (!match) throw new Error('Gitのバージョンを取得できません。')
+    return { command: 'git', version: match[1] }
+  } catch {
+    throw new Error(
+      'Gitが見つかりません。Git for Windowsをインストールしてから再確認してください。'
+    )
+  }
 }
 
 const runSetupScript = async (
@@ -330,6 +441,18 @@ const runRepositoryFetchScript = async (
     throw new Error(`取得スクリプトが見つかりません: ${scriptPath}`)
   }
 
+  const manifest = await readAiManifest(projectRoot)
+  const component: AiSetupComponent =
+    operation === 'fetch-alphapose' ? 'alphapose' : 'motionbert'
+  const environmentState = await readEnvironmentState(rootPath)
+  const acceptedLicense = environmentState.acceptedLicenses?.[component]
+  if (
+    !acceptedLicense ||
+    acceptedLicense.revision !== manifest.components[component].revision
+  ) {
+    throw new Error('外部AIプログラムの利用条件を確認し、同意してください。')
+  }
+
   const args = [
     '-NoProfile',
     '-ExecutionPolicy',
@@ -338,16 +461,50 @@ const runRepositoryFetchScript = async (
     scriptPath,
     '-AiRoot',
     rootPath,
+    '-AlphaPoseUrl',
+    manifest.components.alphapose.repositoryUrl,
+    '-AlphaPoseRevision',
+    manifest.components.alphapose.revision,
+    '-MotionBertUrl',
+    manifest.components.motionbert.repositoryUrl,
+    '-MotionBertRevision',
+    manifest.components.motionbert.revision,
     operation === 'fetch-alphapose' ? '-SkipMotionBert' : '-SkipAlphaPose'
   ]
   await runCommand('powershell.exe', args, fallbackUserDataPath, projectRoot)
 }
 
+export const acceptAiSetupLicense = async (
+  component: AiSetupComponent,
+  fallbackUserDataPath: string,
+  projectRoot: string
+) => {
+  const rootPath = getAiSetupRoot(fallbackUserDataPath)
+  await fs.mkdir(rootPath, { recursive: true })
+  const manifest = await readAiManifest(projectRoot)
+  const state = await readEnvironmentState(rootPath)
+  const nextState: AiEnvironmentState = {
+    ...state,
+    schemaVersion: 1,
+    acceptedLicenses: {
+      ...state.acceptedLicenses,
+      [component]: {
+        acceptedAt: new Date().toISOString(),
+        revision: manifest.components[component].revision
+      }
+    }
+  }
+  await writeEnvironmentState(rootPath, nextState)
+  return notifyStatus(fallbackUserDataPath)
+}
+
 const operationMessages: Record<AiSetupOperation, string> = {
   'prepare-storage': 'AI環境の保存先を準備しています。',
-  'check-python': 'Python 3.11または3.12を確認しています。',
+  'check-python': 'Python 3.11を確認しています。',
+  'check-git': 'Gitを確認しています。',
   'create-python-environment': '専用Python環境を作成しています。',
-  'install-python-dependencies': 'AI機能に必要な依存関係をインストールしています。',
+  'install-python-dependencies':
+    'AI機能に必要な依存関係をインストールしています。',
   'fetch-alphapose': 'AlphaPose本体を公式リポジトリから取得しています。',
   'fetch-motionbert': 'MotionBERT本体を公式リポジトリから取得しています。',
   'install-alphapose-model': 'AlphaPoseモデルを専用AI環境へ配置しています。',
@@ -370,7 +527,8 @@ const getFileSha256 = (filePath: string) =>
 export const installAiSetupModel = async (
   model: AiSetupModel,
   sourcePath: string,
-  fallbackUserDataPath: string
+  fallbackUserDataPath: string,
+  projectRoot: string
 ) => {
   if (setupPhase === 'running') {
     throw new Error('別のAI環境セットアップ処理を実行中です。')
@@ -381,10 +539,19 @@ export const installAiSetupModel = async (
       ? 'install-alphapose-model'
       : model === 'alphapose-detector'
         ? 'install-alphapose-detector-model'
-      : model === 'alphapose-tracker'
-        ? 'install-alphapose-tracker-model'
-        : 'install-motionbert-model'
+        : model === 'alphapose-tracker'
+          ? 'install-alphapose-tracker-model'
+          : 'install-motionbert-model'
   const status = await getAiSetupStatus(fallbackUserDataPath)
+  const manifest = await readAiManifest(projectRoot)
+  const expectedSha256 =
+    model === 'alphapose'
+      ? manifest.models.alphapose.sha256
+      : model === 'alphapose-detector'
+        ? manifest.models.alphaposeDetector.sha256
+        : model === 'alphapose-tracker'
+          ? manifest.models.alphaposeTracker.sha256
+          : manifest.models.motionbert.sha256
   const modelDefinition =
     model === 'alphapose'
       ? {
@@ -401,18 +568,18 @@ export const installAiSetupModel = async (
             repositoryReady: status.alphaPoseReady
           }
         : model === 'alphapose-tracker'
-        ? {
-            destination: status.alphaPoseTrackerModelPath,
-            extension: '.pth',
-            minimumBytes: 10 * 1024 * 1024,
-            repositoryReady: status.alphaPoseReady
-          }
-        : {
-            destination: status.motionBertModelPath,
-            extension: '.bin',
-            minimumBytes: 10 * 1024 * 1024,
-            repositoryReady: status.motionBertReady
-          }
+          ? {
+              destination: status.alphaPoseTrackerModelPath,
+              extension: '.pth',
+              minimumBytes: 10 * 1024 * 1024,
+              repositoryReady: status.alphaPoseReady
+            }
+          : {
+              destination: status.motionBertModelPath,
+              extension: '.bin',
+              minimumBytes: 10 * 1024 * 1024,
+              repositoryReady: status.motionBertReady
+            }
 
   setupPhase = 'running'
   currentOperation = operation
@@ -433,17 +600,18 @@ export const installAiSetupModel = async (
       )
     }
     const sourceStat = await fs.stat(sourcePath)
-    if (!sourceStat.isFile() || sourceStat.size < modelDefinition.minimumBytes) {
+    if (
+      !sourceStat.isFile() ||
+      sourceStat.size < modelDefinition.minimumBytes
+    ) {
       throw new Error('選択したファイルは有効なモデルファイルではありません。')
     }
-    if (model === 'motionbert') {
-      appendLog('MotionBERTモデルの整合性を確認しています。', fallbackUserDataPath)
-      const digest = await getFileSha256(sourcePath)
-      if (digest !== MOTIONBERT_MODEL_SHA256) {
-        throw new Error(
-          'MotionBERTモデルのハッシュが公式配布ファイルと一致しません。'
-        )
-      }
+    appendLog('モデルファイルの整合性を確認しています。', fallbackUserDataPath)
+    const digest = await getFileSha256(sourcePath)
+    if (digest !== expectedSha256) {
+      throw new Error(
+        'モデルのハッシュが検証済みの公式配布ファイルと一致しません。'
+      )
     }
 
     await fs.mkdir(path.dirname(modelDefinition.destination), {
@@ -452,6 +620,18 @@ export const installAiSetupModel = async (
     await fs.copyFile(sourcePath, temporaryPath)
     await fs.rm(modelDefinition.destination, { force: true })
     await fs.rename(temporaryPath, modelDefinition.destination)
+    const environmentState = await readEnvironmentState(status.rootPath)
+    await writeEnvironmentState(status.rootPath, {
+      ...environmentState,
+      schemaVersion: 1,
+      models: {
+        ...environmentState.models,
+        [model]: {
+          installedAt: new Date().toISOString(),
+          sha256: digest
+        }
+      }
+    })
     appendLog(`配置先: ${modelDefinition.destination}`, fallbackUserDataPath)
     setupPhase = 'completed'
     currentOperation = null
@@ -477,6 +657,7 @@ export const runAiSetupOperation = async (
   const supportedOperations: AiSetupOperation[] = [
     'prepare-storage',
     'check-python',
+    'check-git',
     'create-python-environment',
     'install-python-dependencies',
     'fetch-alphapose',
@@ -507,6 +688,12 @@ export const runAiSetupOperation = async (
         `Python ${detectedPython.version} を確認しました。`,
         fallbackUserDataPath
       )
+    } else if (operation === 'check-git') {
+      detectedGit = await detectGit()
+      appendLog(
+        `Git ${detectedGit.version} を確認しました。`,
+        fallbackUserDataPath
+      )
     } else if (operation === 'create-python-environment') {
       await fs.mkdir(rootPath, { recursive: true })
       await runSetupScript(rootPath, projectRoot, fallbackUserDataPath, true)
@@ -518,9 +705,22 @@ export const runAiSetupOperation = async (
       await runSetupScript(rootPath, projectRoot, fallbackUserDataPath, false)
       await fs.writeFile(
         path.join(rootPath, DEPENDENCIES_MARKER),
-        new Date().toISOString(),
+        JSON.stringify({
+          schemaVersion: 1,
+          installedAt: new Date().toISOString()
+        }),
         'utf8'
       )
+      const environmentState = await readEnvironmentState(rootPath)
+      await writeEnvironmentState(rootPath, {
+        ...environmentState,
+        schemaVersion: 1,
+        dependencies: {
+          installedAt: new Date().toISOString(),
+          schemaVersion: 1,
+          pythonVersion: detectedPython?.version ?? '3.11'
+        }
+      })
     } else if (
       operation === 'fetch-alphapose' ||
       operation === 'fetch-motionbert'
@@ -534,6 +734,21 @@ export const runAiSetupOperation = async (
         projectRoot,
         fallbackUserDataPath
       )
+      const component: AiSetupComponent =
+        operation === 'fetch-alphapose' ? 'alphapose' : 'motionbert'
+      const manifest = await readAiManifest(projectRoot)
+      const environmentState = await readEnvironmentState(rootPath)
+      await writeEnvironmentState(rootPath, {
+        ...environmentState,
+        schemaVersion: 1,
+        components: {
+          ...environmentState.components,
+          [component]: {
+            installedAt: new Date().toISOString(),
+            revision: manifest.components[component].revision
+          }
+        }
+      })
     } else {
       throw new Error(`Unsupported AI setup operation: ${String(operation)}`)
     }
@@ -561,9 +776,7 @@ export const runAiSetupOperation = async (
   }
 }
 
-export const cancelAiSetupOperation = async (
-  fallbackUserDataPath: string
-) => {
+export const cancelAiSetupOperation = async (fallbackUserDataPath: string) => {
   if (setupPhase !== 'running' || !activeSetupProcess) {
     return getAiSetupStatus(fallbackUserDataPath)
   }

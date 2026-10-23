@@ -1,6 +1,8 @@
 param(
   [string]$AlphaPoseUrl = "https://github.com/MVIG-SJTU/AlphaPose.git",
   [string]$MotionBertUrl = "https://github.com/Walter0807/MotionBERT.git",
+  [string]$AlphaPoseRevision = "c60106d19afb443e964df6f06ed1842962f5f1f7",
+  [string]$MotionBertRevision = "1839f099ce9f128342c8f5499478ace328c0df4a",
   [string]$AiRoot = "",
   [switch]$SkipAlphaPose,
   [switch]$SkipMotionBert,
@@ -33,6 +35,7 @@ function Clone-Repository {
   param(
     [string]$Name,
     [string]$Url,
+    [string]$Revision,
     [string]$Destination,
     [string]$ExpectedFile
   )
@@ -50,9 +53,17 @@ function Clone-Repository {
   if ((Test-Path $Destination) -and -not $Force) {
     $expectedPath = Join-Path $Destination $ExpectedFile
     if (Test-Path $expectedPath) {
-      Write-Host "[OK] $Name already exists." -ForegroundColor Green
-      Write-Host "Path: $Destination"
-      return
+      $currentRevision = git -C $Destination rev-parse HEAD
+      if ($LASTEXITCODE -eq 0 -and $currentRevision.Trim() -eq $Revision) {
+        Write-Host "[OK] $Name already exists at the tested revision." -ForegroundColor Green
+        Write-Host "Path: $Destination"
+        return
+      }
+      Write-Host "[NG] $Name exists but its revision differs from the tested version." -ForegroundColor Red
+      Write-Host "Expected: $Revision"
+      Write-Host "Actual:   $currentRevision"
+      Write-Host "Remove it from the AI environment and run setup again."
+      exit 1
     }
     Write-Host "[NG] $Name directory exists but is incomplete." -ForegroundColor Red
     Write-Host "Path: $Destination"
@@ -71,9 +82,15 @@ function Clone-Repository {
   Write-Host "Path: $Destination"
 
   try {
-    git clone --depth 1 $Url $temporaryDestination
+    git clone --no-checkout $Url $temporaryDestination
     if ($LASTEXITCODE -ne 0) {
       Write-Host "[NG] Failed to clone $Name." -ForegroundColor Red
+      exit $LASTEXITCODE
+    }
+
+    git -C $temporaryDestination checkout --detach $Revision
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "[NG] Failed to check out the tested $Name revision." -ForegroundColor Red
       exit $LASTEXITCODE
     }
 
@@ -101,11 +118,11 @@ if (-not (Test-Path $environmentRoot)) {
 }
 
 if (-not $SkipAlphaPose) {
-  Clone-Repository -Name "AlphaPose" -Url $AlphaPoseUrl -Destination $alphaPoseDir -ExpectedFile "scripts\demo_inference.py"
+  Clone-Repository -Name "AlphaPose" -Url $AlphaPoseUrl -Revision $AlphaPoseRevision -Destination $alphaPoseDir -ExpectedFile "scripts\demo_inference.py"
 }
 
 if (-not $SkipMotionBert) {
-  Clone-Repository -Name "MotionBERT" -Url $MotionBertUrl -Destination $motionBertDir -ExpectedFile "infer_wild.py"
+  Clone-Repository -Name "MotionBERT" -Url $MotionBertUrl -Revision $MotionBertRevision -Destination $motionBertDir -ExpectedFile "infer_wild.py"
 }
 
 Write-Host ""

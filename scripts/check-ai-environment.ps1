@@ -11,7 +11,9 @@ $repoRoot = Split-Path -Parent $scriptDir
 $venvPython = Join-Path $repoRoot "API\venv\Scripts\python.exe"
 
 if (-not $PythonPath) {
-  if ($env:ANNOTATION_TOOL_PYTHON) {
+  if ($env:MONBLAN_PYTHON) {
+    $PythonPath = $env:MONBLAN_PYTHON
+  } elseif ($env:ANNOTATION_TOOL_PYTHON) {
     $PythonPath = $env:ANNOTATION_TOOL_PYTHON
   } elseif ($UseVenv -and (Test-Path $venvPython)) {
     $PythonPath = $venvPython

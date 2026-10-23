@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "components": {
+    "alphapose": {
+      "displayName": "AlphaPose",
+      "repositoryUrl": "https://github.com/MVIG-SJTU/AlphaPose.git",
+      "revision": "c60106d19afb443e964df6f06ed1842962f5f1f7",
+      "licenseUrl": "https://github.com/MVIG-SJTU/AlphaPose/blob/c60106d19afb443e964df6f06ed1842962f5f1f7/LICENSE",
+      "expectedFile": "scripts/demo_inference.py"
+    },
+    "motionbert": {
+      "displayName": "MotionBERT",
+      "repositoryUrl": "https://github.com/Walter0807/MotionBERT.git",
+      "revision": "1839f099ce9f128342c8f5499478ace328c0df4a",
+      "licenseUrl": "https://github.com/Walter0807/MotionBERT/blob/1839f099ce9f128342c8f5499478ace328c0df4a/LICENSE",
+      "expectedFile": "infer_wild.py"
+    }
+  },
+  "models": {
+    "alphapose": {
+      "sourceUrl": "https://drive.google.com/file/d/1S-ROA28de-1zvLv-hVfPFJ5tFBYOSITb/view?usp=sharing",
+      "fileName": "halpe26_fast_res50_256x192.pth",
+      "sha256": "918ab95f00c36174a887ef02a7c734a65c7f3cc7ae0e7dc83e09c8a362d0b2ab"
+    },
+    "alphaposeDetector": {
+      "sourceUrl": "https://drive.google.com/open?id=1D47msNOOiJKvPOXlnpyzdKA3k6E97NTC",
+      "fileName": "yolov3-spp.weights",
+      "sha256": "87a1e8c85c763316f34e428f2295e1db9ed4abcec59dd9544f8052f50de327b4"
+    },
+    "alphaposeTracker": {
+      "sourceUrl": "https://drive.google.com/file/d/1myNKfr2cXqiHZVXaaG8ZAq_U2UpeOLfG/view?usp=share_link",
+      "fileName": "osnet_ain_x1_0_msmt17_256x128_amsgrad_ep50_lr0.0015_coslr_b64_fb10_softmax_labsmth_flip_jitter.pth",
+      "sha256": "8a07e8da38946f7cee37f4561617bf8b6d2fe8f3a4027852893ea092e46d919f"
+    },
+    "motionbert": {
+      "sourceUrl": "https://huggingface.co/walterzhu/MotionBERT/blob/main/checkpoint/pose3d/FT_MB_lite_MB_ft_h36m_global_lite/best_epoch.bin",
+      "fileName": "best_epoch.bin",
+      "sha256": "9811155371db4ca5d20f31a36a232d41012e12e1333882888a564d741861148f"
+    }
+  }
+}

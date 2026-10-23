@@ -46,8 +46,8 @@ _SIMILARITY_DETECTOR_CLASS = None
 # Existing detect_movement.py returns one-based, inclusive frame ranges.
 ANNOTATION_FRAME_INDEX_BASE = 1
 MIN_MOVEMENT_ANALYSIS_FRAMES = 5
-ALPHAPOSE_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "annotation-tool-alphapose-cache")
-MOTIONBERT_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "annotation-tool-motionbert-cache")
+ALPHAPOSE_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "monblan-alphapose-cache")
+MOTIONBERT_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "monblan-motionbert-cache")
 _ALPHAPOSE_CACHE_LOCK = threading.Lock()
 _ALPHAPOSE_CACHE_LOCKS: dict[str, threading.Lock] = {}
 _MOTIONBERT_CACHE_LOCK = threading.Lock()
@@ -92,7 +92,7 @@ def filter_results_by_frame_range(
 def create_job_dir() -> str:
     """リクエストごとの一時作業ディレクトリを作成する。"""
     job_id = str(uuid.uuid4())
-    job_dir = os.path.join(tempfile.gettempdir(), "annotation-tool-jobs", job_id)
+    job_dir = os.path.join(tempfile.gettempdir(), "monblan-jobs", job_id)
     os.makedirs(job_dir, exist_ok=True)
     return job_dir
 

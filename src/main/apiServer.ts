@@ -1,8 +1,4 @@
-import {
-  ChildProcessWithoutNullStreams,
-  spawn,
-  spawnSync
-} from 'child_process'
+import { ChildProcessWithoutNullStreams, spawn, spawnSync } from 'child_process'
 import { existsSync } from 'fs'
 import http from 'http'
 import path from 'path'
@@ -22,6 +18,7 @@ export interface ApiEnvironmentCheck {
   exists?: boolean
   ok: boolean
   available?: boolean
+  required?: boolean
   error?: string
 }
 
@@ -29,6 +26,7 @@ export interface ApiEnvironmentStatus {
   ai_available: boolean
   checks: ApiEnvironmentCheck[]
   missing: ApiEnvironmentCheck[]
+  warnings?: ApiEnvironmentCheck[]
 }
 
 export interface ApiStatus {
@@ -62,11 +60,9 @@ let environmentRefreshPromise: Promise<ApiStatus> | null = null
 
 const terminateApiProcess = (childProcess: ChildProcessWithoutNullStreams) => {
   if (process.platform === 'win32' && childProcess.pid) {
-    spawnSync(
-      'taskkill.exe',
-      ['/pid', String(childProcess.pid), '/t', '/f'],
-      { windowsHide: true }
-    )
+    spawnSync('taskkill.exe', ['/pid', String(childProcess.pid), '/t', '/f'], {
+      windowsHide: true
+    })
     return
   }
   childProcess.kill()
@@ -179,7 +175,8 @@ const waitForApiReady = async () => {
 }
 
 const getManagedApiRuntime = (aiRoot?: string) => {
-  const configuredPython = process.env.ANNOTATION_TOOL_PYTHON
+  const configuredPython =
+    process.env.MONBLAN_PYTHON || process.env.ANNOTATION_TOOL_PYTHON
   if (!aiRoot) {
     return { python: configuredPython || 'python', env: process.env }
   }
@@ -199,16 +196,15 @@ const getManagedApiRuntime = (aiRoot?: string) => {
     python,
     env: {
       ...process.env,
+      MONBLAN_AI_HOME: aiRoot,
+      MONBLAN_PYTHON: python,
       ANNOTATION_TOOL_AI_HOME: aiRoot,
       ANNOTATION_TOOL_PYTHON: python
     }
   }
 }
 
-export const startApiServer = async (
-  projectRoot: string,
-  aiRoot?: string
-) => {
+export const startApiServer = async (projectRoot: string, aiRoot?: string) => {
   updateStatus({
     status: 'starting',
     managed: false,
@@ -317,14 +313,7 @@ export const restartApiServer = async (
     )
     terminateApiProcess(runningProcess)
     apiProcess = null
-    await Promise.race([
-      processExited,
-      sleep(3000)
-    ])
+    await Promise.race([processExited, sleep(3000)])
   }
   return startApiServer(projectRoot, aiRoot)
-}
-
-export const getProjectRoot = (appPath: string) => {
-  return path.resolve(appPath)
 }
