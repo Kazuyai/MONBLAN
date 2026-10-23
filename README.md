@@ -5,6 +5,18 @@ Electron + React + TypeScript による手動アノテーション機能と、�
 
 主に研究用途を想定しています。MONBLAN本体はApache License 2.0ですが、AI機能で利用するAlphaPoseには別途非商用条件があります。
 
+## MONBLANを利用する方へ
+
+開発環境を用意せずにMONBLANを利用する場合は、[GitHub Releases](https://github.com/Kazuyai/Annotation-Tool/releases)からWindows向けインストーラーをダウンロードしてください。
+
+1. Releasesにある利用したいバージョンの`Assets`を開く
+2. `MONBLAN-Setup-<バージョン>.exe`をダウンロードする
+3. ダウンロードしたインストーラーを実行する
+
+`Source code (zip)`と`Source code (tar.gz)`は開発者向けのソースコードです。MONBLANを利用するだけの場合は、これらではなく`.exe`ファイルを選択してください。
+
+現在の配布版はWindows向けベータ版です。手動アノテーション機能はインストール後すぐに利用できます。AI機能を使う場合は、初回起動後に「AI環境セットアップ」画面の案内に沿って追加環境を構築してください。
+
 ## 重要な注意
 
 - すべての処理はローカル環境で完結します。クラウドAPIには依存しません。
