@@ -1,13 +1,13 @@
 # 配布方針
 
-このドキュメントは、Annotation Tool を研究用途で他者に渡すための配布方針を整理する。
+このドキュメントは、MONBLANを研究用途で他者に渡すための配布方針を整理する。
 
 ## 前提
 
 - 想定用途は研究用途。
 - 商用利用は想定しない。
 - 通常の手動アノテーション機能は、AI環境が未セットアップでも利用できる状態を維持する。
-- AI自動アノテーション機能は、AlphaPose、MotionBERT、PyTorch、CUDA、外部checkpointに依存する。
+- AI自動アノテーション機能は、AlphaPose、MotionBERT、PyTorch、外部checkpointに依存する。GPU実行時はCUDAにも依存する。
 - すべての処理はローカルで完結させる。クラウドAPIには依存しない。
 
 ## 公開時の注意
@@ -30,7 +30,7 @@ Windows
   Electron アプリ
   ローカル FastAPI
   Python venv
-  NVIDIA GPU / CUDA
+  NVIDIA GPU / CUDA（推奨）
   ユーザーが配置した AlphaPose / MotionBERT / checkpoint
 ```
 
@@ -45,7 +45,7 @@ Windows
 
 ### Windows
 
-当面の正式対象は Windows + NVIDIA GPU + CUDA とする。
+当面の正式対象はWindowsとし、NVIDIA GPU + CUDAを推奨環境とする。CPU実行も許可するが、処理時間が大幅に長くなる可能性を明示する。
 
 - 手動アノテーション機能: 対象
 - AI自動アノテーション機能: 対象
@@ -53,13 +53,13 @@ Windows
 
 ### macOS
 
-macOSは、現時点では手動アノテーション機能のみ対象とする。AI自動アノテーション機能は非対応扱いにする。
+macOSは、現時点では配布・AI自動アノテーション機能ともに正式対象外とする。
 
 理由:
 
-- 現在のAIパイプラインは CUDA 前提。
+- 現在のAIパイプラインはCUDA対応GPUを推奨するが、CPU実行も許可する。
 - 一般的なMacでは NVIDIA CUDA を利用できない。
-- `API\environment.py` は `torch.cuda.is_available()` を見てAI可否を判定している。
+- `API\environment.py` はPyTorchを必須確認し、`torch.cuda.is_available()`が`false`の場合はCPU実行の警告を返す。
 - Apple Silicon の MPS 対応は未検証であり、AlphaPose / MotionBERT を含む全体パイプラインの安定動作を確認していない。
 
 将来的に検討する場合:
@@ -199,7 +199,7 @@ Electron本体のインストーラは `electron-builder` で作成できる。
 
 現状の設定:
 
-- `yarn dist`
+- `yarn dist:windows`
 - Windows x64
 - NSIS installer
 - 出力先は `release`

@@ -1,6 +1,6 @@
 ﻿# Public Release Checklist
 
-このチェックリストは、Annotation Tool をpublicリポジトリまたは配布物として公開する前に確認する項目をまとめる。
+このチェックリストは、MONBLANをpublicリポジトリまたは配布物として公開する前に確認する項目をまとめる。
 
 ## 前提
 
@@ -57,7 +57,7 @@ READMEに以下が明記されていることを確認する。
 - ツールの目的
 - 手動アノテーション機能はAI環境なしでも使える方針
 - AI自動アノテーション機能は追加セットアップ必須
-- Windows + NVIDIA GPU + CUDA がAI機能の正式対象
+- WindowsがAI機能の正式対象で、NVIDIA GPU + CUDAは推奨環境
 - macOSは現時点でAI機能非対応扱い
 - AlphaPose / MotionBERT / checkpoint は同梱しない
 - 外部AIリポジトリ・モデル重みのライセンスは本体ライセンスと別
@@ -68,8 +68,7 @@ READMEに以下が明記されていることを確認する。
 
 公開前に以下を確認する。
 
-- `package.json` の `license` が意図した本体ライセンスになっている
-- 必要であれば `LICENSE` ファイルを追加する
+- `package.json`、`LICENSE`、`NOTICE`がApache License 2.0の適用を示している
 - AlphaPose、MotionBERT、各checkpointを本体ライセンスの対象として説明していない
 - AlphaPoseの非商用条件に反する配布説明をしていない
 - checkpointの入手元と利用条件を利用者が確認する前提にしている

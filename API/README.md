@@ -1,9 +1,9 @@
-# Annotation Tool API
+# MONBLAN API
 
 AI環境のセットアップ手順は `../docs/setup-ai-environment.md` を参照してください。
 配布方針は `../docs/distribution-policy.md` を参照してください。
 
-Annotation Tool の FastAPI バックエンドです。Electron 連携では、この API をローカルプロセスとして起動し、AI 自動アノテーション機能だけが依存します。通常の手動アノテーション機能は API が利用できない場合でも動作可能にする方針です。
+MONBLANのFastAPIバックエンドです。Electron連携では、このAPIをローカルプロセスとして起動し、AI自動アノテーション機能だけが依存します。通常の手動アノテーション機能はAPIが利用できない場合でも動作可能です。
 
 ## 起動コマンド
 
@@ -195,7 +195,7 @@ Electronアプリが利用する `*_from_path` 系エンドポイントでは、
 - 利用者が人物数を1人と指定した場合は、`singlePerson: true`を送信します。各フレームで面積最大の検出だけを残して人物IDを1へ統一した一時コピーを人物選択・MotionBERT入力に使用し、複数人分析にも利用するキャッシュ原本は変更しません。
 - 通常のアップロード系エンドポイント `/get_human_images/` と `/items/` は、一時アップロードファイルを使うためキャッシュ対象外です。
 - 動画ファイルが更新されると、サイズまたは更新時刻が変わるため別キャッシュとして扱います。
-- キャッシュはOSの一時ディレクトリ配下 `annotation-tool-alphapose-cache` に保存され、APIプロセス終了時には自動削除されません。不要になった場合は手動削除できます。
+- キャッシュはOSの一時ディレクトリ配下 `monblan-alphapose-cache` に保存され、APIプロセス終了時には自動削除されません。不要になった場合は手動削除できます。
 - キャッシュが存在する場合は AlphaPose 自体を起動しないため、人物追跡モデルが不足していても過去の結果を利用できる場合があります。キャッシュがない動画・分析区間では人物追跡モデルが必須です。
 
 ## MotionBERT結果の再利用
@@ -208,7 +208,7 @@ Electronアプリが利用する `*_from_path` 系エンドポイントでは、
 - `POST /similar_motion_from_path/` のレスポンスには `motionbertCache: {"hit": true | false}` が含まれます。
 - `POST /items_from_path/` は従来の配列形式を維持し、レスポンスヘッダー `X-MotionBERT-Cache-Hit` と `X-MotionBERT-Cache-Hits` で利用状況を返します。
 - 読み込めないキャッシュは破棄し、MotionBERTを再実行して復旧します。
-- キャッシュはOSの一時ディレクトリ配下 `annotation-tool-motionbert-cache` に保存され、APIプロセス終了時には自動削除されません。
+- キャッシュはOSの一時ディレクトリ配下 `monblan-motionbert-cache` に保存され、APIプロセス終了時には自動削除されません。
 - ログには `alphapose_cache_hit=True/False` が出力され、再利用されたか確認できます。
 
 ## 手動確認手順
@@ -226,7 +226,7 @@ python -c "import API.api; import API.pipeline; import API.environment; print('p
 python -c "from API.environment import check_environment; import json; print(json.dumps(check_environment(), ensure_ascii=False, indent=2))"
 ```
 
-AlphaPose、MotionBERT、checkpoint、CUDA のいずれかが不足していても、このコマンド自体は例外で落ちず、`ai_available: false` と `missing` を返す必要があります。
+AlphaPose、MotionBERT、checkpoint、PyTorchのいずれかが不足していても、このコマンド自体は例外で落ちず、`ai_available: false` と`missing`を返します。CUDAだけが利用できない場合は`warnings`に含め、CPU実行を許可します。
 
 ### 3. APIサーバー経由の確認
 
@@ -267,7 +267,7 @@ AIパイプラインのサブプロセスが失敗した場合、ジョブディ
 保存先:
 
 ```text
-%TEMP%\annotation-tool-jobs\<job-id>\
+%TEMP%\monblan-jobs\<job-id>\
 ```
 
 主な保存内容:

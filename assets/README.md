@@ -1,22 +1,13 @@
-# Assets Directory
+# Application Icons
 
-This directory contains application assets including icons and other resources.
+`icon.svg` is the editable master icon for MONBLAN. The platform-specific files
+are generated from that SVG and referenced by Electron and electron-builder.
 
-## Required Icon Files
+## Files
 
-For proper packaging, please add the following icon files to this directory:
+- `icon.svg` - Editable vector master
+- `icon.png` - 1024x1024 transparent PNG for Linux and macOS Dock
+- `icon.ico` - Multi-resolution Windows icon
+- `icon.icns` - Multi-resolution macOS icon
 
-- `icon.png` - Linux icon (512x512 recommended)
-- `icon.ico` - Windows icon (256x256 recommended)
-- `icon.icns` - macOS icon (generated from PNG)
-
-## Icon Generation
-
-You can use tools like:
-- electron-icon-builder
-- png2icons
-- Online icon converters
-
-## Example icon.png
-
-A simple 512x512 PNG file with your application logo should be placed here as `icon.png`.
+Keep all generated files in sync when the master SVG changes.
