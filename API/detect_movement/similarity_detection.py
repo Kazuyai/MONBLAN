@@ -120,7 +120,7 @@ class SelectedJoint3DDetector:
         self.band_ratio = 0.15
         self.min_len_ratio = 0.70
         self.max_len_ratio = 1.40
-        self.exclude_margin_ratio = 0.25
+        self.exclude_margin_ratio = 0.0
         self.peak_distance_ratio = 0.25
         self.peak_prominence = 0.001
         self.final_score_threshold = 0.38
@@ -373,7 +373,7 @@ class SelectedJoint3DDetector:
             T = (T_raw - mu) / sigma
             X = (X_raw - mu) / sigma
             m = len(T)
-            margin = max(1, int(round(self.exclude_margin_ratio * m)))
+            margin = max(0, int(round(self.exclude_margin_ratio * m)))
             exclude = (max(0, tmpl["seq_start"] - margin), min(len(X) - 1, tmpl["seq_end"] + margin))
             coarse = self._coarse_candidates(T, X, m, exclude)
             for c_start, c_len, c_sim, si in coarse:
@@ -431,7 +431,7 @@ class JointSpecific3DDetector(SelectedJoint3DDetector):
     def __init__(self, fps: float = 30.0):
         super().__init__(fps)
         self.coarse_stride = 2
-        self.exclude_margin_ratio = 0.25
+        self.exclude_margin_ratio = 0.0
         self.peak_distance_ratio = 0.20
         self.peak_prominence = 0.001
         self.final_score_threshold = 0.32
@@ -697,7 +697,7 @@ class JointFusion3DDetector(JointSpecific3DDetector):
                 for joint in selected_joints
             }
             m = len(next(iter(joint_template_features.values())))
-            margin = max(1, int(round(self.exclude_margin_ratio * m)))
+            margin = max(0, int(round(self.exclude_margin_ratio * m)))
             exclude = (max(0, tmpl["seq_start"] - margin), min(len(self.frames) - 1, tmpl["seq_end"] + margin))
 
             # Union of coarse candidates from all selected joints.
@@ -802,8 +802,7 @@ class JointFusion3DDetector(JointSpecific3DDetector):
 class OverlapReject3DDetector(JointFusion3DDetector):
     def __init__(self, fps: float = 30.0):
         super().__init__(fps)
-        # Stronger self-exclusion and stricter overlap handling.
-        self.template_overlap_margin_ratio = 0.20
+        self.template_overlap_margin_ratio = 0.0
         self.nms_iou_threshold = 0.35
 
     def _overlaps_template(
@@ -814,7 +813,7 @@ class OverlapReject3DDetector(JointFusion3DDetector):
     ) -> bool:
         for tmpl in templates:
             tmpl_len = tmpl["seq_end"] - tmpl["seq_start"] + 1
-            margin = max(1, int(round(tmpl_len * self.template_overlap_margin_ratio)))
+            margin = max(0, int(round(tmpl_len * self.template_overlap_margin_ratio)))
             forbidden_start = max(0, tmpl["seq_start"] - margin)
             forbidden_end = tmpl["seq_end"] + margin
             if not (end_frame < forbidden_start or start_frame > forbidden_end):
@@ -941,7 +940,7 @@ class OverlapReject3DDetector(JointFusion3DDetector):
                 for joint in selected_joints
             }
             m = len(next(iter(joint_template_features.values())))
-            margin = max(1, int(round(self.exclude_margin_ratio * m)))
+            margin = max(0, int(round(self.exclude_margin_ratio * m)))
             exclude = (max(0, tmpl["seq_start"] - margin), min(len(self.frames) - 1, tmpl["seq_end"] + margin))
 
             coarse_candidates = []
@@ -1408,7 +1407,7 @@ class MultiTemplateUnion3DDetector(OverlapReject3DDetector):
 
         for tmpl in template_bank:
             m = tmpl["length"]
-            margin = max(1, int(round(self.exclude_margin_ratio * m)))
+            margin = max(0, int(round(self.exclude_margin_ratio * m)))
             exclude = (max(0, tmpl["seq_start"] - margin), min(len(self.frames) - 1, tmpl["seq_end"] + margin))
 
             coarse_candidates = []
@@ -1694,7 +1693,7 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
         exclude_templates: List[Dict],
     ) -> List[Dict]:
         m = tmpl["length"]
-        margin = max(1, int(round(self.exclude_margin_ratio * m)))
+        margin = max(0, int(round(self.exclude_margin_ratio * m)))
         exclude = (max(0, tmpl["seq_start"] - margin), min(len(self.frames) - 1, tmpl["seq_end"] + margin))
 
         raw_candidates: List[Dict] = []
