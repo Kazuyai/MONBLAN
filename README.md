@@ -1,6 +1,12 @@
-﻿# MONBLAN
+﻿<p align="center">
+  <img src="assets/icon.svg" alt="MONBLAN logo" width="150">
+</p>
 
-MONBLAN（Motion-based Layered Annotator）は、動画に対してタイムラインベースでアノテーションを付与するデスクトップアプリケーションです。
+<h1 align="center">MONBLAN</h1>
+
+<p align="center"><strong>Motion-based Layered Annotator</strong></p>
+
+MONBLANは、動画に対してタイムラインベースでアノテーションを付与するデスクトップアプリケーションです。
 Electron + React + TypeScript による手動アノテーション機能と、ローカル FastAPI + AlphaPose + MotionBERT によるAI自動アノテーション機能を持ちます。
 
 主に研究用途を想定しています。MONBLAN本体はApache License 2.0ですが、AI機能で利用するAlphaPoseには別途非商用条件があります。
