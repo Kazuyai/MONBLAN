@@ -20,6 +20,13 @@ try:
     # 標準起動: リポジトリルートから `python -m uvicorn API.api:app` を実行する。
     from .environment import check_environment
     from .paths import BASE_DIR
+    from .progress import (
+        clear_progress,
+        create_progress_callback,
+        get_progress,
+        initialize_progress,
+        update_progress,
+    )
     from .pipeline import (
         cleanup_job_dir,
         create_job_dir,
@@ -39,6 +46,13 @@ except ImportError:
     # 互換用: APIディレクトリ内から `uvicorn api:app` で起動した場合も動かす。
     from environment import check_environment
     from paths import BASE_DIR
+    from progress import (
+        clear_progress,
+        create_progress_callback,
+        get_progress,
+        initialize_progress,
+        update_progress,
+    )
     from pipeline import (
         cleanup_job_dir,
         create_job_dir,
@@ -73,6 +87,7 @@ environment_status_lock = asyncio.Lock()
 
 class VideoPathRequest(BaseModel):
     file_path: str
+    progressId: str | None = None
 
 
 class AnalysisRange(BaseModel):
@@ -108,6 +123,14 @@ class SimilarMotionPathRequest(VideoPathRequest):
     layerIndex: int
     analysisRange: AnalysisRange | None = None
     singlePerson: bool = False
+
+
+@app.get("/processing/{progress_id}")
+async def get_processing_progress(progress_id: str):
+    progress = get_progress(progress_id)
+    if progress is None:
+        return JSONResponse(status_code=404, content={"message": "Progress not found"})
+    return progress
 
 
 def analysis_range_dict(value: AnalysisRange | None) -> dict | None:
@@ -221,25 +244,46 @@ async def get_human_images(
     file: UploadFile = File(...),
     analysisRange: str | None = Form(None),
     singlePerson: bool = Form(False),
+    progressId: str | None = Form(None),
 ):
     """AlphaPoseの検出結果から、各フレームの代表人物画像を切り出して返す。"""
     start_time = time.time()
     temp_filename = None
     job_dir = None
     success = False
+    progress_callback = create_progress_callback(progressId)
+    initialize_progress(
+        progressId,
+        {
+            "stage": "入力データの準備",
+            "description": "分析する動画と時間範囲を準備しています。",
+            "step": 1,
+            "totalSteps": 3,
+        },
+    )
     try:
         temp_filename = await save_upload_to_temp(file)
         job_dir = create_job_dir()
 
         selected_range = normalize_analysis_range(temp_filename, json.loads(analysisRange) if analysisRange else None)
         if selected_range is None:
-            people = extract_human_people(
-                temp_filename, job_dir, single_person=singlePerson
+            people = await asyncio.to_thread(
+                extract_human_people,
+                temp_filename,
+                job_dir,
+                single_person=singlePerson,
+                progress_callback=progress_callback,
             )
         else:
-            clip_path = create_analysis_video(temp_filename, selected_range, job_dir)
-            people = extract_human_people(
-                clip_path, job_dir, single_person=singlePerson
+            clip_path = await asyncio.to_thread(
+                create_analysis_video, temp_filename, selected_range, job_dir
+            )
+            people = await asyncio.to_thread(
+                extract_human_people,
+                clip_path,
+                job_dir,
+                single_person=singlePerson,
+                progress_callback=progress_callback,
             )
         image_data_list = [person["image"] for person in people]
 
@@ -271,6 +315,7 @@ async def get_human_images(
             else:
                 # 失敗時は原因調査のため、stdout/stderrと中間ファイルを残す。
                 log_api_call("get_human_images", 0, 0, f"Job directory preserved for debugging: {job_dir}")
+        clear_progress(progressId)
 
 
 @app.post("/get_human_images_from_path/")
@@ -279,29 +324,78 @@ async def get_human_images_from_path(request: HumanImagesPathRequest):
     start_time = time.time()
     job_dir = None
     success = False
+    progress_callback = create_progress_callback(request.progressId)
+    initialize_progress(
+        request.progressId,
+        {
+            "stage": "入力データの準備",
+            "description": "分析する動画と時間範囲を準備しています。",
+            "step": 1,
+            "totalSteps": 3,
+        },
+    )
     try:
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
         selected_range = normalize_analysis_range(video_path, analysis_range_dict(request.analysisRange))
+        update_progress(
+            request.progressId,
+            {
+                "stage": "2次元姿勢推定",
+                "description": "AlphaPoseの検出結果を確認しています。",
+                "step": 2,
+                "totalSteps": 3,
+            },
+        )
         if selected_range is None:
-            clip_path, alphapose_results_path, alphapose_cache_hit = get_cached_analysis_results(video_path, None)
+            clip_path, alphapose_results_path, alphapose_cache_hit = await asyncio.to_thread(
+                get_cached_analysis_results, video_path, None
+            )
         else:
             range_results = find_cached_analysis_results(video_path, selected_range)
             full_results = find_cached_alphapose_results(video_path)
             if range_results is not None:
-                clip_path, alphapose_results_path, alphapose_cache_hit = get_cached_analysis_results(video_path, selected_range)
+                clip_path, alphapose_results_path, alphapose_cache_hit = await asyncio.to_thread(
+                    get_cached_analysis_results, video_path, selected_range
+                )
             elif full_results is not None:
-                clip_path = create_analysis_video(video_path, selected_range, job_dir)
-                alphapose_results_path = slice_alphapose_results(full_results, selected_range, job_dir, allow_empty=True)
+                clip_path = await asyncio.to_thread(
+                    create_analysis_video, video_path, selected_range, job_dir
+                )
+                alphapose_results_path = await asyncio.to_thread(
+                    slice_alphapose_results,
+                    full_results,
+                    selected_range,
+                    job_dir,
+                    allow_empty=True,
+                )
                 alphapose_cache_hit = True
             else:
-                clip_path, alphapose_results_path, alphapose_cache_hit = get_cached_analysis_results(video_path, selected_range)
+                clip_path, alphapose_results_path, alphapose_cache_hit = await asyncio.to_thread(
+                    get_cached_analysis_results, video_path, selected_range
+                )
 
-        people = extract_human_people(
+        update_progress(
+            request.progressId,
+            {
+                "stage": "2次元姿勢推定",
+                "description": (
+                    "キャッシュ済みの姿勢推定結果を利用します。"
+                    if alphapose_cache_hit
+                    else "AlphaPoseによる姿勢推定が完了しました。"
+                ),
+                "step": 2,
+                "totalSteps": 3,
+                "cacheHit": alphapose_cache_hit,
+            },
+        )
+        people = await asyncio.to_thread(
+            extract_human_people,
             clip_path,
             job_dir,
             alphapose_results_path,
             single_person=request.singlePerson,
+            progress_callback=progress_callback,
         )
         image_data_list = [person["image"] for person in people]
 
@@ -338,6 +432,7 @@ async def get_human_images_from_path(request: HumanImagesPathRequest):
             else:
                 # 失敗時は原因調査のため、stdout/stderrと中間ファイルを残す。
                 log_api_call("get_human_images_from_path", 0, 0, f"Job directory preserved for debugging: {job_dir}")
+        clear_progress(request.progressId)
 
 
 @app.post("/items/")
@@ -348,18 +443,30 @@ async def create_item(
     analysisEndFrame: int | None = Form(None),
     analysisRange: str | None = Form(None),
     singlePerson: bool = Form(False),
+    progressId: str | None = Form(None),
 ):
     """AlphaPose、MotionBERT、動作検出を順に実行し、自動アノテーション範囲を返す。"""
     start_time = time.time()
     temp_filename = None
     job_dir = None
     success = False
+    progress_callback = create_progress_callback(progressId)
+    initialize_progress(
+        progressId,
+        {
+            "stage": "入力データの準備",
+            "description": "分析する動画と検出設定を準備しています。",
+            "step": 1,
+            "totalSteps": 5,
+        },
+    )
     try:
         auto_annotation_layer = json.loads(autoAnnotationLayer)
         temp_filename = await save_upload_to_temp(file)
         job_dir = create_job_dir()
 
-        motion_times = run_pose_pipeline(
+        motion_times = await asyncio.to_thread(
+            run_pose_pipeline,
             temp_filename,
             auto_annotation_layer,
             job_dir,
@@ -367,6 +474,7 @@ async def create_item(
             analysis_end_frame=analysisEndFrame,
             analysis_range=json.loads(analysisRange) if analysisRange else None,
             single_person=singlePerson,
+            progress_callback=progress_callback,
         )
 
         end_time = time.time()
@@ -396,6 +504,7 @@ async def create_item(
                 cleanup_job_dir(job_dir)
             else:
                 log_api_call("create_item", 0, 0, f"Job directory preserved for debugging: {job_dir}")
+        clear_progress(progressId)
 
 
 @app.post("/items_from_path/")
@@ -404,6 +513,16 @@ async def create_item_from_path(request: ItemsPathRequest, response: Response):
     start_time = time.time()
     job_dir = None
     success = False
+    progress_callback = create_progress_callback(request.progressId)
+    initialize_progress(
+        request.progressId,
+        {
+            "stage": "入力データの準備",
+            "description": "分析する動画と検出設定を準備しています。",
+            "step": 1,
+            "totalSteps": 5,
+        },
+    )
     try:
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
@@ -413,14 +532,40 @@ async def create_item_from_path(request: ItemsPathRequest, response: Response):
                 "startFrame": request.analysisStartFrame,
                 "endFrame": request.analysisEndFrame,
             }
+        update_progress(
+            request.progressId,
+            {
+                "stage": "2次元姿勢推定",
+                "description": "AlphaPoseの検出結果を確認しています。",
+                "step": 2,
+                "totalSteps": 5,
+            },
+        )
         if analysis_range is None:
-            alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
+            alphapose_results_path, alphapose_cache_hit = await asyncio.to_thread(
+                get_cached_alphapose_results, video_path
+            )
         else:
             alphapose_results_path = find_cached_analysis_results(video_path, analysis_range) or find_cached_alphapose_results(video_path)
             alphapose_cache_hit = alphapose_results_path is not None
 
         pipeline_metadata = {}
-        motion_times = run_pose_pipeline(
+        update_progress(
+            request.progressId,
+            {
+                "stage": "2次元姿勢推定",
+                "description": (
+                    "キャッシュ済みの姿勢推定結果を利用します。"
+                    if alphapose_cache_hit
+                    else "AlphaPoseで動画内の人物と関節位置を検出しています。"
+                ),
+                "step": 2,
+                "totalSteps": 5,
+                "cacheHit": alphapose_cache_hit,
+            },
+        )
+        motion_times = await asyncio.to_thread(
+            run_pose_pipeline,
             video_path,
             request.autoAnnotationLayer,
             job_dir,
@@ -431,6 +576,7 @@ async def create_item_from_path(request: ItemsPathRequest, response: Response):
             use_motionbert_cache=True,
             pipeline_metadata=pipeline_metadata,
             single_person=request.singlePerson,
+            progress_callback=progress_callback,
         )
 
         motionbert_cache = pipeline_metadata.get("motionbertCache", {})
@@ -471,6 +617,7 @@ async def create_item_from_path(request: ItemsPathRequest, response: Response):
                 cleanup_job_dir(job_dir)
             else:
                 log_api_call("create_item_from_path", 0, 0, f"Job directory preserved for debugging: {job_dir}")
+        clear_progress(request.progressId)
 
 
 @app.post("/similar_motion_from_path/")
@@ -479,6 +626,16 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
     start_time = time.time()
     job_dir = None
     success = False
+    progress_callback = create_progress_callback(request.progressId)
+    initialize_progress(
+        request.progressId,
+        {
+            "stage": "入力データの準備",
+            "description": "テンプレートと検索範囲を準備しています。",
+            "step": 1,
+            "totalSteps": 5,
+        },
+    )
     try:
         if not request.templateSegments:
             raise ValueError("templateSegments must contain at least one interval")
@@ -497,8 +654,19 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             for segment in request.templateSegments
         ):
             raise ValueError("Template segment must be fully contained in analysisRange")
+        update_progress(
+            request.progressId,
+            {
+                "stage": "2次元姿勢推定",
+                "description": "AlphaPoseの検出結果を確認しています。",
+                "step": 2,
+                "totalSteps": 5,
+            },
+        )
         if analysis_range is None:
-            alphapose_results_path, alphapose_cache_hit = get_cached_alphapose_results(video_path)
+            alphapose_results_path, alphapose_cache_hit = await asyncio.to_thread(
+                get_cached_alphapose_results, video_path
+            )
         else:
             alphapose_results_path = find_cached_analysis_results(video_path, analysis_range) or find_cached_alphapose_results(video_path)
             alphapose_cache_hit = alphapose_results_path is not None
@@ -506,7 +674,22 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             segment.model_dump() if hasattr(segment, "model_dump") else segment.dict()
             for segment in request.templateSegments
         ]
-        result = run_similarity_pipeline(
+        update_progress(
+            request.progressId,
+            {
+                "stage": "2次元姿勢推定",
+                "description": (
+                    "キャッシュ済みの姿勢推定結果を利用します。"
+                    if alphapose_cache_hit
+                    else "AlphaPoseで動画内の人物と関節位置を検出しています。"
+                ),
+                "step": 2,
+                "totalSteps": 5,
+                "cacheHit": alphapose_cache_hit,
+            },
+        )
+        result = await asyncio.to_thread(
+            run_similarity_pipeline,
             video_file_path=video_path,
             human_id=request.humanId,
             selected_joints=request.selectedJoints,
@@ -519,6 +702,7 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             job_dir=job_dir,
             alphapose_results_path=alphapose_results_path,
             single_person=request.singlePerson,
+            progress_callback=progress_callback,
         )
 
         end_time = time.time()
@@ -557,3 +741,4 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
                 cleanup_job_dir(job_dir)
             else:
                 log_api_call("similar_motion_from_path", 0, 0, f"Job directory preserved for debugging: {job_dir}")
+        clear_progress(request.progressId)

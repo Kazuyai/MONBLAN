@@ -17,6 +17,7 @@ import sys
 import tempfile
 import threading
 import uuid
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -42,6 +43,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+ProgressCallback = Callable[[dict], None]
+
 _SIMILARITY_DETECTOR_CLASS = None
 # Existing detect_movement.py returns one-based, inclusive frame ranges.
 ANNOTATION_FRAME_INDEX_BASE = 1
@@ -55,6 +58,32 @@ _MOTIONBERT_CACHE_LOCK = threading.Lock()
 _MOTIONBERT_CACHE_LOCKS: dict[str, threading.Lock] = {}
 _SIMILARITY_CACHE_LOCK = threading.Lock()
 _SIMILARITY_CACHE_LOCKS: dict[str, threading.Lock] = {}
+
+
+def report_progress(
+    progress_callback: ProgressCallback | None,
+    *,
+    stage: str,
+    description: str,
+    step: int,
+    total_steps: int,
+    current_item: int | None = None,
+    total_items: int | None = None,
+    cache_hit: bool | None = None,
+) -> None:
+    if progress_callback is None:
+        return
+    progress_callback(
+        {
+            "stage": stage,
+            "description": description,
+            "step": step,
+            "totalSteps": total_steps,
+            "currentItem": current_item,
+            "totalItems": total_items,
+            "cacheHit": cache_hit,
+        }
+    )
 
 
 def validate_frame_range(
@@ -880,11 +909,26 @@ def extract_human_people(
     job_dir: str,
     alphapose_results_path: str | None = None,
     single_person: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> list[dict]:
     if alphapose_results_path is None:
+        report_progress(
+            progress_callback,
+            stage="2次元姿勢推定",
+            description="AlphaPoseで動画内の人物と関節位置を検出しています。",
+            step=2,
+            total_steps=3,
+        )
         run_alphapose(video_file_path, job_dir)
         alphapose_results_path = os.path.join(job_dir, "alphapose-results.json")
 
+    report_progress(
+        progress_callback,
+        stage="人物画像の抽出",
+        description="検出結果から人物ごとの代表画像を作成しています。",
+        step=3,
+        total_steps=3,
+    )
     with open(alphapose_results_path, "r", encoding="utf-8") as file:
         alphapose_results = json.load(file)
     if single_person:
@@ -929,6 +973,7 @@ def run_pose_pipeline(
     use_motionbert_cache: bool = False,
     pipeline_metadata: dict | None = None,
     single_person: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> list[dict]:
     """自動アノテーション用の全パイプラインを実行し、検出された動作区間を返す。"""
     owns_job_dir = job_dir is None
@@ -956,6 +1001,14 @@ def run_pose_pipeline(
             analysis_frame_count = selected_range["endFrame"] - selected_range["startFrame"] + 1
         if analysis_frame_count < MIN_MOVEMENT_ANALYSIS_FRAMES:
             raise ValueError(f"動作範囲検出には{MIN_MOVEMENT_ANALYSIS_FRAMES}フレーム以上の分析区間が必要です。")
+        if alphapose_results_path is None:
+            report_progress(
+                progress_callback,
+                stage="2次元姿勢推定",
+                description="AlphaPoseで動画内の人物と関節位置を検出しています。",
+                step=2,
+                total_steps=5,
+            )
         analysis_video_path, pose_results_path, frame_offset = prepare_analysis_input(
             video_file_path,
             selected_range,
@@ -972,7 +1025,17 @@ def run_pose_pipeline(
 
         motion_times = []
         motionbert_cache_hits = 0
-        for human_id, layers in grouped_by_human_id.items():
+        grouped_people = list(grouped_by_human_id.items())
+        for person_index, (human_id, layers) in enumerate(grouped_people, start=1):
+            report_progress(
+                progress_callback,
+                stage="3次元姿勢推定",
+                description="MotionBERTで2次元姿勢を3次元姿勢へ変換しています。",
+                step=3,
+                total_steps=5,
+                current_item=person_index,
+                total_items=len(grouped_people),
+            )
             focus = str(human_id + 1)
             if use_motionbert_cache:
                 _, motionbert_cache_hit = get_cached_motionbert_results(
@@ -988,6 +1051,16 @@ def run_pose_pipeline(
                 motionbert_cache_hit = False
             if motionbert_cache_hit:
                 motionbert_cache_hits += 1
+            report_progress(
+                progress_callback,
+                stage="動作区間の検出",
+                description="選択した関節の変化から動作区間を検出しています。",
+                step=4,
+                total_steps=5,
+                current_item=person_index,
+                total_items=len(grouped_people),
+                cache_hit=motionbert_cache_hit,
+            )
             run_npy2csv(job_dir)
             run_calc_cross_product(job_dir)
 
@@ -1013,6 +1086,13 @@ def run_pose_pipeline(
                 and motionbert_cache_hits == len(grouped_by_human_id),
             }
 
+        report_progress(
+            progress_callback,
+            stage="結果の整理",
+            description="検出結果を注釈として表示できる形式に整理しています。",
+            step=5,
+            total_steps=5,
+        )
         success = True
         if selected_range is None:
             motion_times = filter_results_by_frame_range(
@@ -1040,6 +1120,7 @@ def run_similarity_pipeline(
     alphapose_results_path: str | None = None,
     analysis_range: dict | None = None,
     single_person: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict:
     """人物・関節・テンプレート区間を指定して、類似動作候補を返す。"""
     owns_job_dir = job_dir is None
@@ -1066,12 +1147,27 @@ def run_similarity_pipeline(
             for segment in template_segments
         ):
             raise ValueError("Template segment must be fully contained in analysisRange")
+        if alphapose_results_path is None:
+            report_progress(
+                progress_callback,
+                stage="2次元姿勢推定",
+                description="AlphaPoseで動画内の人物と関節位置を検出しています。",
+                step=2,
+                total_steps=5,
+            )
         analysis_video_path, pose_results_path, frame_offset = prepare_analysis_input(
             video_file_path,
             selected_range,
             job_dir,
             alphapose_results_path,
             single_person,
+        )
+        report_progress(
+            progress_callback,
+            stage="3次元姿勢推定",
+            description="MotionBERTで対象人物の3次元姿勢を推定しています。",
+            step=3,
+            total_steps=5,
         )
         pose_file_path, motionbert_cache_hit = get_cached_motionbert_results(
             video_file_path,
@@ -1089,6 +1185,14 @@ def run_similarity_pipeline(
             }
             for segment in template_segments
         ]
+        report_progress(
+            progress_callback,
+            stage="類似動作の検索",
+            description="テンプレートと近い関節の動きを検索しています。",
+            step=4,
+            total_steps=5,
+            cache_hit=motionbert_cache_hit,
+        )
         result, similarity_cache_hit = get_cached_similarity_results(
             pose_file_path=pose_file_path,
             human_id=human_id,
@@ -1100,6 +1204,14 @@ def run_similarity_pipeline(
             layer_name=layer_name,
             layer_index=layer_index,
             frame_offset=frame_offset,
+        )
+        report_progress(
+            progress_callback,
+            stage="結果の整理",
+            description="類似候補をタイムラインへ表示できる形式に整理しています。",
+            step=5,
+            total_steps=5,
+            cache_hit=similarity_cache_hit,
         )
         result["parameters"]["searchStartFrame"] = search_start_frame
         result["parameters"]["searchEndFrame"] = search_end_frame
