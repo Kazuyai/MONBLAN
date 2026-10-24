@@ -528,7 +528,8 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             end_time,
             f"Processed {len(result['candidates'])} similar motion candidates, "
             f"alphapose_cache_hit={alphapose_cache_hit}, "
-            f"motionbert_cache_hit={result['motionbertCache']['hit']}",
+            f"motionbert_cache_hit={result['motionbertCache']['hit']}, "
+            f"similarity_cache_hit={result['similarityCache']['hit']}",
         )
         success = True
         result["alphaposeCache"] = {"hit": alphapose_cache_hit}

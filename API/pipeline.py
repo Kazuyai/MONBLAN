@@ -48,10 +48,13 @@ ANNOTATION_FRAME_INDEX_BASE = 1
 MIN_MOVEMENT_ANALYSIS_FRAMES = 5
 ALPHAPOSE_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "monblan-alphapose-cache")
 MOTIONBERT_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "monblan-motionbert-cache")
+SIMILARITY_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "monblan-similarity-cache")
 _ALPHAPOSE_CACHE_LOCK = threading.Lock()
 _ALPHAPOSE_CACHE_LOCKS: dict[str, threading.Lock] = {}
 _MOTIONBERT_CACHE_LOCK = threading.Lock()
 _MOTIONBERT_CACHE_LOCKS: dict[str, threading.Lock] = {}
+_SIMILARITY_CACHE_LOCK = threading.Lock()
+_SIMILARITY_CACHE_LOCKS: dict[str, threading.Lock] = {}
 
 
 def validate_frame_range(
@@ -125,6 +128,13 @@ def _get_motionbert_cache_lock(cache_key: str) -> threading.Lock:
         return _MOTIONBERT_CACHE_LOCKS[cache_key]
 
 
+def _get_similarity_cache_lock(cache_key: str) -> threading.Lock:
+    with _SIMILARITY_CACHE_LOCK:
+        if cache_key not in _SIMILARITY_CACHE_LOCKS:
+            _SIMILARITY_CACHE_LOCKS[cache_key] = threading.Lock()
+        return _SIMILARITY_CACHE_LOCKS[cache_key]
+
+
 def _file_state_signature(file_path: str) -> str:
     resolved_path = os.path.abspath(file_path)
     try:
@@ -164,6 +174,37 @@ def _get_motionbert_cache_key(
         ]
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _get_similarity_cache_key(
+    pose_file_path: str,
+    human_id: int,
+    selected_joints: list[int],
+    template_segments: list[dict],
+    fps: float,
+    layer_name: str,
+    layer_index: int,
+    search_start_frame: int | None,
+    search_end_frame: int | None,
+    frame_offset: int,
+) -> str:
+    detector_path = os.path.join(DETECT_MOVEMENT_DIR, "similarity_detection.py")
+    payload = {
+        "schemaVersion": 1,
+        "poseDigest": _file_content_digest(pose_file_path),
+        "detectorState": _file_state_signature(detector_path),
+        "humanId": human_id,
+        "selectedJoints": selected_joints,
+        "templateSegments": template_segments,
+        "fps": fps,
+        "layerName": layer_name,
+        "layerIndex": layer_index,
+        "searchStartFrame": search_start_frame,
+        "searchEndFrame": search_end_frame,
+        "frameOffset": frame_offset,
+    }
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def _is_valid_motionbert_result(file_path: str) -> bool:
@@ -729,6 +770,69 @@ def run_similarity_detection(
     }
 
 
+def get_cached_similarity_results(
+    pose_file_path: str,
+    human_id: int,
+    selected_joints: list[int],
+    template_segments: list[dict],
+    fps: float,
+    layer_name: str,
+    layer_index: int,
+    search_start_frame: int | None = None,
+    search_end_frame: int | None = None,
+    frame_offset: int = 0,
+) -> tuple[dict, bool]:
+    cache_key = _get_similarity_cache_key(
+        pose_file_path,
+        human_id,
+        selected_joints,
+        template_segments,
+        fps,
+        layer_name,
+        layer_index,
+        search_start_frame,
+        search_end_frame,
+        frame_offset,
+    )
+    cache_dir = os.path.join(SIMILARITY_CACHE_ROOT, cache_key)
+    cache_path = os.path.join(cache_dir, "result.json")
+
+    with _get_similarity_cache_lock(cache_key):
+        if os.path.isfile(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8") as cache_file:
+                    cached_result = json.load(cache_file)
+                if all(key in cached_result for key in ("candidates", "stats", "parameters")):
+                    logger.info("Reusing similarity detection cache: %s", cache_dir)
+                    return cached_result, True
+            except (OSError, json.JSONDecodeError, TypeError):
+                logger.warning("Discarding invalid similarity detection cache: %s", cache_dir)
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
+        result = run_similarity_detection(
+            pose_file_path=pose_file_path,
+            human_id=human_id,
+            selected_joints=selected_joints,
+            template_segments=template_segments,
+            fps=fps,
+            layer_name=layer_name,
+            layer_index=layer_index,
+            search_start_frame=search_start_frame,
+            search_end_frame=search_end_frame,
+            frame_offset=frame_offset,
+        )
+        os.makedirs(cache_dir, exist_ok=True)
+        temporary_path = os.path.join(cache_dir, f"result-{uuid.uuid4().hex}.tmp")
+        try:
+            with open(temporary_path, "w", encoding="utf-8") as cache_file:
+                json.dump(result, cache_file, ensure_ascii=False, separators=(",", ":"))
+            os.replace(temporary_path, cache_path)
+        finally:
+            if os.path.exists(temporary_path):
+                os.remove(temporary_path)
+        return result, False
+
+
 def _largest_person_per_frame(alphapose_results: list[dict]) -> list[dict]:
     """AlphaPose結果をフレームごとにまとめ、各フレームで面積最大の人物を代表として選ぶ。"""
     grouped_by_idx: dict[object, list[dict]] = {}
@@ -985,7 +1089,7 @@ def run_similarity_pipeline(
             }
             for segment in template_segments
         ]
-        result = run_similarity_detection(
+        result, similarity_cache_hit = get_cached_similarity_results(
             pose_file_path=pose_file_path,
             human_id=human_id,
             selected_joints=selected_joints,
@@ -1001,6 +1105,7 @@ def run_similarity_pipeline(
         result["parameters"]["searchEndFrame"] = search_end_frame
         result["analysisRange"] = analysis_range
         result["motionbertCache"] = {"hit": motionbert_cache_hit}
+        result["similarityCache"] = {"hit": similarity_cache_hit}
         success = True
         return result
     finally:
