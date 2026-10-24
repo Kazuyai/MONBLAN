@@ -594,7 +594,9 @@ button {
         .tab-header {
           position: relative;
           display: flex;
+          flex: 0 0 auto;
           flex-direction: row;
+          min-width: 0;
           gap: 5rem;
           padding-inline: 50rem;
           border-radius: 10rem 10rem 0 0;
@@ -639,6 +641,8 @@ button {
         }
         .tab-content {
           flex: 1;
+          min-width: 0;
+          min-height: 0;
           padding: 20rem;
           overflow-y: hidden;
           > div {
@@ -757,13 +761,7 @@ button {
                 }
               }
               .file-input-hidden {
-                position: absolute;
-                width: 1rem;
-                height: 1rem;
-                overflow: hidden;
-                clip: rect(0 0 0 0);
-                clip-path: inset(50%);
-                white-space: nowrap;
+                display: none;
               }
               .file-open-actions {
                 display: flex;
@@ -796,6 +794,10 @@ button {
                   border-color: #aaa;
                   background: #2d2d2d;
                   box-shadow: 0 2rem 8rem #0005;
+                }
+                &:focus-visible {
+                  outline: 2rem solid var(--button-focus);
+                  outline-offset: 2rem;
                 }
                 &.drag-active {
                   border-color: #b5b5b5;

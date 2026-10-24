@@ -167,6 +167,16 @@ export const OpenFile: React.FC<SettingsProps> = ({
     input.files = dataTransfer.files
   }
 
+  const handleFilePickerKeyDown = (
+    event: React.KeyboardEvent<HTMLLabelElement>,
+    inputId: string
+  ) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    const input = document.getElementById(inputId) as HTMLInputElement | null
+    input?.click()
+  }
+
   const getDroppedFiles = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault()
     event.stopPropagation()
@@ -280,6 +290,9 @@ export const OpenFile: React.FC<SettingsProps> = ({
         <label
           className={`file-drop-zone ${isVideoDragActive ? 'drag-active' : ''}`}
           htmlFor="input"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => handleFilePickerKeyDown(event, 'input')}
           onDragEnter={(event) => {
             event.preventDefault()
             setIsVideoDragActive(true)
@@ -339,6 +352,11 @@ export const OpenFile: React.FC<SettingsProps> = ({
             isProjectDragActive ? 'drag-active' : ''
           }`}
           htmlFor="project-input"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) =>
+            handleFilePickerKeyDown(event, 'project-input')
+          }
           onDragEnter={(event) => {
             event.preventDefault()
             setIsProjectDragActive(true)
