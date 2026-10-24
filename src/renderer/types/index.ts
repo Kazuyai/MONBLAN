@@ -65,6 +65,17 @@ export interface AnalysisFrameRange {
   endFrame: number
 }
 
+export interface ProcessingTask {
+  title: string
+  description: string
+  stage?: string
+  step?: number
+  totalSteps?: number
+  currentItem?: number | null
+  totalItems?: number | null
+  cacheHit?: boolean | null
+}
+
 export interface SelectedTimelineAnnotation extends TimelineAnnotationResult {
   id: string
 }

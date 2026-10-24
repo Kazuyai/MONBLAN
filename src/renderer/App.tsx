@@ -3,6 +3,7 @@ import type { ApiStatus } from '../main/preload'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
+  ProcessingTask,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
   TimelineAnnotationResult
@@ -11,7 +12,9 @@ import { Video, Settings, Timeline, Processing } from './components'
 import './App.scss'
 
 const App = () => {
-  const [isProcessing, setIsProcessing] = useState<boolean>(false)
+  const [processingTask, setProcessingTask] = useState<ProcessingTask | null>(
+    null
+  )
   const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null)
   const [videoSrcs, setVideoSrcs] = useState<string[]>([])
   const [videoDuration, setVideoDuration] = useState<number>(0)
@@ -220,7 +223,7 @@ const App = () => {
           selectionFrameWidth={selectionFrameWidth}
         />
         <Settings
-          setIsProcessing={setIsProcessing}
+          setProcessingTask={setProcessingTask}
           setVideoSrcs={setVideoSrcs}
           videoSrcs={videoSrcs}
           setIsEditing={setIsEditing}
@@ -274,7 +277,7 @@ const App = () => {
         onLayerNamesChange={setTimelineLayerNames}
         topHeight={topHeight}
       />
-      {isProcessing && <Processing />}
+      {processingTask && <Processing task={processingTask} />}
     </div>
   )
 }

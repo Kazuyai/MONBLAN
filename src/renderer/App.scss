@@ -98,7 +98,9 @@ root {
         color: #aaa;
         font-size: 13rem;
         font-weight: 600;
-        transition: background 0.15s ease, border-color 0.15s ease;
+        transition:
+          background 0.15s ease,
+          border-color 0.15s ease;
       }
 
       .analysis-step-label {
@@ -2196,7 +2198,8 @@ button {
       .movement-candidate-toolbar {
         border-color: #4f8884;
         background: #1b3535;
-        .similarity-candidate-toolbar-summary span:last-child:not(.conflict-count) {
+        .similarity-candidate-toolbar-summary
+          span:last-child:not(.conflict-count) {
           color: #bde7e3;
         }
         .similarity-candidate-toolbar-actions button {
@@ -2601,7 +2604,7 @@ button {
               }
             }
           }
-            .playhead {
+          .playhead {
             position: absolute;
             top: 0;
             left: calc(140rem + 10px * 4);
@@ -2706,54 +2709,54 @@ button {
               }
             }
           }
-            .similarity-candidate-layer {
-              height: 50rem;
-              position: relative;
-              th {
-                background: #172535;
-                color: #bfe3ff;
-                z-index: 11;
-                .similarity-candidate-header {
-                  align-items: center;
-                  justify-content: center;
-                  gap: 4rem;
-                  padding: 4rem 8rem;
-                  opacity: 1;
-                  .similarity-candidate-title {
-                    display: flex;
-                    justify-content: space-between;
-                    gap: 6rem;
-                    font-size: 12rem;
-                    line-height: 1.2;
-                    span:first-child {
-                      min-width: 0;
-                      overflow: hidden;
-                      text-overflow: ellipsis;
-                      white-space: nowrap;
-                    }
-                    span:last-child {
-                      flex: 0 0 auto;
-                      color: #d9efff;
-                    }
+          .similarity-candidate-layer {
+            height: 50rem;
+            position: relative;
+            th {
+              background: #172535;
+              color: #bfe3ff;
+              z-index: 11;
+              .similarity-candidate-header {
+                align-items: center;
+                justify-content: center;
+                gap: 4rem;
+                padding: 4rem 8rem;
+                opacity: 1;
+                .similarity-candidate-title {
+                  display: flex;
+                  justify-content: space-between;
+                  gap: 6rem;
+                  font-size: 12rem;
+                  line-height: 1.2;
+                  span:first-child {
+                    min-width: 0;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                  }
+                  span:last-child {
+                    flex: 0 0 auto;
+                    color: #d9efff;
                   }
                 }
               }
-              .similarity-candidate-timeline {
-                background: #1f3448;
-                border-bottom-style: solid;
-                overflow: visible;
-                z-index: auto;
-              }
             }
-            .movement-candidate-layer {
-              th {
-                background: #173130;
-                color: #bde7e3;
-              }
-              .similarity-candidate-timeline {
-                background: #203c3a;
-              }
+            .similarity-candidate-timeline {
+              background: #1f3448;
+              border-bottom-style: solid;
+              overflow: visible;
+              z-index: auto;
             }
+          }
+          .movement-candidate-layer {
+            th {
+              background: #173130;
+              color: #bde7e3;
+            }
+            .similarity-candidate-timeline {
+              background: #203c3a;
+            }
+          }
         }
       }
       .zoom-controls {
@@ -2780,12 +2783,10 @@ button {
     }
 
     #processing {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.5);
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.62);
+      backdrop-filter: blur(2rem);
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -2801,6 +2802,7 @@ button {
         gap: 50rem;
         width: 220rem;
         height: 100rem;
+        margin-bottom: 4rem;
         .circle {
           position: absolute;
           width: 20rem;
@@ -2848,32 +2850,78 @@ button {
         }
       }
       h1 {
-        font-size: 30rem;
-        color: transparent;
-        background: linear-gradient(
-          to right,
-          #fff2 calc(0 / 8 * 100%),
-          #fff2 calc(2 / 8 * 100%),
-          #ffff calc(3 / 8 * 100%),
-          #ffff calc(5 / 8 * 100%),
-          #fff2 calc(6 / 8 * 100%),
-          #fff2 calc(8 / 8 * 100%)
-        );
-        background-clip: text;
-        -webkit-background-clip: text;
-        background-size: 400% 100%;
-        background-position-x: 0;
-        animation: gradient 2.4s linear infinite;
-        @keyframes gradient {
+        font-size: 24rem;
+        color: #fff;
+      }
+      .processing-message {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12rem;
+        width: min(620rem, calc(100vw - 80rem));
+        padding: 28rem 36rem 30rem;
+        border: 1rem solid #ffffff38;
+        border-radius: 12rem;
+        background: #202020e8;
+        box-shadow: 0 18rem 48rem #000a;
+        text-align: center;
+        p {
+          color: #ddd;
+          font-size: 16rem;
+          line-height: 1.6;
+        }
+        .processing-progress {
+          display: flex;
+          flex-direction: column;
+          gap: 8rem;
+          width: 100%;
+          margin-top: 4rem;
+        }
+        .processing-progress-label,
+        .processing-progress-detail {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          min-height: 20rem;
+          color: #ddd;
+          font-size: 14rem;
+        }
+        .processing-progress-label strong {
+          font-size: 15rem;
+        }
+        .processing-progress-label span,
+        .processing-progress-detail {
+          color: #aaa;
+        }
+        .processing-progress-track {
+          position: relative;
+          height: 4rem;
+          overflow: hidden;
+          border-radius: 999rem;
+          background: #ffffff1f;
+          span {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 34%;
+            border-radius: inherit;
+            background: #8bbbd8;
+            animation: processing-progress-slide 1.4s ease-in-out infinite;
+          }
+        }
+        @keyframes processing-progress-slide {
           0% {
-            background-position-x: 100%;
+            left: -34%;
           }
           100% {
-            background-position-x: 0%;
+            left: 100%;
           }
+        }
+        .processing-note {
+          color: #aaa;
+          font-size: 13rem;
         }
       }
     }
   }
 }
-

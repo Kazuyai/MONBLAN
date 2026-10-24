@@ -3,9 +3,11 @@ import { v4 as uuidv4 } from 'uuid'
 import type { ApiStatus } from '../../../main/preload'
 import type {
   AnalysisFrameRange,
+  ProcessingTask,
   SelectedTimelineAnnotation,
   SimilarMotionCandidate
 } from '../../types'
+import { startProcessingProgress } from '../../utils/processingProgress'
 import {
   AnalysisRangeSelector,
   type AnalysisRangeMode
@@ -13,7 +15,7 @@ import {
 import { AnalysisSteps } from './AnalysisSteps'
 
 interface SimilarityCompletionProps {
-  setIsProcessing: (isProcessing: boolean) => void
+  setProcessingTask: (task: ProcessingTask | null) => void
   setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void
   apiStatus: ApiStatus | null
   frameRate: number
@@ -96,7 +98,7 @@ const selectableKeyPoints: KeyPoint[] = [
 ]
 
 export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
-  setIsProcessing,
+  setProcessingTask,
   setSimilarMotionCandidates,
   apiStatus,
   frameRate,
@@ -119,7 +121,8 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
   const [step, setStep] = useState(0)
   const previousVideoSrc = useRef(videoSrc)
   const peopleRequestId = useRef(0)
-  const [confirmedTemplate, setConfirmedTemplate] = useState<SelectedTimelineAnnotation | null>(null)
+  const [confirmedTemplate, setConfirmedTemplate] =
+    useState<SelectedTimelineAnnotation | null>(null)
   const [confirmedAnalysisRange, setConfirmedAnalysisRange] = useState<
     { startFrame: number; endFrame: number } | null | undefined
   >(undefined)
@@ -280,7 +283,9 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
 
   const formatApiErrorSummary = (error: ApiErrorPayload): string => {
     if (
-      error.stderr?.includes('An attempt has been made to start a new process') ||
+      error.stderr?.includes(
+        'An attempt has been made to start a new process'
+      ) ||
       error.stderr?.includes('DataLoader worker')
     ) {
       return 'MotionBERTのデータ読み込み処理を開始できませんでした。アプリを再起動してから、もう一度実行してください。'
@@ -316,10 +321,15 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     )
   }
 
-  const getUploadedHumanImages = (file: File, single: boolean) => {
+  const getUploadedHumanImages = (
+    file: File,
+    single: boolean,
+    progressId: string
+  ) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('singlePerson', String(single))
+    formData.append('progressId', progressId)
     if (confirmedAnalysisRange) {
       formData.append('analysisRange', JSON.stringify(confirmedAnalysisRange))
     }
@@ -330,7 +340,11 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     })
   }
 
-  const getHumanImagesFromPath = (filePath: string, single: boolean) => {
+  const getHumanImagesFromPath = (
+    filePath: string,
+    single: boolean,
+    progressId: string
+  ) => {
     return fetch('http://127.0.0.1:8000/get_human_images_from_path/', {
       method: 'POST',
       headers: {
@@ -339,7 +353,8 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       body: JSON.stringify({
         file_path: filePath,
         analysisRange: confirmedAnalysisRange,
-        singlePerson: single
+        singlePerson: single,
+        progressId
       })
     })
   }
@@ -359,16 +374,30 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       return
     }
 
-    setIsProcessing(true)
+    const progress = startProcessingProgress(
+      {
+        title: '人物候補を検出中',
+        description: '分析範囲から人物画像を抽出しています。'
+      },
+      setProcessingTask
+    )
     setApiError(null)
 
     try {
       let response = filePath
-        ? await getHumanImagesFromPath(filePath, single)
-        : await getUploadedHumanImages(file as File, single)
+        ? await getHumanImagesFromPath(filePath, single, progress.progressId)
+        : await getUploadedHumanImages(
+            file as File,
+            single,
+            progress.progressId
+          )
 
       if (file && filePath && response.status === 404) {
-        response = await getUploadedHumanImages(file, single)
+        response = await getUploadedHumanImages(
+          file,
+          single,
+          progress.progressId
+        )
       }
 
       if (!response.ok) {
@@ -378,14 +407,23 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
 
       const data = await response.json()
       if (requestId !== peopleRequestId.current) return
-      const people: { humanId: number; image: string }[] = data.people ??
-        (data.images ?? []).map((image: string, humanId: number) => ({ humanId, image }))
+      const people: { humanId: number; image: string }[] =
+        data.people ??
+        (data.images ?? []).map((image: string, humanId: number) => ({
+          humanId,
+          image
+        }))
       if (people.length === 0) {
-        setApiError({ message: '指定区間に人物が見つかりません。分析区間を変更してください。' })
+        setApiError({
+          message:
+            '指定区間に人物が見つかりません。分析区間を変更してください。'
+        })
         return
       }
       setHumanIds(people.map((person) => person.humanId))
-      setHumanImageUrls(people.map((person) => `data:image/jpeg;base64,${person.image}`))
+      setHumanImageUrls(
+        people.map((person) => `data:image/jpeg;base64,${person.image}`)
+      )
       setHumanId(people[0].humanId)
       setIsHumanCountSingle(single)
       setStep(3)
@@ -395,7 +433,8 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
           error instanceof Error ? error.message : 'APIとの通信に失敗しました。'
       })
     } finally {
-      setIsProcessing(false)
+      progress.stop()
+      setProcessingTask(null)
     }
   }
 
@@ -435,7 +474,14 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       return
     }
 
-    setIsProcessing(true)
+    const progress = startProcessingProgress(
+      {
+        title: '類似動作を検出中',
+        description:
+          '姿勢推定結果を使い、テンプレートに近い動作区間を検索しています。'
+      },
+      setProcessingTask
+    )
     setApiError(null)
     setCandidateCount(null)
 
@@ -461,7 +507,8 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
             analysisRange: analysisFrameRange,
             singlePerson: isHumanCountSingle === true,
             layerName: confirmedTemplate.layerName,
-            layerIndex: confirmedTemplate.layerIndex
+            layerIndex: confirmedTemplate.layerIndex,
+            progressId: progress.progressId
           })
         }
       )
@@ -485,7 +532,8 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
           error instanceof Error ? error.message : 'APIとの通信に失敗しました。'
       })
     } finally {
-      setIsProcessing(false)
+      progress.stop()
+      setProcessingTask(null)
     }
   }
 
@@ -528,52 +576,87 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
         currentStep={step}
         onBack={handleStepBack}
       />
-      {step > 1 && <p className="analysis-range-message">{getAnalysisRangeMessage()}</p>}
-      {step === 0 && <div className="template-annotation-card">
-        <h3>テンプレート注釈を選択</h3>
-        {selectedTimelineAnnotation ? <p>{selectedTimelineAnnotation.text}（{formatFrameTime(selectedTimelineAnnotation.startFrame)}–{formatFrameTime(selectedTimelineAnnotation.endFrame)}）</p>
-          : <p className="empty">タイムライン上で注釈を1つクリックしてください。</p>}
-        <button className="primary-action analysis-next" type="button" disabled={!selectedTimelineAnnotation} onClick={() => {
-          setConfirmedTemplate(selectedTimelineAnnotation)
-          setConfirmedAnalysisRange(undefined)
-          setSimilarMotionCandidates([])
-          setCandidateCount(null)
-          setStep(1)
-        }}>テンプレートを確定して次へ</button>
-      </div>}
-      {step === 1 && <>
-      <AnalysisRangeSelector
-        idPrefix="similarity"
-        mode={analysisRangeMode}
-        onModeChange={setAnalysisRangeMode}
-        frameRate={frameRate}
-        videoDuration={videoDuration}
-        currentFrame={currentFrame}
-        selectionStartFrame={selectionStartFrame}
-        selectionFrameWidth={selectionFrameWidth}
-        startFrame={manualAnalysisStartFrame}
-        endFrame={manualAnalysisEndFrame}
-        onRangeChange={(startFrame, endFrame) => {
-          setManualAnalysisStartFrame(startFrame)
-          setManualAnalysisEndFrame(endFrame)
-        }}
-      />
-      <button className="primary-action analysis-next" type="button" onClick={() => {
-        const range = getAnalysisFrameRange()
-        if (analysisRangeMode === 'partial' && !range) {
-          setApiError({ message: '分析区間を指定してください。' })
-          return
-        }
-        if (range && confirmedTemplate &&
-          (confirmedTemplate.startFrame < range.startFrame || confirmedTemplate.endFrame > range.endFrame)) {
-          setApiError({ message: '分析区間にはテンプレート注釈の全体を含めてください。' })
-          return
-        }
-        setApiError(null)
-        setConfirmedAnalysisRange(range)
-        setStep(2)
-      }}>分析区間を確定して次へ</button>
-      </>}
+      {step > 1 && (
+        <p className="analysis-range-message">{getAnalysisRangeMessage()}</p>
+      )}
+      {step === 0 && (
+        <div className="template-annotation-card">
+          <h3>テンプレート注釈を選択</h3>
+          {selectedTimelineAnnotation ? (
+            <p>
+              {selectedTimelineAnnotation.text}（
+              {formatFrameTime(selectedTimelineAnnotation.startFrame)}–
+              {formatFrameTime(selectedTimelineAnnotation.endFrame)}）
+            </p>
+          ) : (
+            <p className="empty">
+              タイムライン上で注釈を1つクリックしてください。
+            </p>
+          )}
+          <button
+            className="primary-action analysis-next"
+            type="button"
+            disabled={!selectedTimelineAnnotation}
+            onClick={() => {
+              setConfirmedTemplate(selectedTimelineAnnotation)
+              setConfirmedAnalysisRange(undefined)
+              setSimilarMotionCandidates([])
+              setCandidateCount(null)
+              setStep(1)
+            }}
+          >
+            テンプレートを確定して次へ
+          </button>
+        </div>
+      )}
+      {step === 1 && (
+        <>
+          <AnalysisRangeSelector
+            idPrefix="similarity"
+            mode={analysisRangeMode}
+            onModeChange={setAnalysisRangeMode}
+            frameRate={frameRate}
+            videoDuration={videoDuration}
+            currentFrame={currentFrame}
+            selectionStartFrame={selectionStartFrame}
+            selectionFrameWidth={selectionFrameWidth}
+            startFrame={manualAnalysisStartFrame}
+            endFrame={manualAnalysisEndFrame}
+            onRangeChange={(startFrame, endFrame) => {
+              setManualAnalysisStartFrame(startFrame)
+              setManualAnalysisEndFrame(endFrame)
+            }}
+          />
+          <button
+            className="primary-action analysis-next"
+            type="button"
+            onClick={() => {
+              const range = getAnalysisFrameRange()
+              if (analysisRangeMode === 'partial' && !range) {
+                setApiError({ message: '分析区間を指定してください。' })
+                return
+              }
+              if (
+                range &&
+                confirmedTemplate &&
+                (confirmedTemplate.startFrame < range.startFrame ||
+                  confirmedTemplate.endFrame > range.endFrame)
+              ) {
+                setApiError({
+                  message:
+                    '分析区間にはテンプレート注釈の全体を含めてください。'
+                })
+                return
+              }
+              setApiError(null)
+              setConfirmedAnalysisRange(range)
+              setStep(2)
+            }}
+          >
+            分析区間を確定して次へ
+          </button>
+        </>
+      )}
       {step === 2 && (
         <div className="human-count-selector">
           <p>指定区間に映る人物は1人ですか？複数人ですか？</p>
@@ -597,97 +680,97 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       )}
       {step === 3 && (
         <>
-        <div className="similarity-param-editor">
-          {isHumanCountSingle === false && (
-            <div className="human-selector">
-              <p>人物選択</p>
-              <div className="human-img-container">
-                {humanImageUrls.map((url, index) => (
-                  <div
-                    key={humanIds[index]}
-                    className={`human-img ${humanIds[index] === humanId ? 'selected' : ''}`}
-                  >
+          <div className="similarity-param-editor">
+            {isHumanCountSingle === false && (
+              <div className="human-selector">
+                <p>人物選択</p>
+                <div className="human-img-container">
+                  {humanImageUrls.map((url, index) => (
                     <div
-                      className="icon"
-                      style={{ backgroundImage: `url(${url})` }}
-                      onClick={() => setHumanId(humanIds[index])}
-                    ></div>
-                    <img src={url} alt="" className="popup" />
-                  </div>
+                      key={humanIds[index]}
+                      className={`human-img ${humanIds[index] === humanId ? 'selected' : ''}`}
+                    >
+                      <div
+                        className="icon"
+                        style={{ backgroundImage: `url(${url})` }}
+                        onClick={() => setHumanId(humanIds[index])}
+                      ></div>
+                      <img src={url} alt="" className="popup" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="bone-img-container">
+              <div className="bone-img">
+                <img src="./bone.png" alt="bone" />
+                {selectableKeyPoints.map((keyPoint) => (
+                  <div
+                    key={keyPoint.number}
+                    onClick={() => selectKeyPoint(keyPoint.number)}
+                    onMouseEnter={() => setHoveredKeyPointName(keyPoint.name)}
+                    onMouseLeave={() => setHoveredKeyPointName(null)}
+                    className={`key-point ${selectedJoints.includes(keyPoint.number) ? 'selected' : ''}`}
+                    style={{
+                      left: `${keyPoint.x}rem`,
+                      top: `${keyPoint.y}rem`
+                    }}
+                  ></div>
                 ))}
+                <p>{hoveredKeyPointName}</p>
               </div>
             </div>
-          )}
-          <div className="bone-img-container">
-            <div className="bone-img">
-              <img src="./bone.png" alt="bone" />
-              {selectableKeyPoints.map((keyPoint) => (
-                <div
-                  key={keyPoint.number}
-                  onClick={() => selectKeyPoint(keyPoint.number)}
-                  onMouseEnter={() => setHoveredKeyPointName(keyPoint.name)}
-                  onMouseLeave={() => setHoveredKeyPointName(null)}
-                  className={`key-point ${selectedJoints.includes(keyPoint.number) ? 'selected' : ''}`}
-                  style={{
-                    left: `${keyPoint.x}rem`,
-                    top: `${keyPoint.y}rem`
+            <div className="similarity-config">
+              <div className="template-annotation-card">
+                <h3>テンプレート注釈</h3>
+                {confirmedTemplate ? (
+                  <>
+                    <p>{confirmedTemplate.text}</p>
+                    <dl>
+                      <dt>レイヤー</dt>
+                      <dd>{confirmedTemplate.layerName}</dd>
+                      <dt>範囲</dt>
+                      <dd>
+                        {`${confirmedTemplate.startFrame}–${confirmedTemplate.endFrame}f`}
+                      </dd>
+                      <dt>時間</dt>
+                      <dd>
+                        {`${formatFrameTime(confirmedTemplate.startFrame)}–${formatFrameTime(confirmedTemplate.endFrame)}`}
+                      </dd>
+                    </dl>
+                  </>
+                ) : (
+                  <p className="empty">
+                    タイムライン上でテンプレートにする注釈を1つ選択してください。
+                  </p>
+                )}
+              </div>
+              <div className="similarity-actions">
+                <button
+                  className="primary-action"
+                  disabled={!isAiReady || !confirmedTemplate}
+                  onClick={detectSimilarMotion}
+                >
+                  類似候補を検出
+                </button>
+                <button
+                  className="danger-action"
+                  type="button"
+                  onClick={() => {
+                    setSimilarMotionCandidates([])
+                    setCandidateCount(null)
                   }}
-                ></div>
-              ))}
-              <p>{hoveredKeyPointName}</p>
-            </div>
-          </div>
-          <div className="similarity-config">
-            <div className="template-annotation-card">
-              <h3>テンプレート注釈</h3>
-              {confirmedTemplate ? (
-                <>
-                  <p>{confirmedTemplate.text}</p>
-                  <dl>
-                    <dt>レイヤー</dt>
-                    <dd>{confirmedTemplate.layerName}</dd>
-                    <dt>範囲</dt>
-                    <dd>
-                      {`${confirmedTemplate.startFrame}–${confirmedTemplate.endFrame}f`}
-                    </dd>
-                    <dt>時間</dt>
-                    <dd>
-                      {`${formatFrameTime(confirmedTemplate.startFrame)}–${formatFrameTime(confirmedTemplate.endFrame)}`}
-                    </dd>
-                  </dl>
-                </>
-              ) : (
-                <p className="empty">
-                  タイムライン上でテンプレートにする注釈を1つ選択してください。
+                >
+                  候補を消去
+                </button>
+              </div>
+              {candidateCount !== null && (
+                <p className="similarity-result-summary">
+                  {`候補を${candidateCount}件検出しました。タイムラインの候補レイヤーで確認できます。`}
                 </p>
               )}
             </div>
-            <div className="similarity-actions">
-              <button
-                className="primary-action"
-                disabled={!isAiReady || !confirmedTemplate}
-                onClick={detectSimilarMotion}
-              >
-                類似候補を検出
-              </button>
-              <button
-                className="danger-action"
-                type="button"
-                onClick={() => {
-                  setSimilarMotionCandidates([])
-                  setCandidateCount(null)
-                }}
-              >
-                候補を消去
-              </button>
-            </div>
-            {candidateCount !== null && (
-              <p className="similarity-result-summary">
-                {`候補を${candidateCount}件検出しました。タイムラインの候補レイヤーで確認できます。`}
-              </p>
-            )}
           </div>
-        </div>
         </>
       )}
     </div>

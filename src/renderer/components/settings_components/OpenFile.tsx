@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
-import type { AnnotationProject } from '../../types'
+import type { AnnotationProject, ProcessingTask } from '../../types'
 
 interface SettingsProps {
-  setIsProcessing: (isProcessing: boolean) => void
+  setProcessingTask: (task: ProcessingTask | null) => void
   setVideoSrcs: (srcs: string[]) => void
   setFrameRate: (frameRate: number) => void
   onImportProjectJson: (project: AnnotationProject) => void
@@ -12,7 +12,7 @@ const FALLBACK_FRAME_RATE = 30
 const NO_VIDEO_SELECTED_MESSAGE = '動画ファイルが選択されていません'
 
 export const OpenFile: React.FC<SettingsProps> = ({
-  setIsProcessing,
+  setProcessingTask,
   setVideoSrcs,
   setFrameRate,
   onImportProjectJson
@@ -56,13 +56,17 @@ export const OpenFile: React.FC<SettingsProps> = ({
   const applyManualFrameRate = () => {
     const parsedFrameRate = Number(manualFrameRate)
     if (!Number.isFinite(parsedFrameRate) || parsedFrameRate <= 0) {
-      setFrameRateWarning('フレームレートには0より大きい数値を入力してください。')
+      setFrameRateWarning(
+        'フレームレートには0より大きい数値を入力してください。'
+      )
       setShowManualFrameRateInput(true)
       return
     }
 
     setFrameRate(parsedFrameRate)
-    setFrameRateWarning(`フレームレートを ${parsedFrameRate}fps に設定しました。`)
+    setFrameRateWarning(
+      `フレームレートを ${parsedFrameRate}fps に設定しました。`
+    )
     setShowManualFrameRateInput(false)
   }
 
@@ -191,7 +195,10 @@ export const OpenFile: React.FC<SettingsProps> = ({
         : Array.from(input?.files ?? [])
     if (files.length === 0) return
 
-    setIsProcessing(true)
+    setProcessingTask({
+      title: '動画を読み込み中',
+      description: '動画のフレームレートとメタデータを確認しています。'
+    })
     setFrameRateWarning(null)
     setShowManualFrameRateInput(false)
     const urls = files.map((file) => URL.createObjectURL(file))
@@ -245,11 +252,13 @@ export const OpenFile: React.FC<SettingsProps> = ({
       )
       setShowManualFrameRateInput(true)
     } finally {
-      setIsProcessing(false)
+      setProcessingTask(null)
     }
   }
 
-  const handleVideoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const files = Array.from(event.currentTarget.files ?? [])
     updateSelectedVideoFiles(files)
   }
@@ -354,9 +363,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
           htmlFor="project-input"
           role="button"
           tabIndex={0}
-          onKeyDown={(event) =>
-            handleFilePickerKeyDown(event, 'project-input')
-          }
+          onKeyDown={(event) => handleFilePickerKeyDown(event, 'project-input')}
           onDragEnter={(event) => {
             event.preventDefault()
             setIsProjectDragActive(true)

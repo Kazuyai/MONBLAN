@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { ApiStatus } from '../../../main/preload'
-import type { AnalysisFrameRange } from '../../types'
+import type { AnalysisFrameRange, ProcessingTask } from '../../types'
+import { startProcessingProgress } from '../../utils/processingProgress'
 import {
   AnalysisRangeSelector,
   type AnalysisRangeMode
@@ -8,7 +9,7 @@ import {
 import { AnalysisSteps } from './AnalysisSteps'
 
 interface SettingsProps {
-  setIsProcessing: (isProcessing: boolean) => void
+  setProcessingTask: (task: ProcessingTask | null) => void
   setIsEditing: (isEditing: boolean) => void
   setAutoAnnotationResponseData: (
     data: {
@@ -79,7 +80,7 @@ const getApiStatusMessage = (apiStatus: ApiStatus | null) => {
 }
 
 export const AutoAnnotation: React.FC<SettingsProps> = ({
-  setIsProcessing,
+  setProcessingTask,
   setIsEditing,
   setAutoAnnotationResponseData,
   apiStatus,
@@ -256,7 +257,9 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
 
   const formatApiErrorSummary = (error: ApiErrorPayload): string => {
     if (
-      error.stderr?.includes('An attempt has been made to start a new process') ||
+      error.stderr?.includes(
+        'An attempt has been made to start a new process'
+      ) ||
       error.stderr?.includes('DataLoader worker')
     ) {
       return 'MotionBERTのデータ読み込み処理を開始できませんでした。アプリを再起動してから、もう一度実行してください。'
@@ -514,10 +517,15 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     onAnalysisRangePreviewChange
   ])
 
-  const getUploadedHumanImages = (file: File, single: boolean) => {
+  const getUploadedHumanImages = (
+    file: File,
+    single: boolean,
+    progressId: string
+  ) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('singlePerson', String(single))
+    formData.append('progressId', progressId)
     if (confirmedAnalysisRange) {
       formData.append('analysisRange', JSON.stringify(confirmedAnalysisRange))
     }
@@ -528,7 +536,11 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     })
   }
 
-  const getHumanImagesFromPath = (filePath: string, single: boolean) => {
+  const getHumanImagesFromPath = (
+    filePath: string,
+    single: boolean,
+    progressId: string
+  ) => {
     return fetch('http://127.0.0.1:8000/get_human_images_from_path/', {
       method: 'POST',
       headers: {
@@ -537,12 +549,13 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       body: JSON.stringify({
         file_path: filePath,
         analysisRange: confirmedAnalysisRange,
-        singlePerson: single
+        singlePerson: single,
+        progressId
       })
     })
   }
 
-  const getUploadedAutoAnnotation = (file: File) => {
+  const getUploadedAutoAnnotation = (file: File, progressId: string) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append(
@@ -550,6 +563,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       JSON.stringify(getAutoAnnotationRequestLayers())
     )
     formData.append('singlePerson', String(isHumanCountSingle === true))
+    formData.append('progressId', progressId)
     const analysisFrameRange = getAnalysisFrameRange()
     if (analysisFrameRange) {
       formData.append('analysisRange', JSON.stringify(analysisFrameRange))
@@ -561,7 +575,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     })
   }
 
-  const getAutoAnnotationFromPath = (filePath: string) => {
+  const getAutoAnnotationFromPath = (filePath: string, progressId: string) => {
     const analysisFrameRange = getAnalysisFrameRange()
     return fetch('http://127.0.0.1:8000/items_from_path/', {
       method: 'POST',
@@ -572,7 +586,8 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
         file_path: filePath,
         autoAnnotationLayer: getAutoAnnotationRequestLayers(),
         analysisRange: analysisFrameRange,
-        singlePerson: isHumanCountSingle === true
+        singlePerson: isHumanCountSingle === true,
+        progressId
       })
     })
   }
@@ -583,15 +598,26 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       layerName: timelineLayerNames[layer.index] ?? layer.layerName
     }))
 
-  const applyPeople = (data: { people?: { humanId: number; image: string }[]; images?: string[] }, single: boolean) => {
-    const people = data.people ?? (data.images ?? []).map((image, humanId) => ({ humanId, image }))
+  const applyPeople = (
+    data: { people?: { humanId: number; image: string }[]; images?: string[] },
+    single: boolean
+  ) => {
+    const people =
+      data.people ??
+      (data.images ?? []).map((image, humanId) => ({ humanId, image }))
     if (people.length === 0) {
-      setApiError({ message: '指定区間に人物が見つかりません。分析区間を変更してください。' })
+      setApiError({
+        message: '指定区間に人物が見つかりません。分析区間を変更してください。'
+      })
       return
     }
     setHumanIds(people.map((person) => person.humanId))
-    setHumanImageUrls(people.map((person) => `data:image/jpeg;base64,${person.image}`))
-    setAutoAnnotationLayer((layers) => layers.map((layer) => ({ ...layer, humanId: people[0].humanId })))
+    setHumanImageUrls(
+      people.map((person) => `data:image/jpeg;base64,${person.image}`)
+    )
+    setAutoAnnotationLayer((layers) =>
+      layers.map((layer) => ({ ...layer, humanId: people[0].humanId }))
+    )
     setIsHumanCountSingle(single)
     setStep(2)
   }
@@ -605,11 +631,21 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     const files = input.files
     const storedVideoPath = getStoredVideoPath()
     if ((!files || files.length === 0) && storedVideoPath) {
-      setIsProcessing(true)
+      const progress = startProcessingProgress(
+        {
+          title: '人物候補を検出中',
+          description: '分析範囲から人物画像を抽出しています。'
+        },
+        setProcessingTask
+      )
       setApiError(null)
 
       try {
-        const response = await getHumanImagesFromPath(storedVideoPath, single)
+        const response = await getHumanImagesFromPath(
+          storedVideoPath,
+          single,
+          progress.progressId
+        )
 
         if (!response.ok) {
           setApiError(await readApiError(response))
@@ -627,23 +663,34 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
               : 'APIとの通信に失敗しました。'
         })
       } finally {
-        setIsProcessing(false)
+        progress.stop()
+        setProcessingTask(null)
       }
       return
     }
     if (files?.[0]) {
-      setIsProcessing(true)
+      const progress = startProcessingProgress(
+        {
+          title: '人物候補を検出中',
+          description: '分析範囲から人物画像を抽出しています。'
+        },
+        setProcessingTask
+      )
       setApiError(null)
       const file = files[0]
 
       try {
         const filePath = getElectronFilePath(file)
         let response = filePath
-          ? await getHumanImagesFromPath(filePath, single)
-          : await getUploadedHumanImages(file, single)
+          ? await getHumanImagesFromPath(filePath, single, progress.progressId)
+          : await getUploadedHumanImages(file, single, progress.progressId)
 
         if (filePath && response.status === 404) {
-          response = await getUploadedHumanImages(file, single)
+          response = await getUploadedHumanImages(
+            file,
+            single,
+            progress.progressId
+          )
         }
 
         if (!response.ok) {
@@ -662,7 +709,8 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
               : 'APIとの通信に失敗しました。'
         })
       } finally {
-        setIsProcessing(false)
+        progress.stop()
+        setProcessingTask(null)
       }
       return
     }
@@ -681,8 +729,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     }
     if (
       autoAnnotationLayer.some(
-        (layer) =>
-          layer.index < 0 || layer.index >= timelineLayerNames.length
+        (layer) => layer.index < 0 || layer.index >= timelineLayerNames.length
       )
     ) {
       setApiError({
@@ -712,8 +759,14 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       })
       return
     }
-    if (analysisFrameRange && analysisFrameRange.endFrame - analysisFrameRange.startFrame + 1 < MIN_MOVEMENT_ANALYSIS_FRAMES) {
-      setApiError({ message: `動作範囲検出には${MIN_MOVEMENT_ANALYSIS_FRAMES}フレーム以上の分析区間が必要です。` })
+    if (
+      analysisFrameRange &&
+      analysisFrameRange.endFrame - analysisFrameRange.startFrame + 1 <
+        MIN_MOVEMENT_ANALYSIS_FRAMES
+    ) {
+      setApiError({
+        message: `動作範囲検出には${MIN_MOVEMENT_ANALYSIS_FRAMES}フレーム以上の分析区間が必要です。`
+      })
       return
     }
 
@@ -721,11 +774,21 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     const files = input.files
     const storedVideoPath = getStoredVideoPath()
     if ((!files || files.length === 0) && storedVideoPath) {
-      setIsProcessing(true)
+      const progress = startProcessingProgress(
+        {
+          title: '動作範囲を検出中',
+          description:
+            '姿勢推定、3次元姿勢への変換、動作区間の検出を順番に実行しています。'
+        },
+        setProcessingTask
+      )
       setApiError(null)
 
       try {
-        const response = await getAutoAnnotationFromPath(storedVideoPath)
+        const response = await getAutoAnnotationFromPath(
+          storedVideoPath,
+          progress.progressId
+        )
 
         if (!response.ok) {
           setApiError(await readApiError(response))
@@ -742,23 +805,31 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
               : 'APIとの通信に失敗しました。'
         })
       } finally {
-        setIsProcessing(false)
+        progress.stop()
+        setProcessingTask(null)
       }
       return
     }
     if (files?.[0]) {
-      setIsProcessing(true)
+      const progress = startProcessingProgress(
+        {
+          title: '動作範囲を検出中',
+          description:
+            '姿勢推定、3次元姿勢への変換、動作区間の検出を順番に実行しています。'
+        },
+        setProcessingTask
+      )
       setApiError(null)
       const file = files[0]
 
       try {
         const filePath = getElectronFilePath(file)
         let response = filePath
-          ? await getAutoAnnotationFromPath(filePath)
-          : await getUploadedAutoAnnotation(file)
+          ? await getAutoAnnotationFromPath(filePath, progress.progressId)
+          : await getUploadedAutoAnnotation(file, progress.progressId)
 
         if (filePath && response.status === 404) {
-          response = await getUploadedAutoAnnotation(file)
+          response = await getUploadedAutoAnnotation(file, progress.progressId)
         }
 
         if (!response.ok) {
@@ -776,7 +847,8 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
               : 'APIとの通信に失敗しました。'
         })
       } finally {
-        setIsProcessing(false)
+        progress.stop()
+        setProcessingTask(null)
       }
       return
     }
@@ -803,9 +875,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       {apiError && (
         <div className="api-error-message">
           <div className="api-error-header">
-            <strong>
-              {'AI処理に失敗しました'}
-            </strong>
+            <strong>{'AI処理に失敗しました'}</strong>
             <button
               type="button"
               aria-label="エラー通知を閉じる"
@@ -819,9 +889,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
           {apiError.returncode !== undefined && (
             <p>{`終了コード: ${apiError.returncode}`}</p>
           )}
-          {apiError.job_dir && (
-            <p>{`詳細ログ: ${apiError.job_dir}`}</p>
-          )}
+          {apiError.job_dir && <p>{`詳細ログ: ${apiError.job_dir}`}</p>}
         </div>
       )}
       <AnalysisSteps
@@ -829,39 +897,55 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
         currentStep={step}
         onBack={handleStepBack}
       />
-      {step > 0 && <p className="analysis-range-message">{getAnalysisRangeMessage()}</p>}
-      {step === 0 && <>
-      <AnalysisRangeSelector
-        idPrefix="auto"
-        mode={analysisRangeMode}
-        onModeChange={setAnalysisRangeMode}
-        frameRate={frameRate}
-        videoDuration={videoDuration}
-        currentFrame={currentFrame}
-        selectionStartFrame={selectionStartFrame}
-        selectionFrameWidth={selectionFrameWidth}
-        startFrame={manualAnalysisStartFrame}
-        endFrame={manualAnalysisEndFrame}
-        onRangeChange={(startFrame, endFrame) => {
-          setManualAnalysisStartFrame(startFrame)
-          setManualAnalysisEndFrame(endFrame)
-        }}
-      />
-      <button className="primary-action analysis-next" type="button" onClick={() => {
-        const range = getAnalysisFrameRange()
-        if (analysisRangeMode === 'partial' && !range) {
-          setApiError({ message: '分析区間を指定してください。' })
-          return
-        }
-        if (range && range.endFrame - range.startFrame + 1 < MIN_MOVEMENT_ANALYSIS_FRAMES) {
-          setApiError({ message: `動作範囲検出には${MIN_MOVEMENT_ANALYSIS_FRAMES}フレーム以上の分析区間が必要です。` })
-          return
-        }
-        setApiError(null)
-        setConfirmedAnalysisRange(range)
-        setStep(1)
-      }}>分析区間を確定して次へ</button>
-      </>}
+      {step > 0 && (
+        <p className="analysis-range-message">{getAnalysisRangeMessage()}</p>
+      )}
+      {step === 0 && (
+        <>
+          <AnalysisRangeSelector
+            idPrefix="auto"
+            mode={analysisRangeMode}
+            onModeChange={setAnalysisRangeMode}
+            frameRate={frameRate}
+            videoDuration={videoDuration}
+            currentFrame={currentFrame}
+            selectionStartFrame={selectionStartFrame}
+            selectionFrameWidth={selectionFrameWidth}
+            startFrame={manualAnalysisStartFrame}
+            endFrame={manualAnalysisEndFrame}
+            onRangeChange={(startFrame, endFrame) => {
+              setManualAnalysisStartFrame(startFrame)
+              setManualAnalysisEndFrame(endFrame)
+            }}
+          />
+          <button
+            className="primary-action analysis-next"
+            type="button"
+            onClick={() => {
+              const range = getAnalysisFrameRange()
+              if (analysisRangeMode === 'partial' && !range) {
+                setApiError({ message: '分析区間を指定してください。' })
+                return
+              }
+              if (
+                range &&
+                range.endFrame - range.startFrame + 1 <
+                  MIN_MOVEMENT_ANALYSIS_FRAMES
+              ) {
+                setApiError({
+                  message: `動作範囲検出には${MIN_MOVEMENT_ANALYSIS_FRAMES}フレーム以上の分析区間が必要です。`
+                })
+                return
+              }
+              setApiError(null)
+              setConfirmedAnalysisRange(range)
+              setStep(1)
+            }}
+          >
+            分析区間を確定して次へ
+          </button>
+        </>
+      )}
       {/* isHumanCountSingleがnullならhuman-count-selectorを表示 */}
       {step === 1 && (
         <div className="human-count-selector">
@@ -886,141 +970,140 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
       )}
       {step === 2 && (
         <>
-        <div className="auto-annotation-param-editor">
-          {isHumanCountSingle === false && (
-            <div className="human-selector">
-              <p>人物選択</p>
-              <div className="human-img-container">
-                {humanImageUrls.map((url, index) => (
-                  <div
-                    key={humanIds[index]}
-                    className={`human-img ${humanIds[index] === autoAnnotationLayer[selectedLayerIndex]?.humanId ? 'selected' : ''}`}
-                  >
+          <div className="auto-annotation-param-editor">
+            {isHumanCountSingle === false && (
+              <div className="human-selector">
+                <p>人物選択</p>
+                <div className="human-img-container">
+                  {humanImageUrls.map((url, index) => (
                     <div
-                      className="icon"
-                      style={{ backgroundImage: `url(${url})` }}
-                      onClick={() => selectHuman(humanIds[index])}
-                    ></div>
-                    <img src={url} alt="" className="popup" />
-                  </div>
-                ))}
+                      key={humanIds[index]}
+                      className={`human-img ${humanIds[index] === autoAnnotationLayer[selectedLayerIndex]?.humanId ? 'selected' : ''}`}
+                    >
+                      <div
+                        className="icon"
+                        style={{ backgroundImage: `url(${url})` }}
+                        onClick={() => selectHuman(humanIds[index])}
+                      ></div>
+                      <img src={url} alt="" className="popup" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="bone-img-container">
+              <div className="bone-img">
+                <img src="./bone.png" alt="bone" />
+                {selectableKeyPoints.map(
+                  (keyPoint, index) =>
+                    autoAnnotationLayer[selectedLayerIndex] && (
+                      <div
+                        key={index}
+                        onClick={() => selectKeyPoint(keyPoint.number)}
+                        onMouseEnter={() =>
+                          setHoveredKeyPointName(keyPoint.name)
+                        }
+                        onMouseLeave={() => setHoveredKeyPointName(null)}
+                        className={`key-point ${autoAnnotationLayer[selectedLayerIndex].points.includes(keyPoint.number) ? 'selected' : ''}`}
+                        style={{
+                          left: `${keyPoint.x}rem`,
+                          top: `${keyPoint.y}rem`
+                        }}
+                      ></div>
+                    )
+                )}
+                <p>{hoveredKeyPointName}</p>
               </div>
             </div>
-          )}
-          <div className="bone-img-container">
-            <div className="bone-img">
-              <img src="./bone.png" alt="bone" />
-              {selectableKeyPoints.map(
-                (keyPoint, index) =>
-                  autoAnnotationLayer[selectedLayerIndex] && (
+            <div className="edit-param">
+              <div className="edit-layer-param">
+                <div className="edit-layer-list">
+                  {autoAnnotationLayer.map((layer, index) => (
                     <div
                       key={index}
-                      onClick={() => selectKeyPoint(keyPoint.number)}
-                      onMouseEnter={() => setHoveredKeyPointName(keyPoint.name)}
-                      onMouseLeave={() => setHoveredKeyPointName(null)}
-                      className={`key-point ${autoAnnotationLayer[selectedLayerIndex].points.includes(keyPoint.number) ? 'selected' : ''}`}
-                      style={{
-                        left: `${keyPoint.x}rem`,
-                        top: `${keyPoint.y}rem`
-                      }}
-                    ></div>
-                  )
-              )}
-              <p>{hoveredKeyPointName}</p>
-            </div>
-          </div>
-          <div className="edit-param">
-            <div className="edit-layer-param">
-              <div className="edit-layer-list">
-                {autoAnnotationLayer.map((layer, index) => (
-                  <div
-                    key={index}
-                    className={
-                      'edit-layer-item ' +
-                      (index === selectedLayerIndex ? 'selected' : '')
-                    }
-                    onClick={() => setSelectedLayerIndex(index)}
-                  >
-                    <div className="layer-info">
-                      <strong>{`設定 ${index + 1}`}</strong>
-                      <label className="layer-destination">
-                        <span>挿入先</span>
-                        <select
-                          aria-label={`検出設定${index + 1}の挿入先注釈層`}
-                          value={layer.index}
-                          onChange={(event) => {
-                            selectDestinationLayer(
-                              index,
-                              Number(event.target.value)
-                            )
+                      className={
+                        'edit-layer-item ' +
+                        (index === selectedLayerIndex ? 'selected' : '')
+                      }
+                      onClick={() => setSelectedLayerIndex(index)}
+                    >
+                      <div className="layer-info">
+                        <strong>{`設定 ${index + 1}`}</strong>
+                        <label className="layer-destination">
+                          <span>挿入先</span>
+                          <select
+                            aria-label={`検出設定${index + 1}の挿入先注釈層`}
+                            value={layer.index}
+                            onChange={(event) => {
+                              selectDestinationLayer(
+                                index,
+                                Number(event.target.value)
+                              )
+                            }}
+                          >
+                            {timelineLayerNames.map((layerName, layerIndex) => (
+                              <option
+                                key={`${layerIndex}-${layerName}`}
+                                value={layerIndex}
+                                disabled={autoAnnotationLayer.some(
+                                  (item, itemIndex) =>
+                                    itemIndex !== index &&
+                                    item.index === layerIndex
+                                )}
+                              >
+                                {layerName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <small>{`人物 ${layer.humanId + 1}・関節 ${layer.points.length}個`}</small>
+                      </div>
+                      {autoAnnotationLayer.length > 1 && (
+                        <div
+                          className="delete"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteLayerParam(index)
                           }}
                         >
-                          {timelineLayerNames.map((layerName, layerIndex) => (
-                            <option
-                              key={`${layerIndex}-${layerName}`}
-                              value={layerIndex}
-                              disabled={autoAnnotationLayer.some(
-                                (item, itemIndex) =>
-                                  itemIndex !== index &&
-                                  item.index === layerIndex
-                              )}
-                            >
-                              {layerName}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <small>{`人物 ${layer.humanId + 1}・関節 ${layer.points.length}個`}</small>
+                          ✕
+                        </div>
+                      )}
                     </div>
-                    {autoAnnotationLayer.length > 1 && (
-                      <div
-                        className="delete"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          deleteLayerParam(index)
-                        }}
-                      >
-                        ✕
-                      </div>
-                    )}
+                  ))}
+                  <div className="add-layer-item" onClick={addLayerParam}>
+                    <span>＋</span>
+                    <p>検出設定を追加</p>
                   </div>
-                ))}
-                <div
-                  className="add-layer-item"
-                  onClick={addLayerParam}
-                >
-                  <span>＋</span>
-                  <p>検出設定を追加</p>
-                </div>
-                <div className="new-timeline-layer">
-                  <input
-                    type="text"
-                    value={newLayerName}
-                    placeholder="新しい注釈層名"
-                    onChange={(event) => setNewLayerName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') createTimelineLayer()
-                    }}
-                  />
-                  <button
-                    className="secondary-action"
-                    type="button"
-                    onClick={createTimelineLayer}
-                  >
-                    注釈層を作成して選択
-                  </button>
+                  <div className="new-timeline-layer">
+                    <input
+                      type="text"
+                      value={newLayerName}
+                      placeholder="新しい注釈層名"
+                      onChange={(event) => setNewLayerName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') createTimelineLayer()
+                      }}
+                    />
+                    <button
+                      className="secondary-action"
+                      type="button"
+                      onClick={createTimelineLayer}
+                    >
+                      注釈層を作成して選択
+                    </button>
+                  </div>
                 </div>
               </div>
+              <button
+                className="primary-action"
+                disabled={!isAiReady}
+                onClick={() => autoAnnotation()}
+              >
+                実行
+              </button>
             </div>
-            <button
-              className="primary-action"
-              disabled={!isAiReady}
-              onClick={() => autoAnnotation()}
-            >
-              実行
-            </button>
           </div>
-        </div>
         </>
       )}
     </div>

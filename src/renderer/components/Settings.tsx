@@ -4,6 +4,7 @@ import type { ApiStatus } from '../../main/preload'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
+  ProcessingTask,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
   TimelineAnnotationResult
@@ -32,7 +33,7 @@ interface SettingsTab {
 }
 
 interface SettingsProps {
-  setIsProcessing: (isProcessing: boolean) => void
+  setProcessingTask: (task: ProcessingTask | null) => void
   setVideoSrcs: (srcs: string[]) => void
   videoSrcs: string[]
   setIsEditing: (isEditing: boolean) => void
@@ -60,11 +61,7 @@ interface SettingsProps {
 }
 
 const PanelSizeIcon: React.FC<{ expanded: boolean }> = ({ expanded }) => (
-  <svg
-    viewBox="0 0 24 24"
-    aria-hidden="true"
-    focusable="false"
-  >
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
     {expanded ? (
       <path d="M4 4l6 6m0 0V6m0 4H6m14-6-6 6m0 0V6m0 4h4M4 20l6-6m0 0v4m0-4H6m14 6-6-6m0 0v4m0-4h4" />
     ) : (
@@ -74,7 +71,7 @@ const PanelSizeIcon: React.FC<{ expanded: boolean }> = ({ expanded }) => (
 )
 
 export const Settings: React.FC<SettingsProps> = ({
-  setIsProcessing,
+  setProcessingTask,
   setVideoSrcs,
   videoSrcs,
   setIsEditing,
@@ -100,10 +97,8 @@ export const Settings: React.FC<SettingsProps> = ({
   onRestartApi,
   onAnalysisRangePreviewChange
 }) => {
-  const [selectedTabId, setSelectedTabId] =
-    useState<SettingsTabId>('open-file')
-  const [expandedTabId, setExpandedTabId] =
-    useState<SettingsTabId | null>(null)
+  const [selectedTabId, setSelectedTabId] = useState<SettingsTabId>('open-file')
+  const [expandedTabId, setExpandedTabId] = useState<SettingsTabId | null>(null)
   const tabHeaderRef = useRef<HTMLDivElement>(null)
   const aiAvailable =
     apiStatus?.status === 'ready' && apiStatus.aiAvailable === true
@@ -113,7 +108,7 @@ export const Settings: React.FC<SettingsProps> = ({
     id: 'open-file',
     component: () => (
       <OpenFile
-        setIsProcessing={setIsProcessing}
+        setProcessingTask={setProcessingTask}
         setVideoSrcs={setVideoSrcs}
         setFrameRate={setFrameRate}
         onImportProjectJson={onImportProjectJson}
@@ -125,7 +120,7 @@ export const Settings: React.FC<SettingsProps> = ({
     id: 'auto-annotation',
     component: () => (
       <AutoAnnotation
-        setIsProcessing={setIsProcessing}
+        setProcessingTask={setProcessingTask}
         setIsEditing={setIsEditing}
         setAutoAnnotationResponseData={setAutoAnnotationResponseData}
         apiStatus={apiStatus}
@@ -147,7 +142,7 @@ export const Settings: React.FC<SettingsProps> = ({
     id: 'similarity-completion',
     component: () => (
       <SimilarityCompletion
-        setIsProcessing={setIsProcessing}
+        setProcessingTask={setProcessingTask}
         setSimilarMotionCandidates={setSimilarMotionCandidates}
         apiStatus={apiStatus}
         frameRate={frameRate}
@@ -352,14 +347,10 @@ export const Settings: React.FC<SettingsProps> = ({
                       : `${tab.label}のパネルを拡大する`
                   }
                   title={
-                    expandedTabId === tab.id
-                      ? '元の表示に戻す'
-                      : 'パネルを拡大'
+                    expandedTabId === tab.id ? '元の表示に戻す' : 'パネルを拡大'
                   }
                   onClick={() =>
-                    setExpandedTabId(
-                      expandedTabId === tab.id ? null : tab.id
-                    )
+                    setExpandedTabId(expandedTabId === tab.id ? null : tab.id)
                   }
                 >
                   <PanelSizeIcon expanded={expandedTabId === tab.id} />
