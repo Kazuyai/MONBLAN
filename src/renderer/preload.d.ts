@@ -4,7 +4,6 @@ import {
   AiSetupOperation,
   AiSetupStatus,
   ApiStatus,
-  ChooseDocumentSavePathResult,
   ElectronHandler,
   SaveTextFileResult
 } from '../main/preload'
@@ -24,12 +23,6 @@ declare global {
       getApiStatus: () => Promise<ApiStatus>
       refreshApiStatus: () => Promise<ApiStatus>
       restartApi: () => Promise<ApiStatus>
-      saveProjectFile: (request: {
-        content: string
-        filePath?: string
-        defaultName?: string
-        forceDialog?: boolean
-      }) => Promise<SaveTextFileResult>
       exportAnnotationFile: (request: {
         content: string
         format: 'csv' | 'eaf'
@@ -37,7 +30,6 @@ declare global {
         defaultName?: string
         forceDialog?: boolean
       }) => Promise<SaveTextFileResult>
-      chooseDocumentSavePath: () => Promise<ChooseDocumentSavePathResult>
       getAiSetupStatus: () => Promise<AiSetupStatus>
       runAiSetupOperation: (
         operation: AiSetupOperation

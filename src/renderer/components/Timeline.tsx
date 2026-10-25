@@ -52,12 +52,7 @@ interface TimelineProps {
 
 interface TimelineHandle {
   exportCSV: () => Promise<void>
-  exportEAF: () => Promise<void>
   saveEAF: (filePath?: string, forceDialog?: boolean) => Promise<string | null>
-  saveProjectJson: (
-    filePath?: string,
-    forceDialog?: boolean
-  ) => Promise<string | null>
   importProjectJson: (project: AnnotationProject) => void
   addLayer: (name: string) => number
 }
@@ -122,7 +117,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       eafTierIds: [null, null, null]
     })
     const [eafSource, setEafSource] = useState<EafSourceDocument | null>(null)
-    const projectCreatedAtRef = useRef<string | null>(null)
     const stateRef = useRef(state)
     const [movementDetectionCandidates, setMovementDetectionCandidates] =
       useState<MovementDetectionCandidate[]>([])
@@ -1362,10 +1356,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }
     }
 
-    const exportEAF = async () => {
-      await saveEAF(undefined, true)
-    }
-
     const readStoredVideoMetadata = () => {
       const parseStringArray = (value: string | null): string[] => {
         if (!value) return []
@@ -1401,50 +1391,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }))
     }
 
-    const saveProjectJson = async (filePath?: string, forceDialog = false) => {
-      const now = new Date().toISOString()
-      const createdAt = projectCreatedAtRef.current ?? now
-      projectCreatedAtRef.current = createdAt
-      const project: AnnotationProject = {
-        version: 1,
-        createdAt,
-        updatedAt: now,
-        videos: readStoredVideoMetadata(),
-        frameRate,
-        videoDuration,
-        layerNames,
-        eafTierIds: state.eafTierIds,
-        eafSource: eafSource ?? undefined,
-        annotations
-      }
-      const jsonContent = JSON.stringify(project, null, 2)
-      try {
-        if (typeof window.electronAPI?.saveProjectFile !== 'function') {
-          throw new Error(
-            '保存機能の更新を反映するため、MONBLANを再起動してください。'
-          )
-        }
-        const result = await window.electronAPI.saveProjectFile({
-          content: jsonContent,
-          filePath,
-          forceDialog,
-          defaultName: eafSource?.fileName.replace(/\.eaf$/i, '.json')
-        })
-        if (result.canceled || !result.filePath) return null
-        showTimelineNotice('プロジェクトを保存しました。', 'success')
-        return result.filePath
-      } catch (error) {
-        console.error('Project save failed:', error)
-        showTimelineNotice(
-          error instanceof Error
-            ? error.message
-            : 'プロジェクトの保存に失敗しました。',
-          'error'
-        )
-        return null
-      }
-    }
-
     const importProjectJson = (project: AnnotationProject) => {
       const importedLayerNames =
         project.layerNames.length > 0 ? project.layerNames : ['レイヤー1']
@@ -1474,7 +1420,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       stateRef.current = importedState
       setState(importedState)
       setEafSource(project.eafSource ?? null)
-      projectCreatedAtRef.current = project.createdAt ?? project.updatedAt
       setUndoStack([])
       setRedoStack([])
       setFocusedAnnotationId(null)
@@ -1592,12 +1537,10 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }
     }, [])
 
-    // useImperativeHandleを使用してexportCSVとexportEAFを公開
+    // 親コンポーネントから保存・読み込み操作を実行できるようにする
     useImperativeHandle(ref, () => ({
       exportCSV,
-      exportEAF,
       saveEAF,
-      saveProjectJson,
       importProjectJson,
       addLayer: addLayerWithName
     }))

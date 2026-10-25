@@ -37,7 +37,7 @@ or together with related work.
 | #34   | code-quality | Fixed: unused setTimelineContainerRef is removed.                   |
 | #31   | code-quality | Fixed: stale commented-out UI and playback code is removed.         |
 | #30   | code-quality | Fixed: debug console.log calls are removed or converted to logging. |
-| #23   | feature      | Fixed: project JSON save/load is available for editing sessions.    |
+| #23   | feature      | Superseded: EAF is the primary save format; legacy JSON remains import-only. |
 | #22   | UX           | Fixed: fallback fps is explicit and manually adjustable.            |
 | #21   | UX           | Fixed: guidance is shown before loading a video.                    |
 | #20   | UX           | Fixed: blocking alerts are replaced by inline/floating notices.     |

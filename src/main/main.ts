@@ -51,55 +51,12 @@ interface SaveTextFileResult {
   filePath: string | null
 }
 
-interface ChooseDocumentSavePathResult extends SaveTextFileResult {
-  format: 'project' | 'eaf' | null
-}
-
 const showSaveDialog = async (
   options: Electron.SaveDialogOptions
 ): Promise<Electron.SaveDialogReturnValue> =>
   mainWindow
     ? dialog.showSaveDialog(mainWindow, options)
     : dialog.showSaveDialog(options)
-
-ipcMain.handle(
-  'project:save',
-  async (
-    _event,
-    request: {
-      content: string
-      filePath?: string
-      defaultName?: string
-      forceDialog?: boolean
-    }
-  ): Promise<SaveTextFileResult> => {
-    if (typeof request?.content !== 'string') {
-      throw new Error('保存するプロジェクトデータが不正です。')
-    }
-
-    let targetPath = request.forceDialog ? undefined : request.filePath
-    if (targetPath && path.extname(targetPath).toLowerCase() !== '.json') {
-      throw new Error(
-        'プロジェクトの保存先はJSONファイルである必要があります。'
-      )
-    }
-    if (!targetPath) {
-      const result = await showSaveDialog({
-        title: 'MONBLANプロジェクトを保存',
-        defaultPath:
-          request.filePath || request.defaultName || 'annotation-project.json',
-        filters: [{ name: 'MONBLAN project', extensions: ['json'] }]
-      })
-      if (result.canceled || !result.filePath) {
-        return { canceled: true, filePath: null }
-      }
-      targetPath = result.filePath
-    }
-
-    await fs.writeFile(targetPath, request.content, 'utf8')
-    return { canceled: false, filePath: targetPath }
-  }
-)
 
 ipcMain.handle(
   'annotation:export',
@@ -151,32 +108,6 @@ ipcMain.handle(
 
     await fs.writeFile(targetPath, request.content, 'utf8')
     return { canceled: false, filePath: targetPath }
-  }
-)
-
-ipcMain.handle(
-  'document:choose-save-path',
-  async (): Promise<ChooseDocumentSavePathResult> => {
-    const result = await showSaveDialog({
-      title: '名前を付けて保存',
-      defaultPath: 'annotation-project.json',
-      filters: [
-        { name: 'MONBLAN project', extensions: ['json'] },
-        { name: 'ELAN annotation', extensions: ['eaf'] }
-      ]
-    })
-    if (result.canceled || !result.filePath) {
-      return { canceled: true, filePath: null, format: null }
-    }
-
-    const extension = path.extname(result.filePath).toLowerCase()
-    if (extension === '.eaf') {
-      return { canceled: false, filePath: result.filePath, format: 'eaf' }
-    }
-
-    const filePath =
-      extension === '.json' ? result.filePath : `${result.filePath}.json`
-    return { canceled: false, filePath, format: 'project' }
   }
 )
 

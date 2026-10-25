@@ -4,7 +4,6 @@ import type { ApiStatus } from '../../main/preload'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
-  OpenedDocumentSource,
   ProcessingTask,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
@@ -39,14 +38,14 @@ interface SettingsProps {
   videoSrcs: string[]
   setIsEditing: (isEditing: boolean) => void
   setFrameRate: (frameRate: number) => void
+  onOpenVideos: () => void
   playSpeed: number
   setPlaySpeed: (playSpeed: number) => void
   onExportCSV: () => void
-  onExportEAF: () => void
-  onSaveProject: () => void
+  onSaveEAF: () => void
   onImportProjectJson: (
     project: AnnotationProject,
-    source?: OpenedDocumentSource
+    sourceEafFilePath?: string
   ) => void
   setAutoAnnotationResponseData: (data: TimelineAnnotationResult[]) => void
   setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void
@@ -80,11 +79,11 @@ export const Settings: React.FC<SettingsProps> = ({
   videoSrcs,
   setIsEditing,
   setFrameRate,
+  onOpenVideos,
   playSpeed,
   setPlaySpeed,
   onExportCSV,
-  onExportEAF,
-  onSaveProject,
+  onSaveEAF,
   onImportProjectJson,
   setAutoAnnotationResponseData,
   setSimilarMotionCandidates,
@@ -116,6 +115,7 @@ export const Settings: React.FC<SettingsProps> = ({
         setVideoSrcs={setVideoSrcs}
         setFrameRate={setFrameRate}
         frameRate={frameRate}
+        onOpenVideos={onOpenVideos}
         onImportProjectJson={onImportProjectJson}
       />
     )
@@ -173,11 +173,7 @@ export const Settings: React.FC<SettingsProps> = ({
     label: 'ファイルをエクスポート',
     id: 'export-file',
     component: () => (
-      <ExportFile
-        onExportCSV={onExportCSV}
-        onExportEAF={onExportEAF}
-        onSaveProject={onSaveProject}
-      />
+      <ExportFile onExportCSV={onExportCSV} onSaveEAF={onSaveEAF} />
     )
   }
   const aiEnvironmentTab: SettingsTab = {

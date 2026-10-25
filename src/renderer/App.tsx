@@ -3,18 +3,15 @@ import type { ApiStatus } from '../main/preload'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
-  OpenedDocumentSource,
   ProcessingTask,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
   TimelineAnnotationResult
 } from './types'
 import { Video, Settings, Timeline, Processing } from './components'
-import { useSnackbar } from './components/SnackbarProvider'
 import './App.scss'
 
 const App = () => {
-  const { showSnackbar } = useSnackbar()
   const [processingTask, setProcessingTask] = useState<ProcessingTask | null>(
     null
   )
@@ -28,8 +25,9 @@ const App = () => {
   const [playSpeed, setPlaySpeed] = useState<number>(1)
   const [isPartiallyPlaying, setIsPartiallyPlaying] = useState<boolean>(false)
   const previousVideoSrcsRef = useRef<string[]>([])
-  const [activeDocument, setActiveDocument] =
-    useState<OpenedDocumentSource | null>(null)
+  const [activeEafFilePath, setActiveEafFilePath] = useState<string | null>(
+    null
+  )
 
   const [selectionStartFrame, setSelectionStartFrame] = useState<number>(0)
   const [selectionFrameWidth, setSelectionFrameWidth] = useState<number>(0)
@@ -52,12 +50,7 @@ const App = () => {
 
   const timelineRef = useRef<{
     exportCSV: () => Promise<void>
-    exportEAF: () => Promise<void>
     saveEAF: (
-      filePath?: string,
-      forceDialog?: boolean
-    ) => Promise<string | null>
-    saveProjectJson: (
       filePath?: string,
       forceDialog?: boolean
     ) => Promise<string | null>
@@ -143,85 +136,23 @@ const App = () => {
     }
   }
 
-  const handleExportEAF = () => {
-    if (timelineRef.current) {
-      void timelineRef.current.exportEAF()
-    }
-  }
-
-  const handleSaveProjectJson = useCallback(async () => {
-    if (!timelineRef.current) return
-    const existingPath =
-      activeDocument?.format === 'project' ? activeDocument.filePath : undefined
-    const savedPath = await timelineRef.current.saveProjectJson(
-      existingPath,
-      !existingPath
-    )
-    if (savedPath) {
-      setActiveDocument({ format: 'project', filePath: savedPath })
-    }
-  }, [activeDocument])
-
   const handleSaveCurrentDocument = useCallback(
     async (saveAs = false) => {
       if (!timelineRef.current) return
-
-      if (activeDocument?.format === 'project') {
-        const savedPath = await timelineRef.current.saveProjectJson(
-          activeDocument.filePath,
-          saveAs
-        )
-        if (savedPath) {
-          setActiveDocument({ format: 'project', filePath: savedPath })
-        }
-        return
-      }
-
-      if (activeDocument?.format === 'eaf') {
-        const savedPath = await timelineRef.current.saveEAF(
-          activeDocument.filePath,
-          saveAs
-        )
-        if (savedPath) {
-          setActiveDocument({ format: 'eaf', filePath: savedPath })
-        }
-        return
-      }
-
-      if (typeof window.electronAPI?.chooseDocumentSavePath !== 'function') {
-        showSnackbar(
-          '保存機能の更新を反映するため、MONBLANを再起動してください。',
-          { type: 'error' }
-        )
-        return
-      }
-
-      try {
-        const selection = await window.electronAPI.chooseDocumentSavePath()
-        if (selection.canceled || !selection.filePath || !selection.format) {
-          return
-        }
-        const savedPath =
-          selection.format === 'eaf'
-            ? await timelineRef.current.saveEAF(selection.filePath)
-            : await timelineRef.current.saveProjectJson(selection.filePath)
-        if (savedPath) {
-          setActiveDocument({
-            format: selection.format,
-            filePath: savedPath
-          })
-        }
-      } catch (error) {
-        console.error('Document save failed:', error)
-        showSnackbar('保存先を選択できませんでした。', { type: 'error' })
+      const savedPath = await timelineRef.current.saveEAF(
+        activeEafFilePath ?? undefined,
+        saveAs
+      )
+      if (savedPath) {
+        setActiveEafFilePath(savedPath)
       }
     },
-    [activeDocument, showSnackbar]
+    [activeEafFilePath]
   )
 
   const handleImportProjectJson = (
     project: AnnotationProject,
-    source?: OpenedDocumentSource
+    sourceEafFilePath?: string
   ) => {
     if (!timelineRef.current) return
 
@@ -236,7 +167,7 @@ const App = () => {
     setAutoAnnotationResponseData([])
     setSimilarMotionCandidates([])
     setSelectedTimelineAnnotation(null)
-    setActiveDocument(source ?? null)
+    setActiveEafFilePath(sourceEafFilePath ?? null)
 
     localStorage.setItem(
       'videoFileNames',
@@ -328,11 +259,11 @@ const App = () => {
           videoSrcs={videoSrcs}
           setIsEditing={setIsEditing}
           setFrameRate={setFrameRate}
+          onOpenVideos={() => setActiveEafFilePath(null)}
           playSpeed={playSpeed}
           setPlaySpeed={setPlaySpeed}
           onExportCSV={handleExportCSV}
-          onExportEAF={handleExportEAF}
-          onSaveProject={handleSaveProjectJson}
+          onSaveEAF={() => void handleSaveCurrentDocument(false)}
           onImportProjectJson={handleImportProjectJson}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
           setSimilarMotionCandidates={setSimilarMotionCandidates}

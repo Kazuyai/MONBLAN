@@ -1,11 +1,14 @@
 import React, { useState } from 'react'
 import type {
   AnnotationProject,
-  OpenedDocumentSource,
   ProcessingTask,
   ProjectVideo
 } from '../../types'
-import { parseEafProject, readEafMediaDescriptors } from '../../utils/eaf'
+import {
+  parseEafProject,
+  readEafFrameRate,
+  readEafMediaDescriptors
+} from '../../utils/eaf'
 import { useSnackbar } from '../SnackbarProvider'
 
 interface SettingsProps {
@@ -13,9 +16,10 @@ interface SettingsProps {
   setVideoSrcs: (srcs: string[]) => void
   setFrameRate: (frameRate: number) => void
   frameRate: number
+  onOpenVideos: () => void
   onImportProjectJson: (
     project: AnnotationProject,
-    source?: OpenedDocumentSource
+    sourceEafFilePath?: string
   ) => void
 }
 
@@ -32,6 +36,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
   setVideoSrcs,
   setFrameRate,
   frameRate,
+  onOpenVideos,
   onImportProjectJson
 }) => {
   const { showSnackbar } = useSnackbar()
@@ -167,10 +172,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
         throw new Error('Unsupported project file format')
       }
 
-      onImportProjectJson(project, {
-        format: 'project',
-        filePath: getElectronFilePath(file) ?? undefined
-      })
+      onImportProjectJson(project)
       setManualFrameRate(String(project.frameRate))
       showSnackbar(
         'プロジェクトを読み込みました。動画が表示されない場合は、動画ファイルを開き直してください。',
@@ -196,10 +198,10 @@ export const OpenFile: React.FC<SettingsProps> = ({
         sourceFilePath: getElectronFilePath(pending.file)
       })
       if (selectedVideos) project.videos = selectedVideos
-      onImportProjectJson(project, {
-        format: 'eaf',
-        filePath: getElectronFilePath(pending.file) ?? undefined
-      })
+      onImportProjectJson(
+        project,
+        getElectronFilePath(pending.file) ?? undefined
+      )
       setManualFrameRate(String(project.frameRate))
       const warnings = project.eafSource?.warnings.join(' ')
       if (warnings) {
@@ -256,6 +258,12 @@ export const OpenFile: React.FC<SettingsProps> = ({
       })
       const pending = { file, xml: await file.text() }
       try {
+        const embeddedFrameRate = readEafFrameRate(pending.xml)
+        if (embeddedFrameRate) {
+          applyFrameRate(embeddedFrameRate)
+          await importEafFile(pending, embeddedFrameRate)
+          return
+        }
         const videos = readEafMediaDescriptors(
           pending.xml,
           getElectronFilePath(file)
@@ -388,6 +396,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
     localStorage.setItem('videoFileNames', JSON.stringify(fileNames))
     localStorage.setItem('videoFilePaths', JSON.stringify(filePaths))
 
+    onOpenVideos()
     setVideoSrcs(urls)
 
     const file = files[0]
@@ -468,7 +477,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
           <div className="file-open-card-text">
             <h2>プロジェクト・EAFを読み込む</h2>
             <p>
-              保存済みのプロジェクトJSON、またはELANのEAFから作業を再開します。
+              ELANのEAF、または旧MONBLANプロジェクトJSONから作業を再開します。
             </p>
           </div>
           <input
@@ -510,7 +519,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
             </span>
             <span className="file-drop-zone-title">
               {selectedProjectFileName ||
-                'プロジェクトJSON / EAFをドラッグ＆ドロップ'}
+                'EAF / 旧プロジェクトJSONをドラッグ＆ドロップ'}
             </span>
             <span className="file-drop-zone-subtitle">
               {selectedProjectFileName

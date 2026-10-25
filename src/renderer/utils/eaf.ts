@@ -22,6 +22,9 @@ interface GenerateEafOptions {
 }
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>'
+const MONBLAN_FRAME_RATE_PROPERTY = 'MONBLAN_FRAME_RATE'
+const MONBLAN_FORMAT_VERSION_PROPERTY = 'MONBLAN_FORMAT_VERSION'
+const MONBLAN_FORMAT_VERSION = '1'
 
 const elementsByLocalName = (root: ParentNode, name: string): Element[] =>
   Array.from(root.querySelectorAll('*')).filter(
@@ -86,6 +89,46 @@ const mediaFileName = (url: string): string => {
   return decodeURIComponent(cleanUrl.split(/[/\\]/).pop() || 'video')
 }
 
+const videoMimeType = (fileName: string): string => {
+  const lowerName = fileName.toLowerCase()
+  if (lowerName.endsWith('.webm')) return 'video/webm'
+  if (lowerName.endsWith('.mov')) return 'video/quicktime'
+  return 'video/mp4'
+}
+
+const updateMediaDescriptor = (descriptor: Element, video: ProjectVideo) => {
+  const normalizedPath = video.path?.replace(/\\/g, '/')
+  descriptor.setAttribute(
+    'MEDIA_URL',
+    normalizedPath ? `file:///${normalizedPath}` : `./${video.name}`
+  )
+  descriptor.setAttribute('RELATIVE_MEDIA_URL', `./${video.name}`)
+  descriptor.setAttribute('MIME_TYPE', videoMimeType(video.name))
+}
+
+const updateMediaDescriptors = (
+  document: XMLDocument,
+  videos: ProjectVideo[]
+) => {
+  if (videos.length === 0) return
+  const header = elementsByLocalName(document, 'HEADER')[0]
+  if (!header) throw new Error('EAFにHEADERがありません。')
+  const descriptors = directChildrenByLocalName(header, 'MEDIA_DESCRIPTOR')
+  videos.forEach((video, index) => {
+    let descriptor = descriptors[index]
+    if (!descriptor) {
+      descriptor = createElement(document, 'MEDIA_DESCRIPTOR')
+      const insertionPoint = Array.from(header.children).find(
+        (element) =>
+          element.localName === 'LINKED_FILE_DESCRIPTOR' ||
+          element.localName === 'PROPERTY'
+      )
+      header.insertBefore(descriptor, insertionPoint ?? null)
+    }
+    updateMediaDescriptor(descriptor, video)
+  })
+}
+
 const parseVideos = (
   document: XMLDocument,
   sourceFilePath?: string | null
@@ -106,6 +149,15 @@ export const readEafMediaDescriptors = (
   sourceFilePath?: string | null
 ): ProjectVideo[] => parseVideos(parseXml(xml), sourceFilePath)
 
+export const readEafFrameRate = (xml: string): number | null => {
+  const document = parseXml(xml)
+  const property = elementsByLocalName(document, 'PROPERTY').find(
+    (element) => element.getAttribute('NAME') === MONBLAN_FRAME_RATE_PROPERTY
+  )
+  const frameRate = Number(property?.textContent)
+  return Number.isFinite(frameRate) && frameRate > 0 ? frameRate : null
+}
+
 export const parseEafProject = (
   xml: string,
   options: ParseEafOptions
@@ -120,9 +172,12 @@ export const parseEafProject = (
   if (timeUnits && timeUnits.toLowerCase() !== 'milliseconds') {
     throw new Error(`TIME_UNITS="${timeUnits}"のEAFには対応していません。`)
   }
-  const warnings = [
-    `EAFにはフレームレートが含まれないため、${options.frameRate}fpsとして読み込みました。`
-  ]
+  const embeddedFrameRate = readEafFrameRate(xml)
+  const warnings = embeddedFrameRate
+    ? []
+    : [
+        `EAFにMONBLANのフレームレート情報がないため、${options.frameRate}fpsとして読み込みました。`
+      ]
   const format = document.documentElement.getAttribute('FORMAT')
   const version = document.documentElement.getAttribute('VERSION')
   if (
@@ -325,6 +380,33 @@ const updateLastUsedAnnotationId = (
   property.textContent = String(lastUsed)
 }
 
+const setHeaderProperty = (
+  document: XMLDocument,
+  name: string,
+  value: string
+) => {
+  const header = elementsByLocalName(document, 'HEADER')[0]
+  if (!header) throw new Error('EAFにHEADERがありません。')
+  let property = directChildrenByLocalName(header, 'PROPERTY').find(
+    (element) => element.getAttribute('NAME') === name
+  )
+  if (!property) {
+    property = createElement(document, 'PROPERTY')
+    property.setAttribute('NAME', name)
+    header.appendChild(property)
+  }
+  property.textContent = value
+}
+
+const updateMonblanProperties = (document: XMLDocument, frameRate: number) => {
+  setHeaderProperty(document, MONBLAN_FRAME_RATE_PROPERTY, String(frameRate))
+  setHeaderProperty(
+    document,
+    MONBLAN_FORMAT_VERSION_PROPERTY,
+    MONBLAN_FORMAT_VERSION
+  )
+}
+
 const serializeDocument = (document: XMLDocument): string =>
   `${XML_DECLARATION}\n${new XMLSerializer().serializeToString(document)}`
 
@@ -355,20 +437,7 @@ const generateNewEaf = (options: GenerateEafOptions): string => {
   header.setAttribute('TIME_UNITS', 'milliseconds')
   options.videos.forEach((video) => {
     const descriptor = createElement(document, 'MEDIA_DESCRIPTOR')
-    const normalizedPath = video.path?.replace(/\\/g, '/')
-    descriptor.setAttribute(
-      'MEDIA_URL',
-      normalizedPath ? `file:///${normalizedPath}` : `./${video.name}`
-    )
-    descriptor.setAttribute('RELATIVE_MEDIA_URL', `./${video.name}`)
-    descriptor.setAttribute(
-      'MIME_TYPE',
-      video.name.toLowerCase().endsWith('.webm')
-        ? 'video/webm'
-        : video.name.toLowerCase().endsWith('.mov')
-          ? 'video/quicktime'
-          : 'video/mp4'
-    )
+    updateMediaDescriptor(descriptor, video)
     header.appendChild(descriptor)
   })
   const urn = createElement(document, 'PROPERTY')
@@ -376,6 +445,7 @@ const generateNewEaf = (options: GenerateEafOptions): string => {
   urn.textContent = `urn:nl-mpi-tools-elan-eaf:${uuidv4()}`
   header.appendChild(urn)
   root.appendChild(header)
+  updateMonblanProperties(document, options.frameRate)
 
   const timeOrder = createElement(document, 'TIME_ORDER')
   root.appendChild(timeOrder)
@@ -622,7 +692,9 @@ const updateSourceEaf = (options: GenerateEafOptions): string => {
   })
 
   root.setAttribute('DATE', new Date().toISOString())
+  updateMediaDescriptors(document, options.videos)
   updateLastUsedAnnotationId(document, usedAnnotationIds)
+  updateMonblanProperties(document, options.frameRate)
   return serializeDocument(document)
 }
 

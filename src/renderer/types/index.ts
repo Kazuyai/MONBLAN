@@ -117,11 +117,6 @@ export interface EafSourceDocument {
   warnings: string[]
 }
 
-export interface OpenedDocumentSource {
-  format: 'project' | 'eaf'
-  filePath?: string
-}
-
 export interface AnnotationProject {
   version: 1
   createdAt?: string
