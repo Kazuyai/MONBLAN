@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import type {
   AnnotationProject,
+  OpenedDocumentSource,
   ProcessingTask,
   ProjectVideo
 } from '../../types'
@@ -14,7 +15,7 @@ interface SettingsProps {
   frameRate: number
   onImportProjectJson: (
     project: AnnotationProject,
-    sourceFilePath?: string
+    source?: OpenedDocumentSource
   ) => void
 }
 
@@ -166,7 +167,10 @@ export const OpenFile: React.FC<SettingsProps> = ({
         throw new Error('Unsupported project file format')
       }
 
-      onImportProjectJson(project, getElectronFilePath(file) ?? undefined)
+      onImportProjectJson(project, {
+        format: 'project',
+        filePath: getElectronFilePath(file) ?? undefined
+      })
       setManualFrameRate(String(project.frameRate))
       showSnackbar(
         'プロジェクトを読み込みました。動画が表示されない場合は、動画ファイルを開き直してください。',
@@ -192,7 +196,10 @@ export const OpenFile: React.FC<SettingsProps> = ({
         sourceFilePath: getElectronFilePath(pending.file)
       })
       if (selectedVideos) project.videos = selectedVideos
-      onImportProjectJson(project)
+      onImportProjectJson(project, {
+        format: 'eaf',
+        filePath: getElectronFilePath(pending.file) ?? undefined
+      })
       setManualFrameRate(String(project.frameRate))
       const warnings = project.eafSource?.warnings.join(' ')
       if (warnings) {

@@ -4,6 +4,7 @@ import type { ApiStatus } from '../../main/preload'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
+  OpenedDocumentSource,
   ProcessingTask,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
@@ -45,7 +46,7 @@ interface SettingsProps {
   onSaveProject: () => void
   onImportProjectJson: (
     project: AnnotationProject,
-    sourceFilePath?: string
+    source?: OpenedDocumentSource
   ) => void
   setAutoAnnotationResponseData: (data: TimelineAnnotationResult[]) => void
   setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void

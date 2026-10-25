@@ -53,6 +53,10 @@ export interface SaveTextFileResult {
   canceled: boolean
   filePath: string | null
 }
+
+export interface ChooseDocumentSavePathResult extends SaveTextFileResult {
+  format: 'project' | 'eaf' | null
+}
 const electronHandler = {
   ipcRenderer: {
     sendMessage(channel: Channels, ...args: unknown[]) {
@@ -100,14 +104,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     content: string
     filePath?: string
     defaultName?: string
+    forceDialog?: boolean
   }): Promise<SaveTextFileResult> =>
     ipcRenderer.invoke('project:save', request),
   exportAnnotationFile: (request: {
     content: string
     format: 'csv' | 'eaf'
+    filePath?: string
     defaultName?: string
+    forceDialog?: boolean
   }): Promise<SaveTextFileResult> =>
     ipcRenderer.invoke('annotation:export', request),
+  chooseDocumentSavePath: (): Promise<ChooseDocumentSavePathResult> =>
+    ipcRenderer.invoke('document:choose-save-path'),
   getAiSetupStatus: (): Promise<AiSetupStatus> =>
     ipcRenderer.invoke('ai-setup:get-status'),
   runAiSetupOperation: (operation: AiSetupOperation): Promise<AiSetupStatus> =>

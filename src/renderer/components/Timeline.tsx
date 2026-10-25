@@ -53,7 +53,11 @@ interface TimelineProps {
 interface TimelineHandle {
   exportCSV: () => Promise<void>
   exportEAF: () => Promise<void>
-  saveProjectJson: (filePath?: string) => Promise<string | null>
+  saveEAF: (filePath?: string, forceDialog?: boolean) => Promise<string | null>
+  saveProjectJson: (
+    filePath?: string,
+    forceDialog?: boolean
+  ) => Promise<string | null>
   importProjectJson: (project: AnnotationProject) => void
   addLayer: (name: string) => number
 }
@@ -1323,7 +1327,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }
     }
 
-    const exportEAF = async () => {
+    const saveEAF = async (filePath?: string, forceDialog = false) => {
       try {
         if (typeof window.electronAPI?.exportAnnotationFile !== 'function') {
           throw new Error(
@@ -1341,18 +1345,25 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         const result = await window.electronAPI.exportAnnotationFile({
           content: eafContent,
           format: 'eaf',
+          filePath,
+          forceDialog,
           defaultName: eafSource?.fileName || 'annotations.eaf'
         })
-        if (!result.canceled) {
-          showTimelineNotice('EAFを書き出しました。', 'success')
-        }
+        if (result.canceled || !result.filePath) return null
+        showTimelineNotice('EAFを保存しました。', 'success')
+        return result.filePath
       } catch (error) {
-        console.error('EAF export failed:', error)
+        console.error('EAF save failed:', error)
         showTimelineNotice(
-          error instanceof Error ? error.message : 'EAFの出力に失敗しました。',
+          error instanceof Error ? error.message : 'EAFの保存に失敗しました。',
           'error'
         )
+        return null
       }
+    }
+
+    const exportEAF = async () => {
+      await saveEAF(undefined, true)
     }
 
     const readStoredVideoMetadata = () => {
@@ -1390,7 +1401,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }))
     }
 
-    const saveProjectJson = async (filePath?: string) => {
+    const saveProjectJson = async (filePath?: string, forceDialog = false) => {
       const now = new Date().toISOString()
       const createdAt = projectCreatedAtRef.current ?? now
       projectCreatedAtRef.current = createdAt
@@ -1416,6 +1427,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         const result = await window.electronAPI.saveProjectFile({
           content: jsonContent,
           filePath,
+          forceDialog,
           defaultName: eafSource?.fileName.replace(/\.eaf$/i, '.json')
         })
         if (result.canceled || !result.filePath) return null
@@ -1584,6 +1596,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     useImperativeHandle(ref, () => ({
       exportCSV,
       exportEAF,
+      saveEAF,
       saveProjectJson,
       importProjectJson,
       addLayer: addLayerWithName

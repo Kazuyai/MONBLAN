@@ -17,7 +17,7 @@ export const ExportFile: React.FC<SettingsProps> = ({
         <div className="export-file-card-text">
           <h2>プロジェクトを保存</h2>
           <p>
-            現在の作業状態をJSON形式で保存します。保存後はCtrl+Sで上書きできます。
+            現在の作業状態をMONBLAN用のJSON形式で保存します。このボタンは、EAFを開いている場合もプロジェクトJSONを保存します。
           </p>
         </div>
         <button className="primary-action" onClick={onSaveProject}>
@@ -34,6 +34,9 @@ export const ExportFile: React.FC<SettingsProps> = ({
           <button onClick={onExportEAF}>EAF出力</button>
         </div>
       </section>
+      <p className="export-file-shortcut-note">
+        Ctrl+Sで現在開いている形式へ上書きし、Ctrl+Shift+Sで名前を付けて保存します。
+      </p>
     </div>
   )
 }

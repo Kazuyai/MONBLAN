@@ -51,6 +51,10 @@ interface SaveTextFileResult {
   filePath: string | null
 }
 
+interface ChooseDocumentSavePathResult extends SaveTextFileResult {
+  format: 'project' | 'eaf' | null
+}
+
 const showSaveDialog = async (
   options: Electron.SaveDialogOptions
 ): Promise<Electron.SaveDialogReturnValue> =>
@@ -62,13 +66,18 @@ ipcMain.handle(
   'project:save',
   async (
     _event,
-    request: { content: string; filePath?: string; defaultName?: string }
+    request: {
+      content: string
+      filePath?: string
+      defaultName?: string
+      forceDialog?: boolean
+    }
   ): Promise<SaveTextFileResult> => {
     if (typeof request?.content !== 'string') {
       throw new Error('保存するプロジェクトデータが不正です。')
     }
 
-    let targetPath = request.filePath
+    let targetPath = request.forceDialog ? undefined : request.filePath
     if (targetPath && path.extname(targetPath).toLowerCase() !== '.json') {
       throw new Error(
         'プロジェクトの保存先はJSONファイルである必要があります。'
@@ -77,7 +86,8 @@ ipcMain.handle(
     if (!targetPath) {
       const result = await showSaveDialog({
         title: 'MONBLANプロジェクトを保存',
-        defaultPath: request.defaultName || 'annotation-project.json',
+        defaultPath:
+          request.filePath || request.defaultName || 'annotation-project.json',
         filters: [{ name: 'MONBLAN project', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
@@ -98,7 +108,9 @@ ipcMain.handle(
     request: {
       content: string
       format: 'csv' | 'eaf'
+      filePath?: string
       defaultName?: string
+      forceDialog?: boolean
     }
   ): Promise<SaveTextFileResult> => {
     if (
@@ -108,23 +120,63 @@ ipcMain.handle(
       throw new Error('書き出す注釈データが不正です。')
     }
 
+    const expectedExtension = `.${request.format}`
+    let targetPath = request.forceDialog ? undefined : request.filePath
+    if (
+      targetPath &&
+      path.extname(targetPath).toLowerCase() !== expectedExtension
+    ) {
+      throw new Error(
+        `保存先は${expectedExtension}ファイルである必要があります。`
+      )
+    }
+    if (!targetPath) {
+      const result = await showSaveDialog({
+        title: request.format === 'eaf' ? 'EAFを保存' : 'CSVを書き出す',
+        defaultPath:
+          request.filePath ||
+          request.defaultName ||
+          (request.format === 'eaf' ? 'annotations.eaf' : 'annotations.csv'),
+        filters: [
+          request.format === 'eaf'
+            ? { name: 'ELAN annotation', extensions: ['eaf'] }
+            : { name: 'CSV', extensions: ['csv'] }
+        ]
+      })
+      if (result.canceled || !result.filePath) {
+        return { canceled: true, filePath: null }
+      }
+      targetPath = result.filePath
+    }
+
+    await fs.writeFile(targetPath, request.content, 'utf8')
+    return { canceled: false, filePath: targetPath }
+  }
+)
+
+ipcMain.handle(
+  'document:choose-save-path',
+  async (): Promise<ChooseDocumentSavePathResult> => {
     const result = await showSaveDialog({
-      title: request.format === 'eaf' ? 'EAFを書き出す' : 'CSVを書き出す',
-      defaultPath:
-        request.defaultName ||
-        (request.format === 'eaf' ? 'annotations.eaf' : 'annotations.csv'),
+      title: '名前を付けて保存',
+      defaultPath: 'annotation-project.json',
       filters: [
-        request.format === 'eaf'
-          ? { name: 'ELAN annotation', extensions: ['eaf'] }
-          : { name: 'CSV', extensions: ['csv'] }
+        { name: 'MONBLAN project', extensions: ['json'] },
+        { name: 'ELAN annotation', extensions: ['eaf'] }
       ]
     })
     if (result.canceled || !result.filePath) {
-      return { canceled: true, filePath: null }
+      return { canceled: true, filePath: null, format: null }
     }
 
-    await fs.writeFile(result.filePath, request.content, 'utf8')
-    return { canceled: false, filePath: result.filePath }
+    const extension = path.extname(result.filePath).toLowerCase()
+    if (extension === '.eaf') {
+      return { canceled: false, filePath: result.filePath, format: 'eaf' }
+    }
+
+    const filePath =
+      extension === '.json' ? result.filePath : `${result.filePath}.json`
+    return { canceled: false, filePath, format: 'project' }
   }
 )
 

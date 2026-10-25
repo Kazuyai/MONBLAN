@@ -59,7 +59,8 @@ public化や配布前の確認項目は `docs/public-release-checklist.md` を�
 - 再生速度調整
 - CSVエクスポート
 - ELAN EAFの読み込み・編集・再出力
-- プロジェクトJSONの保存・再読込（`Ctrl+S`で上書き保存）
+- プロジェクトJSONの保存・再読込
+- `Ctrl+S`による現在のJSON/EAFへの上書き保存、`Ctrl+Shift+S`による別名保存
 - AIによる人物候補画像の抽出
 - AIによる動作区間検出
 
