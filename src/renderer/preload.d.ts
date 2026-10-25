@@ -4,7 +4,8 @@ import {
   AiSetupOperation,
   AiSetupStatus,
   ApiStatus,
-  ElectronHandler
+  ElectronHandler,
+  SaveTextFileResult
 } from '../main/preload'
 
 declare global {
@@ -22,6 +23,16 @@ declare global {
       getApiStatus: () => Promise<ApiStatus>
       refreshApiStatus: () => Promise<ApiStatus>
       restartApi: () => Promise<ApiStatus>
+      saveProjectFile: (request: {
+        content: string
+        filePath?: string
+        defaultName?: string
+      }) => Promise<SaveTextFileResult>
+      exportAnnotationFile: (request: {
+        content: string
+        format: 'csv' | 'eaf'
+        defaultName?: string
+      }) => Promise<SaveTextFileResult>
       getAiSetupStatus: () => Promise<AiSetupStatus>
       runAiSetupOperation: (
         operation: AiSetupOperation

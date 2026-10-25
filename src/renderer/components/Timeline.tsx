@@ -51,9 +51,9 @@ interface TimelineProps {
 }
 
 interface TimelineHandle {
-  exportCSV: () => void
-  exportEAF: () => void
-  exportProjectJson: () => void
+  exportCSV: () => Promise<void>
+  exportEAF: () => Promise<void>
+  saveProjectJson: (filePath?: string) => Promise<string | null>
   importProjectJson: (project: AnnotationProject) => void
   addLayer: (name: string) => number
 }
@@ -118,6 +118,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       eafTierIds: [null, null, null]
     })
     const [eafSource, setEafSource] = useState<EafSourceDocument | null>(null)
+    const projectCreatedAtRef = useRef<string | null>(null)
     const stateRef = useRef(state)
     const [movementDetectionCandidates, setMovementDetectionCandidates] =
       useState<MovementDetectionCandidate[]>([])
@@ -1272,22 +1273,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       return values.map(escapeCsvCell).join(',')
     }
 
-    const downloadBlob = (blob: Blob, fileName: string) => {
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', fileName)
-      try {
-        document.body.appendChild(link)
-        link.click()
-      } finally {
-        link.remove()
-        window.setTimeout(() => URL.revokeObjectURL(url), 0)
-      }
-    }
-
     // 注釈付けしたものをCSVで出力する関数
-    const exportCSV = () => {
+    const exportCSV = async () => {
       const headers = [
         '注釈層名',
         '開始フレーム',
@@ -1311,13 +1298,38 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       })
       const csvContent = `\uFEFF${[createCsvRow(headers), ...rows].join('\n')}\n`
 
-      // CSVファイルの作成とダウンロード
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      downloadBlob(blob, 'annotations.csv')
+      try {
+        if (typeof window.electronAPI?.exportAnnotationFile !== 'function') {
+          throw new Error(
+            '保存機能の更新を反映するため、MONBLANを再起動してください。'
+          )
+        }
+        const result = await window.electronAPI.exportAnnotationFile({
+          content: csvContent,
+          format: 'csv',
+          defaultName: 'annotations.csv'
+        })
+        if (!result.canceled) {
+          showTimelineNotice('CSVを書き出しました。', 'success')
+        }
+      } catch (error) {
+        console.error('CSV export failed:', error)
+        showTimelineNotice(
+          error instanceof Error
+            ? error.message
+            : 'CSVの書き出しに失敗しました。',
+          'error'
+        )
+      }
     }
 
-    const exportEAF = () => {
+    const exportEAF = async () => {
       try {
+        if (typeof window.electronAPI?.exportAnnotationFile !== 'function') {
+          throw new Error(
+            '保存機能の更新を反映するため、MONBLANを再起動してください。'
+          )
+        }
         const eafContent = generateEafContent({
           annotations,
           layerNames,
@@ -1326,10 +1338,14 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
           frameRate,
           videos: readStoredVideoMetadata()
         })
-        const blob = new Blob([eafContent], {
-          type: 'application/xml;charset=utf-8;'
+        const result = await window.electronAPI.exportAnnotationFile({
+          content: eafContent,
+          format: 'eaf',
+          defaultName: eafSource?.fileName || 'annotations.eaf'
         })
-        downloadBlob(blob, eafSource?.fileName || 'annotations.eaf')
+        if (!result.canceled) {
+          showTimelineNotice('EAFを書き出しました。', 'success')
+        }
       } catch (error) {
         console.error('EAF export failed:', error)
         showTimelineNotice(
@@ -1374,11 +1390,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       }))
     }
 
-    const exportProjectJson = () => {
+    const saveProjectJson = async (filePath?: string) => {
       const now = new Date().toISOString()
+      const createdAt = projectCreatedAtRef.current ?? now
+      projectCreatedAtRef.current = createdAt
       const project: AnnotationProject = {
         version: 1,
-        createdAt: now,
+        createdAt,
         updatedAt: now,
         videos: readStoredVideoMetadata(),
         frameRate,
@@ -1389,10 +1407,30 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         annotations
       }
       const jsonContent = JSON.stringify(project, null, 2)
-      const blob = new Blob([jsonContent], {
-        type: 'application/json;charset=utf-8;'
-      })
-      downloadBlob(blob, 'annotation-project.json')
+      try {
+        if (typeof window.electronAPI?.saveProjectFile !== 'function') {
+          throw new Error(
+            '保存機能の更新を反映するため、MONBLANを再起動してください。'
+          )
+        }
+        const result = await window.electronAPI.saveProjectFile({
+          content: jsonContent,
+          filePath,
+          defaultName: eafSource?.fileName.replace(/\.eaf$/i, '.json')
+        })
+        if (result.canceled || !result.filePath) return null
+        showTimelineNotice('プロジェクトを保存しました。', 'success')
+        return result.filePath
+      } catch (error) {
+        console.error('Project save failed:', error)
+        showTimelineNotice(
+          error instanceof Error
+            ? error.message
+            : 'プロジェクトの保存に失敗しました。',
+          'error'
+        )
+        return null
+      }
     }
 
     const importProjectJson = (project: AnnotationProject) => {
@@ -1424,6 +1462,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       stateRef.current = importedState
       setState(importedState)
       setEafSource(project.eafSource ?? null)
+      projectCreatedAtRef.current = project.createdAt ?? project.updatedAt
       setUndoStack([])
       setRedoStack([])
       setFocusedAnnotationId(null)
@@ -1545,7 +1584,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     useImperativeHandle(ref, () => ({
       exportCSV,
       exportEAF,
-      exportProjectJson,
+      saveProjectJson,
       importProjectJson,
       addLayer: addLayerWithName
     }))

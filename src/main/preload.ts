@@ -48,6 +48,11 @@ export interface ApiStatus {
   environment: ApiEnvironmentStatus | null
   error: string | null
 }
+
+export interface SaveTextFileResult {
+  canceled: boolean
+  filePath: string | null
+}
 const electronHandler = {
   ipcRenderer: {
     sendMessage(channel: Channels, ...args: unknown[]) {
@@ -91,6 +96,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   refreshApiStatus: (): Promise<ApiStatus> =>
     ipcRenderer.invoke('api:refresh-status'),
   restartApi: (): Promise<ApiStatus> => ipcRenderer.invoke('api:restart'),
+  saveProjectFile: (request: {
+    content: string
+    filePath?: string
+    defaultName?: string
+  }): Promise<SaveTextFileResult> =>
+    ipcRenderer.invoke('project:save', request),
+  exportAnnotationFile: (request: {
+    content: string
+    format: 'csv' | 'eaf'
+    defaultName?: string
+  }): Promise<SaveTextFileResult> =>
+    ipcRenderer.invoke('annotation:export', request),
   getAiSetupStatus: (): Promise<AiSetupStatus> =>
     ipcRenderer.invoke('ai-setup:get-status'),
   runAiSetupOperation: (operation: AiSetupOperation): Promise<AiSetupStatus> =>

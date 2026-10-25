@@ -42,8 +42,11 @@ interface SettingsProps {
   setPlaySpeed: (playSpeed: number) => void
   onExportCSV: () => void
   onExportEAF: () => void
-  onExportProjectJson: () => void
-  onImportProjectJson: (project: AnnotationProject) => void
+  onSaveProject: () => void
+  onImportProjectJson: (
+    project: AnnotationProject,
+    sourceFilePath?: string
+  ) => void
   setAutoAnnotationResponseData: (data: TimelineAnnotationResult[]) => void
   setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void
   apiStatus: ApiStatus | null
@@ -80,7 +83,7 @@ export const Settings: React.FC<SettingsProps> = ({
   setPlaySpeed,
   onExportCSV,
   onExportEAF,
-  onExportProjectJson,
+  onSaveProject,
   onImportProjectJson,
   setAutoAnnotationResponseData,
   setSimilarMotionCandidates,
@@ -172,7 +175,7 @@ export const Settings: React.FC<SettingsProps> = ({
       <ExportFile
         onExportCSV={onExportCSV}
         onExportEAF={onExportEAF}
-        onExportProjectJson={onExportProjectJson}
+        onSaveProject={onSaveProject}
       />
     )
   }

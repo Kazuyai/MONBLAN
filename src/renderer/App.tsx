@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ApiStatus } from '../main/preload'
 import type {
   AnalysisFrameRange,
@@ -25,6 +25,7 @@ const App = () => {
   const [playSpeed, setPlaySpeed] = useState<number>(1)
   const [isPartiallyPlaying, setIsPartiallyPlaying] = useState<boolean>(false)
   const previousVideoSrcsRef = useRef<string[]>([])
+  const [projectFilePath, setProjectFilePath] = useState<string | null>(null)
 
   const [selectionStartFrame, setSelectionStartFrame] = useState<number>(0)
   const [selectionFrameWidth, setSelectionFrameWidth] = useState<number>(0)
@@ -46,9 +47,9 @@ const App = () => {
   ])
 
   const timelineRef = useRef<{
-    exportCSV: () => void
-    exportEAF: () => void
-    exportProjectJson: () => void
+    exportCSV: () => Promise<void>
+    exportEAF: () => Promise<void>
+    saveProjectJson: (filePath?: string) => Promise<string | null>
     importProjectJson: (project: AnnotationProject) => void
     addLayer: (name: string) => number
   }>(null)
@@ -127,23 +128,28 @@ const App = () => {
 
   const handleExportCSV = () => {
     if (timelineRef.current) {
-      timelineRef.current.exportCSV()
+      void timelineRef.current.exportCSV()
     }
   }
 
   const handleExportEAF = () => {
     if (timelineRef.current) {
-      timelineRef.current.exportEAF()
+      void timelineRef.current.exportEAF()
     }
   }
 
-  const handleExportProjectJson = () => {
-    if (timelineRef.current) {
-      timelineRef.current.exportProjectJson()
-    }
-  }
+  const handleSaveProjectJson = useCallback(async () => {
+    if (!timelineRef.current) return
+    const savedPath = await timelineRef.current.saveProjectJson(
+      projectFilePath ?? undefined
+    )
+    if (savedPath) setProjectFilePath(savedPath)
+  }, [projectFilePath])
 
-  const handleImportProjectJson = (project: AnnotationProject) => {
+  const handleImportProjectJson = (
+    project: AnnotationProject,
+    sourceFilePath?: string
+  ) => {
     if (!timelineRef.current) return
 
     setFrameRate(project.frameRate)
@@ -157,6 +163,7 @@ const App = () => {
     setAutoAnnotationResponseData([])
     setSimilarMotionCandidates([])
     setSelectedTimelineAnnotation(null)
+    setProjectFilePath(sourceFilePath ?? null)
 
     localStorage.setItem(
       'videoFileNames',
@@ -175,6 +182,25 @@ const App = () => {
 
     timelineRef.current.importProjectJson(project)
   }
+
+  useEffect(() => {
+    const handleSaveShortcut = (event: KeyboardEvent) => {
+      if (
+        !(event.ctrlKey || event.metaKey) ||
+        event.key.toLowerCase() !== 's'
+      ) {
+        return
+      }
+      event.preventDefault()
+      if (event.repeat) return
+      const activeElement = document.activeElement
+      if (activeElement instanceof HTMLElement) activeElement.blur()
+      window.setTimeout(() => void handleSaveProjectJson(), 0)
+    }
+
+    document.addEventListener('keydown', handleSaveShortcut)
+    return () => document.removeEventListener('keydown', handleSaveShortcut)
+  }, [handleSaveProjectJson])
 
   const handleCreateTimelineLayer = (name: string) => {
     return timelineRef.current?.addLayer(name) ?? null
@@ -232,7 +258,7 @@ const App = () => {
           setPlaySpeed={setPlaySpeed}
           onExportCSV={handleExportCSV}
           onExportEAF={handleExportEAF}
-          onExportProjectJson={handleExportProjectJson}
+          onSaveProject={handleSaveProjectJson}
           onImportProjectJson={handleImportProjectJson}
           setAutoAnnotationResponseData={setAutoAnnotationResponseData}
           setSimilarMotionCandidates={setSimilarMotionCandidates}

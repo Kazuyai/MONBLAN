@@ -1,4 +1,5 @@
 import path from 'path'
+import fs from 'fs/promises'
 import { app, dialog, BrowserWindow, shell, ipcMain } from 'electron'
 import log from 'electron-log'
 import {
@@ -44,6 +45,88 @@ const getAssetPath = (...paths: string[]): string => {
 const getWindowIconPath = (): string => {
   return getAssetPath(process.platform === 'win32' ? 'icon.ico' : 'icon.png')
 }
+
+interface SaveTextFileResult {
+  canceled: boolean
+  filePath: string | null
+}
+
+const showSaveDialog = async (
+  options: Electron.SaveDialogOptions
+): Promise<Electron.SaveDialogReturnValue> =>
+  mainWindow
+    ? dialog.showSaveDialog(mainWindow, options)
+    : dialog.showSaveDialog(options)
+
+ipcMain.handle(
+  'project:save',
+  async (
+    _event,
+    request: { content: string; filePath?: string; defaultName?: string }
+  ): Promise<SaveTextFileResult> => {
+    if (typeof request?.content !== 'string') {
+      throw new Error('保存するプロジェクトデータが不正です。')
+    }
+
+    let targetPath = request.filePath
+    if (targetPath && path.extname(targetPath).toLowerCase() !== '.json') {
+      throw new Error(
+        'プロジェクトの保存先はJSONファイルである必要があります。'
+      )
+    }
+    if (!targetPath) {
+      const result = await showSaveDialog({
+        title: 'MONBLANプロジェクトを保存',
+        defaultPath: request.defaultName || 'annotation-project.json',
+        filters: [{ name: 'MONBLAN project', extensions: ['json'] }]
+      })
+      if (result.canceled || !result.filePath) {
+        return { canceled: true, filePath: null }
+      }
+      targetPath = result.filePath
+    }
+
+    await fs.writeFile(targetPath, request.content, 'utf8')
+    return { canceled: false, filePath: targetPath }
+  }
+)
+
+ipcMain.handle(
+  'annotation:export',
+  async (
+    _event,
+    request: {
+      content: string
+      format: 'csv' | 'eaf'
+      defaultName?: string
+    }
+  ): Promise<SaveTextFileResult> => {
+    if (
+      typeof request?.content !== 'string' ||
+      (request.format !== 'csv' && request.format !== 'eaf')
+    ) {
+      throw new Error('書き出す注釈データが不正です。')
+    }
+
+    const result = await showSaveDialog({
+      title: request.format === 'eaf' ? 'EAFを書き出す' : 'CSVを書き出す',
+      defaultPath:
+        request.defaultName ||
+        (request.format === 'eaf' ? 'annotations.eaf' : 'annotations.csv'),
+      filters: [
+        request.format === 'eaf'
+          ? { name: 'ELAN annotation', extensions: ['eaf'] }
+          : { name: 'CSV', extensions: ['csv'] }
+      ]
+    })
+    if (result.canceled || !result.filePath) {
+      return { canceled: true, filePath: null }
+    }
+
+    await fs.writeFile(result.filePath, request.content, 'utf8')
+    return { canceled: false, filePath: result.filePath }
+  }
+)
 
 ipcMain.handle('api:get-status', async () => getApiStatus())
 ipcMain.handle('api:refresh-status', async () => {
