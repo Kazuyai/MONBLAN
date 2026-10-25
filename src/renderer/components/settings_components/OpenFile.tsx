@@ -1,27 +1,44 @@
 import React, { useState } from 'react'
-import type { AnnotationProject, ProcessingTask } from '../../types'
+import type {
+  AnnotationProject,
+  ProcessingTask,
+  ProjectVideo
+} from '../../types'
+import { parseEafProject, readEafMediaDescriptors } from '../../utils/eaf'
+import { useSnackbar } from '../SnackbarProvider'
 
 interface SettingsProps {
   setProcessingTask: (task: ProcessingTask | null) => void
   setVideoSrcs: (srcs: string[]) => void
   setFrameRate: (frameRate: number) => void
+  frameRate: number
   onImportProjectJson: (project: AnnotationProject) => void
 }
 
 const FALLBACK_FRAME_RATE = 30
 const NO_VIDEO_SELECTED_MESSAGE = '動画ファイルが選択されていません'
 
+interface PendingEaf {
+  file: File
+  xml: string
+}
+
 export const OpenFile: React.FC<SettingsProps> = ({
   setProcessingTask,
   setVideoSrcs,
   setFrameRate,
+  frameRate,
   onImportProjectJson
 }) => {
+  const { showSnackbar } = useSnackbar()
   const [selectedVideoFiles, setSelectedVideoFiles] = useState<File[]>([])
   const [hasSelectedFiles, setHasSelectedFiles] = useState(false)
   const [selectedFileSummary, setSelectedFileSummary] = useState(
     NO_VIDEO_SELECTED_MESSAGE
   )
+  const [selectedProjectFileName, setSelectedProjectFileName] = useState<
+    string | null
+  >(null)
   const [isVideoDragActive, setIsVideoDragActive] = useState(false)
   const [isProjectDragActive, setIsProjectDragActive] = useState(false)
   const [frameRateWarning, setFrameRateWarning] = useState<string | null>(null)
@@ -30,6 +47,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
   const [manualFrameRate, setManualFrameRate] = useState(
     String(FALLBACK_FRAME_RATE)
   )
+  const [pendingEaf, setPendingEaf] = useState<PendingEaf | null>(null)
 
   const getElectronFilePath = (file: File) => {
     const electronFile = file as File & { path?: string }
@@ -64,6 +82,10 @@ export const OpenFile: React.FC<SettingsProps> = ({
     }
 
     setFrameRate(parsedFrameRate)
+    if (pendingEaf) {
+      void importEafFile(pendingEaf, parsedFrameRate)
+      return
+    }
     setFrameRateWarning(
       `フレームレートを ${parsedFrameRate}fps に設定しました。`
     )
@@ -97,6 +119,23 @@ export const OpenFile: React.FC<SettingsProps> = ({
       ) &&
       Array.isArray(layerNames) &&
       layerNames.every((layerName) => typeof layerName === 'string') &&
+      (project.eafTierIds === undefined ||
+        (Array.isArray(project.eafTierIds) &&
+          project.eafTierIds.every(
+            (tierId) => tierId === null || typeof tierId === 'string'
+          ))) &&
+      (project.eafSource === undefined ||
+        (Boolean(project.eafSource) &&
+          typeof project.eafSource.originalXml === 'string' &&
+          typeof project.eafSource.fileName === 'string' &&
+          Array.isArray(project.eafSource.importedAnnotationIds) &&
+          project.eafSource.importedAnnotationIds.every(
+            (id) => typeof id === 'string'
+          ) &&
+          Array.isArray(project.eafSource.warnings) &&
+          project.eafSource.warnings.every(
+            (warning) => typeof warning === 'string'
+          ))) &&
       Array.isArray(annotations) &&
       annotations.every(
         (annotation) =>
@@ -114,6 +153,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
   }
 
   const importProjectJson = async (file: File) => {
+    setPendingEaf(null)
     setFrameRateWarning(null)
     setShowManualFrameRateInput(false)
     try {
@@ -125,14 +165,108 @@ export const OpenFile: React.FC<SettingsProps> = ({
 
       onImportProjectJson(project)
       setManualFrameRate(String(project.frameRate))
-      setFrameRateWarning(
-        'プロジェクトを読み込みました。動画が表示されない場合は、動画ファイルを開き直してください。'
+      showSnackbar(
+        'プロジェクトを読み込みました。動画が表示されない場合は、動画ファイルを開き直してください。',
+        { type: 'success', duration: 6500 }
       )
     } catch (error) {
       console.error('Project import failed:', error)
       setFrameRateWarning('プロジェクトファイルの読み込みに失敗しました。')
       setShowManualFrameRateInput(false)
     }
+  }
+
+  const importEafFile = async (
+    pending: PendingEaf,
+    selectedFrameRate: number,
+    selectedVideos?: ProjectVideo[]
+  ) => {
+    setFrameRateWarning(null)
+    try {
+      const project = parseEafProject(pending.xml, {
+        frameRate: selectedFrameRate,
+        fileName: pending.file.name,
+        sourceFilePath: getElectronFilePath(pending.file)
+      })
+      if (selectedVideos) project.videos = selectedVideos
+      onImportProjectJson(project)
+      setManualFrameRate(String(project.frameRate))
+      const warnings = project.eafSource?.warnings.join(' ')
+      if (warnings) {
+        showSnackbar(warnings, { type: 'warning', duration: 6500 })
+      }
+    } catch (error) {
+      console.error('EAF import failed:', error)
+      setFrameRateWarning(
+        error instanceof Error ? error.message : 'EAFの読み込みに失敗しました。'
+      )
+    } finally {
+      setPendingEaf(null)
+      setShowManualFrameRateInput(false)
+    }
+  }
+
+  const readFrameRateResponse = async (response: Response): Promise<number> => {
+    if (!response.ok) throw new Error('フレームレートを取得できませんでした。')
+    const data = await response.json()
+    const detectedFrameRate = Number(data.frame_rate)
+    if (!Number.isFinite(detectedFrameRate) || detectedFrameRate <= 0) {
+      throw new Error(`Invalid frame rate: ${data.frame_rate}`)
+    }
+    return detectedFrameRate
+  }
+
+  const getFrameRateFromPath = (filePath: string) =>
+    fetch('http://127.0.0.1:8000/get_framerate_from_path/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_path: filePath })
+    })
+
+  const detectFrameRateFromVideos = async (videos: ProjectVideo[]) => {
+    for (const video of videos) {
+      if (!video.path) continue
+      try {
+        return await readFrameRateResponse(
+          await getFrameRateFromPath(video.path)
+        )
+      } catch {
+        continue
+      }
+    }
+    throw new Error('EAFに記録された動画を開けませんでした。')
+  }
+
+  const importProjectFile = async (file: File) => {
+    setSelectedProjectFileName(file.name)
+    if (file.name.toLowerCase().endsWith('.eaf')) {
+      setProcessingTask({
+        title: 'EAFを読み込み中',
+        description: '関連付けられた動画からフレームレートを確認しています。'
+      })
+      const pending = { file, xml: await file.text() }
+      try {
+        const videos = readEafMediaDescriptors(
+          pending.xml,
+          getElectronFilePath(file)
+        )
+        const detectedFrameRate = await detectFrameRateFromVideos(videos)
+        applyFrameRate(detectedFrameRate)
+        await importEafFile(pending, detectedFrameRate)
+      } catch (error) {
+        console.info('EAF media frame rate detection skipped:', error)
+        setPendingEaf(pending)
+        setManualFrameRate(String(frameRate || FALLBACK_FRAME_RATE))
+        setFrameRateWarning(
+          'EAFに記録された動画からfpsを取得できませんでした。fpsを入力するか、対象動画を選択してください。'
+        )
+        setShowManualFrameRateInput(true)
+      } finally {
+        setProcessingTask(null)
+      }
+      return
+    }
+    await importProjectJson(file)
   }
 
   const getUploadedFrameRate = (file: File) => {
@@ -143,6 +277,41 @@ export const OpenFile: React.FC<SettingsProps> = ({
       method: 'POST',
       body: formData
     })
+  }
+
+  const handleEafVideoFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const videoFile = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!videoFile || !pendingEaf) return
+
+    setProcessingTask({
+      title: '動画を確認中',
+      description: '選択した動画からフレームレートを取得しています。'
+    })
+    try {
+      const filePath = getElectronFilePath(videoFile)
+      let response = filePath
+        ? await getFrameRateFromPath(filePath)
+        : await getUploadedFrameRate(videoFile)
+      if (filePath && !response.ok) {
+        response = await getUploadedFrameRate(videoFile)
+      }
+      const detectedFrameRate = await readFrameRateResponse(response)
+      applyFrameRate(detectedFrameRate)
+      await importEafFile(pendingEaf, detectedFrameRate, [
+        { name: videoFile.name, path: filePath ?? undefined }
+      ])
+    } catch (error) {
+      console.error('Selected EAF video detection failed:', error)
+      setFrameRateWarning(
+        '選択した動画からfpsを取得できませんでした。別の動画を選ぶか、fpsを入力してください。'
+      )
+      setShowManualFrameRateInput(true)
+    } finally {
+      setProcessingTask(null)
+    }
   }
 
   const updateSelectedVideoFiles = (files: File[]) => {
@@ -201,6 +370,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
     })
     setFrameRateWarning(null)
     setShowManualFrameRateInput(false)
+    setPendingEaf(null)
     const urls = files.map((file) => URL.createObjectURL(file))
 
     const fileNames = files.map((file) => file.name)
@@ -278,134 +448,165 @@ export const OpenFile: React.FC<SettingsProps> = ({
     if (!file) return
 
     setInputFiles('project-input', [file])
-    importProjectJson(file)
+    void importProjectFile(file)
   }
 
   return (
-    <div id="open-file">
-      <section className="file-open-card">
-        <div className="file-open-card-text">
-          <h2>動画を開く</h2>
-          <p>アノテーション対象の動画ファイルを選択して開きます。</p>
-        </div>
-        <input
-          className="file-input-hidden"
-          type="file"
-          id="input"
-          accept="video/*"
-          multiple
-          onChange={handleVideoFileChange}
-        />
-        <label
-          className={`file-drop-zone ${isVideoDragActive ? 'drag-active' : ''}`}
-          htmlFor="input"
-          role="button"
-          tabIndex={0}
-          onKeyDown={(event) => handleFilePickerKeyDown(event, 'input')}
-          onDragEnter={(event) => {
-            event.preventDefault()
-            setIsVideoDragActive(true)
-          }}
-          onDragOver={(event) => event.preventDefault()}
-          onDragLeave={(event) => {
-            event.preventDefault()
-            setIsVideoDragActive(false)
-          }}
-          onDrop={handleVideoDrop}
-        >
-          <span className="file-drop-zone-icon">＋</span>
-          <span className="file-drop-zone-title">
-            動画ファイルをドラッグ＆ドロップ
-          </span>
-          <span className="file-drop-zone-subtitle">
-            またはクリックしてファイルを選択
-          </span>
-        </label>
-        <div className="file-open-actions">
-          <button
-            className="file-open-button primary-action"
-            disabled={!hasSelectedFiles}
-            onClick={() => openFile()}
-          >
-            開く
-          </button>
-        </div>
-        <p
-          className={`file-selection-summary ${
-            hasSelectedFiles ? 'selected' : ''
-          }`}
-        >
-          {selectedFileSummary}
-        </p>
-      </section>
-      <section className="file-open-card">
-        <div className="file-open-card-text">
-          <h2>プロジェクトを読み込む</h2>
-          <p>保存済みのプロジェクトJSONから作業を再開します。</p>
-        </div>
-        <input
-          className="file-input-hidden"
-          type="file"
-          id="project-input"
-          accept="application/json,.json"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0]
-            if (file) {
-              importProjectJson(file)
+    <>
+      <div id="open-file">
+        <section className="file-open-card project-file-card">
+          <div className="file-open-card-text">
+            <h2>プロジェクト・EAFを読み込む</h2>
+            <p>
+              保存済みのプロジェクトJSON、またはELANのEAFから作業を再開します。
+            </p>
+          </div>
+          <input
+            className="file-input-hidden"
+            type="file"
+            id="project-input"
+            accept="application/json,application/xml,text/xml,.json,.eaf"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0]
+              if (file) {
+                void importProjectFile(file)
+              }
+              event.currentTarget.value = ''
+            }}
+          />
+          <label
+            className={`file-drop-zone ${
+              isProjectDragActive ? 'drag-active' : ''
+            } ${selectedProjectFileName ? 'has-file' : ''}`}
+            htmlFor="project-input"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) =>
+              handleFilePickerKeyDown(event, 'project-input')
             }
-            event.currentTarget.value = ''
-          }}
-        />
-        <label
-          className={`file-drop-zone ${
-            isProjectDragActive ? 'drag-active' : ''
-          }`}
-          htmlFor="project-input"
-          role="button"
-          tabIndex={0}
-          onKeyDown={(event) => handleFilePickerKeyDown(event, 'project-input')}
-          onDragEnter={(event) => {
-            event.preventDefault()
-            setIsProjectDragActive(true)
-          }}
-          onDragOver={(event) => event.preventDefault()}
-          onDragLeave={(event) => {
-            event.preventDefault()
-            setIsProjectDragActive(false)
-          }}
-          onDrop={handleProjectDrop}
-        >
-          <span className="file-drop-zone-icon">＋</span>
-          <span className="file-drop-zone-title">
-            プロジェクトJSONをドラッグ＆ドロップ
-          </span>
-          <span className="file-drop-zone-subtitle">
-            またはクリックしてプロジェクトを選択
-          </span>
-        </label>
-      </section>
-      {frameRateWarning && (
-        <div className="frame-rate-warning">
-          <p>{frameRateWarning}</p>
-          {showManualFrameRateInput && (
-            <div className="manual-frame-rate">
-              <label htmlFor="manual-frame-rate">fps</label>
-              <input
-                id="manual-frame-rate"
-                type="number"
-                min="0.001"
-                step="0.001"
-                value={manualFrameRate}
-                onChange={(event) => setManualFrameRate(event.target.value)}
-              />
-              <button type="button" onClick={applyManualFrameRate}>
-                適用
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+            onDragEnter={(event) => {
+              event.preventDefault()
+              setIsProjectDragActive(true)
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDragLeave={(event) => {
+              event.preventDefault()
+              setIsProjectDragActive(false)
+            }}
+            onDrop={handleProjectDrop}
+          >
+            <span className="file-drop-zone-icon">
+              {selectedProjectFileName ? '✓' : '＋'}
+            </span>
+            <span className="file-drop-zone-title">
+              {selectedProjectFileName ||
+                'プロジェクトJSON / EAFをドラッグ＆ドロップ'}
+            </span>
+            <span className="file-drop-zone-subtitle">
+              {selectedProjectFileName
+                ? '選択済み・クリックまたはドロップで変更'
+                : 'またはクリックしてプロジェクトを選択'}
+            </span>
+          </label>
+        </section>
+        <section className="file-open-card video-file-card">
+          <div className="file-open-card-text">
+            <h2>動画を開く</h2>
+            <p>アノテーション対象の動画ファイルを選択して開きます。</p>
+          </div>
+          <input
+            className="file-input-hidden"
+            type="file"
+            id="input"
+            accept="video/*"
+            multiple
+            onChange={handleVideoFileChange}
+          />
+          <label
+            className={`file-drop-zone ${isVideoDragActive ? 'drag-active' : ''} ${hasSelectedFiles ? 'has-file' : ''}`}
+            htmlFor="input"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => handleFilePickerKeyDown(event, 'input')}
+            onDragEnter={(event) => {
+              event.preventDefault()
+              setIsVideoDragActive(true)
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDragLeave={(event) => {
+              event.preventDefault()
+              setIsVideoDragActive(false)
+            }}
+            onDrop={handleVideoDrop}
+          >
+            <span className="file-drop-zone-icon">
+              {hasSelectedFiles ? '✓' : '＋'}
+            </span>
+            <span className="file-drop-zone-title">
+              {hasSelectedFiles
+                ? selectedFileSummary
+                : '動画ファイルをドラッグ＆ドロップ'}
+            </span>
+            <span className="file-drop-zone-subtitle">
+              {hasSelectedFiles
+                ? '選択済み・クリックまたはドロップで変更'
+                : 'またはクリックしてファイルを選択'}
+            </span>
+          </label>
+          <div className="file-open-actions">
+            <button
+              className="file-open-button primary-action"
+              disabled={!hasSelectedFiles}
+              onClick={() => openFile()}
+            >
+              開く
+            </button>
+          </div>
+        </section>
+        {frameRateWarning && (
+          <div className="frame-rate-warning">
+            <p>{frameRateWarning}</p>
+            {showManualFrameRateInput && (
+              <div className="manual-frame-rate">
+                <label htmlFor="manual-frame-rate">fps</label>
+                <input
+                  id="manual-frame-rate"
+                  type="number"
+                  min="0.001"
+                  step="0.001"
+                  value={manualFrameRate}
+                  onChange={(event) => setManualFrameRate(event.target.value)}
+                />
+                <button type="button" onClick={applyManualFrameRate}>
+                  {pendingEaf ? 'このfpsでEAFを読み込む' : '適用'}
+                </button>
+                {pendingEaf && (
+                  <>
+                    <span>または</span>
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      onClick={() =>
+                        document.getElementById('eaf-video-input')?.click()
+                      }
+                    >
+                      動画を選んで自動検出
+                    </button>
+                    <input
+                      className="file-input-hidden"
+                      id="eaf-video-input"
+                      type="file"
+                      accept="video/*"
+                      onChange={(event) => void handleEafVideoFileChange(event)}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 

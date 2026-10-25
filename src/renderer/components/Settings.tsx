@@ -111,6 +111,7 @@ export const Settings: React.FC<SettingsProps> = ({
         setProcessingTask={setProcessingTask}
         setVideoSrcs={setVideoSrcs}
         setFrameRate={setFrameRate}
+        frameRate={frameRate}
         onImportProjectJson={onImportProjectJson}
       />
     )

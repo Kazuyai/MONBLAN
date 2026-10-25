@@ -102,6 +102,19 @@ export interface ProjectAnnotation {
   endFrame: number
   text: string
   layerIndex: number
+  eafAnnotationId?: string
+  eafTierId?: string
+  eafOriginalStartTime?: number
+  eafOriginalEndTime?: number
+  eafOriginalStartFrame?: number
+  eafOriginalEndFrame?: number
+}
+
+export interface EafSourceDocument {
+  originalXml: string
+  fileName: string
+  importedAnnotationIds: string[]
+  warnings: string[]
 }
 
 export interface AnnotationProject {
@@ -112,5 +125,7 @@ export interface AnnotationProject {
   frameRate: number
   videoDuration: number
   layerNames: string[]
+  eafTierIds?: (string | null)[]
+  eafSource?: EafSourceDocument
   annotations: ProjectAnnotation[]
 }

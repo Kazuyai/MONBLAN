@@ -1,5 +1,6 @@
 import React, {
   forwardRef,
+  useCallback,
   useImperativeHandle,
   useRef,
   useState,
@@ -9,13 +10,17 @@ import React, {
 } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import Annotation from './Annotation'
+import { useSnackbar, type SnackbarType } from './SnackbarProvider'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
+  EafSourceDocument,
+  ProjectAnnotation,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
   TimelineAnnotationResult
 } from '../types'
+import { generateEafContent } from '../utils/eaf'
 
 interface TimelineProps {
   videoSrcs: string[]
@@ -53,17 +58,12 @@ interface TimelineHandle {
   addLayer: (name: string) => number
 }
 
-interface AnnotationType {
-  id: string
-  startFrame: number
-  endFrame: number
-  text: string
-  layerIndex: number
-}
+type AnnotationType = ProjectAnnotation
 
 interface TimelineState {
   annotations: AnnotationType[]
   layerNames: string[]
+  eafTierIds: (string | null)[]
 }
 
 interface MovementDetectionCandidate extends TimelineAnnotationResult {
@@ -74,13 +74,6 @@ interface MovementDetectionCandidate extends TimelineAnnotationResult {
 type AnnotationCandidate = SimilarMotionCandidate | MovementDetectionCandidate
 
 const MAX_HISTORY_LENGTH = 100
-
-type TimelineNoticeType = 'success' | 'warning' | 'error'
-
-interface TimelineNotice {
-  message: string
-  type: TimelineNoticeType
-}
 
 const Timeline = forwardRef<TimelineHandle, TimelineProps>(
   (
@@ -111,17 +104,20 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     },
     ref
   ) => {
+    const { showSnackbar } = useSnackbar()
     const containerRefs = useRef<React.RefObject<HTMLDivElement>[]>([])
-    const timelineContainerRef = useRef<HTMLTableElement>(null)
-    const timelinesRef = useRef<HTMLTableRowElement>(null)
-    const timeBarRef = useRef<HTMLTableCellElement>(null)
+    const timelineContainerRef = useRef<HTMLDivElement>(null)
+    const timelinesRef = useRef<HTMLDivElement>(null)
+    const timeBarRef = useRef<HTMLDivElement>(null)
     const playheadRef = useRef<HTMLDivElement>(null)
 
     // 状態を統合
     const [state, setState] = useState<TimelineState>({
       annotations: [],
-      layerNames: ['レイヤー1', 'レイヤー2', 'レイヤー3']
+      layerNames: ['レイヤー1', 'レイヤー2', 'レイヤー3'],
+      eafTierIds: [null, null, null]
     })
+    const [eafSource, setEafSource] = useState<EafSourceDocument | null>(null)
     const stateRef = useRef(state)
     const [movementDetectionCandidates, setMovementDetectionCandidates] =
       useState<MovementDetectionCandidate[]>([])
@@ -150,11 +146,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<
       string[]
     >([])
-    const [timelineNotice, setTimelineNotice] =
-      useState<TimelineNotice | null>(null)
-    const timelineNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-      null
-    )
     const [editingLayerIndex, setEditingLayerIndex] = useState<number | null>(
       null
     )
@@ -166,27 +157,12 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [playheadLeft, setPlayheadLeft] = useState(0)
     const [isDragging, setIsDragging] = useState<boolean>(false)
 
-    const showTimelineNotice = (
-      message: string,
-      type: TimelineNoticeType = 'warning'
-    ) => {
-      if (timelineNoticeTimeoutRef.current) {
-        clearTimeout(timelineNoticeTimeoutRef.current)
-      }
-      setTimelineNotice({ message, type })
-      timelineNoticeTimeoutRef.current = setTimeout(() => {
-        setTimelineNotice(null)
-        timelineNoticeTimeoutRef.current = null
-      }, 3500)
-    }
-
-    useEffect(() => {
-      return () => {
-        if (timelineNoticeTimeoutRef.current) {
-          clearTimeout(timelineNoticeTimeoutRef.current)
-        }
-      }
-    }, [])
+    const showTimelineNotice = useCallback(
+      (message: string, type: SnackbarType = 'warning') => {
+        showSnackbar(message, { type, duration: 3500 })
+      },
+      [showSnackbar]
+    )
 
     // 選択範囲の状態を追加
     const [isSelecting, setIsSelecting] = useState<boolean>(false)
@@ -276,14 +252,15 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const deepCopyState = (state: TimelineState): TimelineState => {
       return {
         annotations: state.annotations.map((annotation) => ({ ...annotation })),
-        layerNames: [...state.layerNames]
+        layerNames: [...state.layerNames],
+        eafTierIds: [...state.eafTierIds]
       }
     }
 
-    const appendHistory = (stack: TimelineState[], stateToSave: TimelineState) => [
-      ...stack.slice(-(MAX_HISTORY_LENGTH - 1)),
-      deepCopyState(stateToSave)
-    ]
+    const appendHistory = (
+      stack: TimelineState[],
+      stateToSave: TimelineState
+    ) => [...stack.slice(-(MAX_HISTORY_LENGTH - 1)), deepCopyState(stateToSave)]
 
     // Undoスタックに現在の状態を保存し、Redoスタックをクリアする関数
     const pushToUndoStack = (stateToSave: TimelineState) => {
@@ -336,8 +313,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       first: Pick<AnnotationType, 'startFrame' | 'endFrame'>,
       second: Pick<AnnotationType, 'startFrame' | 'endFrame'>
     ) =>
-      first.startFrame < second.endFrame &&
-      first.endFrame > second.startFrame
+      first.startFrame < second.endFrame && first.endFrame > second.startFrame
 
     // アノテーションの重なりをチェックする関数を追加
     const canInsertAnnotation = (
@@ -383,7 +359,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       layerIndex: candidate.layerIndex
     })
 
-    const partitionInsertableCandidates = <T extends AnnotationCandidate,>(
+    const partitionInsertableCandidates = <T extends AnnotationCandidate>(
       candidates: T[]
     ) => {
       const annotationsByLayer = new Map<number, AnnotationType[]>()
@@ -479,11 +455,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
 
       pushToUndoStack(state)
       const nextLayerNames = [...layerNames]
+      const nextEafTierIds = [...state.eafTierIds]
       const nextAnnotations = [...annotations]
 
       insertableCandidates.forEach((candidate) => {
         while (nextLayerNames.length <= candidate.layerIndex) {
           nextLayerNames.push(`レイヤー${nextLayerNames.length + 1}`)
+          nextEafTierIds.push(null)
         }
         if (candidate.layerName) {
           nextLayerNames[candidate.layerIndex] = candidate.layerName
@@ -493,7 +471,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
 
       setState({
         annotations: nextAnnotations,
-        layerNames: nextLayerNames
+        layerNames: nextLayerNames,
+        eafTierIds: nextEafTierIds
       })
 
       setSimilarMotionCandidates((current) =>
@@ -548,7 +527,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
           ...annotations,
           ...insertableCandidates.map(toAnnotation)
         ],
-        layerNames: [...layerNames]
+        layerNames: [...layerNames],
+        eafTierIds: [...state.eafTierIds]
       })
       setMovementDetectionCandidates((current) =>
         current.map((candidate) =>
@@ -741,13 +721,11 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const newLayerIndex = currentState.layerNames.length
       const layerName = name?.trim() || `レイヤー${newLayerIndex + 1}`
       pushToUndoStack(currentState)
-      const newLayerNames = [
-        ...currentState.layerNames,
-        layerName
-      ]
+      const newLayerNames = [...currentState.layerNames, layerName]
       const nextState = {
         ...currentState,
-        layerNames: newLayerNames
+        layerNames: newLayerNames,
+        eafTierIds: [...currentState.eafTierIds, null]
       }
       stateRef.current = nextState
       setState(nextState)
@@ -775,6 +753,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const newLayerNames = state.layerNames.filter(
         (_, index) => index !== targetLayerIndex
       )
+      const newEafTierIds = state.eafTierIds.filter(
+        (_, index) => index !== targetLayerIndex
+      )
       const updatedAnnotations = state.annotations
         .filter((annotation) => annotation.layerIndex !== targetLayerIndex)
         .map((annotation) => {
@@ -785,6 +766,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         })
       const nextState = {
         layerNames: newLayerNames,
+        eafTierIds: newEafTierIds,
         annotations: updatedAnnotations
       }
 
@@ -1185,9 +1167,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         let newAnnotations = [...annotations]
         annotationsToSplit.forEach((annotation) => {
           // 元のアノテーションを削除
-          newAnnotations = newAnnotations.filter(
-            (a) => a.id !== annotation.id
-          )
+          newAnnotations = newAnnotations.filter((a) => a.id !== annotation.id)
 
           // 分割されたアノテーションを作成
           const firstPart: AnnotationType = {
@@ -1234,9 +1214,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         let newAnnotations = [...annotations]
         annotationsToSplit.forEach((annotation) => {
           // 元のアノテーションを削除
-          newAnnotations = newAnnotations.filter(
-            (a) => a.id !== annotation.id
-          )
+          newAnnotations = newAnnotations.filter((a) => a.id !== annotation.id)
 
           // 分割されたアノテーションを作成
           const newParts: AnnotationType[] = []
@@ -1339,14 +1317,26 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     }
 
     const exportEAF = () => {
-      // EAF XMLの生成
-      const eafContent = generateEAFContent()
-
-      // EAFファイルの作成とダウンロード
-      const blob = new Blob([eafContent], {
-        type: 'application/xml;charset=utf-8;'
-      })
-      downloadBlob(blob, 'annotations.eaf')
+      try {
+        const eafContent = generateEafContent({
+          annotations,
+          layerNames,
+          eafTierIds: state.eafTierIds,
+          eafSource,
+          frameRate,
+          videos: readStoredVideoMetadata()
+        })
+        const blob = new Blob([eafContent], {
+          type: 'application/xml;charset=utf-8;'
+        })
+        downloadBlob(blob, eafSource?.fileName || 'annotations.eaf')
+      } catch (error) {
+        console.error('EAF export failed:', error)
+        showTimelineNotice(
+          error instanceof Error ? error.message : 'EAFの出力に失敗しました。',
+          'error'
+        )
+      }
     }
 
     const readStoredVideoMetadata = () => {
@@ -1368,7 +1358,10 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       return videoSrcs.map((videoSrc, index) => ({
         name:
           fileNames[index] ||
-          videoSrc.split(/[/\\]/).pop()?.replace(/^file:/, '') ||
+          videoSrc
+            .split(/[/\\]/)
+            .pop()
+            ?.replace(/^file:/, '') ||
           `video${index + 1}`,
         path:
           filePaths[index] ||
@@ -1391,6 +1384,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         frameRate,
         videoDuration,
         layerNames,
+        eafTierIds: state.eafTierIds,
+        eafSource: eafSource ?? undefined,
         annotations
       }
       const jsonContent = JSON.stringify(project, null, 2)
@@ -1403,6 +1398,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const importProjectJson = (project: AnnotationProject) => {
       const importedLayerNames =
         project.layerNames.length > 0 ? project.layerNames : ['レイヤー1']
+      const importedEafTierIds = importedLayerNames.map(
+        (_, index) => project.eafTierIds?.[index] ?? null
+      )
       const importedAnnotations = project.annotations
         .filter(
           (annotation) =>
@@ -1418,10 +1416,14 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
           text: annotation.text ?? ''
         }))
 
-      setState({
+      const importedState: TimelineState = {
         layerNames: importedLayerNames,
+        eafTierIds: importedEafTierIds,
         annotations: importedAnnotations
-      })
+      }
+      stateRef.current = importedState
+      setState(importedState)
+      setEafSource(project.eafSource ?? null)
       setUndoStack([])
       setRedoStack([])
       setFocusedAnnotationId(null)
@@ -1433,124 +1435,12 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       setSelectionWidth(0)
       setMovementDetectionCandidates([])
       setSimilarMotionCandidates([])
-      showTimelineNotice('プロジェクトを読み込みました。', 'success')
-    }
-
-    const generateEAFContent = (): string => {
-      const currentDate = new Date().toISOString()
-
-      // Time slot IDを生成
-      let timeSlotId = 1
-      const timeSlots: { id: string; value: number }[] = []
-      const annotationElements: string[] = []
-
-      // タイムスロットとアノテーションを生成
-      annotations.forEach((annotation, index) => {
-        const startSlotId = `ts${timeSlotId++}`
-        const endSlotId = `ts${timeSlotId++}`
-
-        // フレームを秒に変換 (EAFは秒単位で時間を表現)
-        const startTimeSeconds = (annotation.startFrame - 1) / frameRate
-        const endTimeSeconds = (annotation.endFrame - 1) / frameRate
-
-        timeSlots.push(
-          { id: startSlotId, value: Math.round(startTimeSeconds * 1000) }, // ミリ秒に変換
-          { id: endSlotId, value: Math.round(endTimeSeconds * 1000) }
-        )
-
-        const layerName = layerNames[annotation.layerIndex]
-        annotationElements.push(
-          `      <ANNOTATION>
-        <ALIGNABLE_ANNOTATION ANNOTATION_ID="a${index + 1}" TIME_SLOT_REF1="${startSlotId}" TIME_SLOT_REF2="${endSlotId}">
-          <ANNOTATION_VALUE>${escapeXml(annotation.text)}</ANNOTATION_VALUE>
-        </ALIGNABLE_ANNOTATION>
-      </ANNOTATION>`
-        )
-      })
-
-      // ユニークなレイヤー名を取得
-      const uniqueLayers = [
-        ...new Set(annotations.map((a) => layerNames[a.layerIndex]))
-      ]
-
-      // ティア（レイヤー）を生成
-      const tierElements = uniqueLayers.map((layerName, layerIndex) => {
-        const layerAnnotations = annotations
-          .filter(
-            (annotation) => layerNames[annotation.layerIndex] === layerName
-          )
-          .map((annotation, index) => {
-            const globalIndex = annotations.indexOf(annotation)
-            return annotationElements[globalIndex]
-          })
-
-        return `    <TIER LINGUISTIC_TYPE_REF="default-lt" TIER_ID="${escapeXml(layerName)}">
-${layerAnnotations.join('\n')}
-    </TIER>`
-      })
-
-      // メディアファイル情報を生成
-      // localStorageから実際のファイル名を取得
-      const storedFileNames = localStorage.getItem('videoFileNames')
-      const actualFileNames = storedFileNames ? JSON.parse(storedFileNames) : []
-
-      const mediaDescriptors = videoSrcs
-        .map((videoSrc, index) => {
-          // blob URLの場合はlocalStorageから実際のファイル名を使用、通常のパスの場合はそのまま使用
-          let fileName: string
-          let mediaUrl: string
-
-          if (videoSrc.startsWith('blob:')) {
-            // blob URLの場合、localStorageから実際のファイル名を取得
-            fileName = actualFileNames[index] || `video${index + 1}.mp4`
-            // 相対パスとして設定（ELANで手動選択を想定）
-            mediaUrl = `./${fileName}`
-          } else {
-            // 通常のファイルパスの場合
-            fileName = videoSrc.split(/[/\\]/).pop() || `video${index + 1}.mp4`
-            mediaUrl = videoSrc.startsWith('file://')
-              ? videoSrc
-              : `file:///${videoSrc.replace(/\\/g, '/')}`
-          }
-
-          const mimeType = fileName.toLowerCase().endsWith('.mp4')
-            ? 'video/mp4'
-            : fileName.toLowerCase().endsWith('.webm')
-              ? 'video/webm'
-              : fileName.toLowerCase().endsWith('.mov')
-                ? 'video/quicktime'
-                : 'video/mp4'
-
-          return `    <MEDIA_DESCRIPTOR MEDIA_URL="${escapeXml(mediaUrl)}" MIME_TYPE="${mimeType}" RELATIVE_MEDIA_URL="${escapeXml(fileName)}"/>`
-        })
-        .join('\n')
-
-      return `<?xml version="1.0" encoding="UTF-8"?>
-<ANNOTATION_DOCUMENT AUTHOR="" DATE="${currentDate}" FORMAT="3.0" VERSION="3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.mpi.nl/tools/elan/EAFv3.0.xsd">
-  <HEADER TIME_UNITS="milliseconds">
-${mediaDescriptors}
-    <PROPERTY NAME="URN">urn:nl-mpi-tools-elan-eaf:${uuidv4()}</PROPERTY>
-    <PROPERTY NAME="lastUsedAnnotationId">${annotations.length}</PROPERTY>
-  </HEADER>
-  <TIME_ORDER>
-${timeSlots.map((slot) => `    <TIME_SLOT TIME_SLOT_ID="${slot.id}" TIME_VALUE="${slot.value}"/>`).join('\n')}
-  </TIME_ORDER>
-${tierElements.join('\n')}
-  <LINGUISTIC_TYPE GRAPHIC_REFERENCES="false" LINGUISTIC_TYPE_ID="default-lt" TIME_ALIGNABLE="true"/>
-  <CONSTRAINT DESCRIPTION="Time subdivision of parent annotation's time interval, no time gaps allowed within this interval" STEREOTYPE="Time_Subdivision"/>
-  <CONSTRAINT DESCRIPTION="Symbolic subdivision of a parent annotation. Annotations refering to the same parent are ordered" STEREOTYPE="Symbolic_Subdivision"/>
-  <CONSTRAINT DESCRIPTION="1-1 association with a parent annotation" STEREOTYPE="Symbolic_Association"/>
-  <CONSTRAINT DESCRIPTION="Time alignable annotations within the parent annotation's time interval, gaps are allowed" STEREOTYPE="Included_In"/>
-</ANNOTATION_DOCUMENT>`
-    }
-
-    const escapeXml = (text: string): string => {
-      return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;')
+      showTimelineNotice(
+        project.eafSource
+          ? 'EAFを読み込みました。元の構造を保持して再出力できます。'
+          : 'プロジェクトを読み込みました。',
+        project.eafSource?.warnings.length ? 'warning' : 'success'
+      )
     }
 
     // フレームを時間形式に変換する関数（hh:mm:ss.SSS）
@@ -1598,7 +1488,7 @@ ${tierElements.join('\n')}
           'warning'
         )
       }
-    }, [autoAnnotationResponseData])
+    }, [autoAnnotationResponseData, showTimelineNotice])
 
     // ドキュメント全体でマウスイベントを監視
     useEffect(() => {
@@ -1660,11 +1550,14 @@ ${tierElements.join('\n')}
       addLayer: addLayerWithName
     }))
 
-    // レイヤー数に合わせて containerRefs を初期化
-    useEffect(() => {
-      containerRefs.current = layerNames.map(() =>
-        React.createRef<HTMLDivElement>()
+    if (containerRefs.current.length !== layerNames.length) {
+      const currentRefs = containerRefs.current
+      containerRefs.current = layerNames.map(
+        (_, index) => currentRefs[index] ?? React.createRef<HTMLDivElement>()
       )
+    }
+
+    useEffect(() => {
       onLayerNamesChange([...layerNames])
     }, [layerNames, onLayerNamesChange])
 
@@ -1746,25 +1639,6 @@ ${tierElements.join('\n')}
             進める
           </button>
         </div>
-        {timelineNotice && (
-          <div className={`timeline-notice ${timelineNotice.type}`}>
-            <span>{timelineNotice.message}</span>
-            <button
-              type="button"
-              aria-label="通知を閉じる"
-              title="通知を閉じる"
-              onClick={() => {
-                if (timelineNoticeTimeoutRef.current) {
-                  clearTimeout(timelineNoticeTimeoutRef.current)
-                  timelineNoticeTimeoutRef.current = null
-                }
-                setTimelineNotice(null)
-              }}
-            >
-              &times;
-            </button>
-          </div>
-        )}
         {visibleMovementDetectionCandidates.length > 0 && (
           <div className="similarity-candidate-toolbar movement-candidate-toolbar">
             <div className="similarity-candidate-toolbar-summary">
@@ -1842,15 +1716,17 @@ ${tierElements.join('\n')}
                 <ol>
                   <li>動画を選択します。</li>
                   <li>必要に応じてレイヤーや注釈を追加します。</li>
-                  <li>AI機能を使う場合は、動作範囲検出または注釈補完を実行します。</li>
+                  <li>
+                    AI機能を使う場合は、動作範囲検出または注釈補完を実行します。
+                  </li>
                 </ol>
               </div>
             </div>
           ) : (
-            <table ref={timelineContainerRef}>
-              <tr className="timelines" ref={timelinesRef}>
-                <td></td>
-                <th
+            <div className="timeline-table" ref={timelineContainerRef}>
+              <div className="timelines" ref={timelinesRef}>
+                <div className="timeline-spacer"></div>
+                <div
                   ref={timeBarRef}
                   className="time-bar"
                   style={{
@@ -1924,7 +1800,7 @@ ${tierElements.join('\n')}
                       </>
                     )
                   })()}
-                </th>
+                </div>
                 <div
                   ref={playheadRef}
                   className="playhead"
@@ -1971,7 +1847,7 @@ ${tierElements.join('\n')}
                     </div>
                   </div>
                 )}
-              </tr>
+              </div>
 
               {layerNames.map((name, layerIndex) => {
                 // 各レイヤーに対応する containerRef を取得
@@ -1989,10 +1865,11 @@ ${tierElements.join('\n')}
                   layerSimilarityCandidates.length > 0
                 return (
                   <React.Fragment key={layerIndex}>
-                    <tr
+                    <div
                       className={`layer ${selectedLayerIndex === layerIndex ? 'selected' : ''} ${hasLayerCandidates ? 'has-similarity-candidates' : ''}`}
                     >
-                      <th
+                      <div
+                        className="layer-header"
                         onClick={() => handleLayerClick(layerIndex)}
                         onDoubleClick={() =>
                           handleLayerNameDoubleClick(layerIndex)
@@ -2014,7 +1891,7 @@ ${tierElements.join('\n')}
                             <div>{name}</div>
                           )}
                         </div>
-                      </th>
+                      </div>
                       <div
                         className="timeline"
                         ref={containerRef} // 各レイヤーの containerRef を割り当て
@@ -2040,7 +1917,9 @@ ${tierElements.join('\n')}
                               focused={annotation.id === focusedAnnotationId}
                               setFocusedAnnotationId={setFocusedAnnotationId}
                               selectedAnnotationIds={selectedAnnotationIds}
-                              setSelectedAnnotationIds={setSelectedAnnotationIds}
+                              setSelectedAnnotationIds={
+                                setSelectedAnnotationIds
+                              }
                               setSelectedLayerIndex={setSelectedLayerIndex}
                               onEditing={setIsEditing}
                               onChange={(
@@ -2088,10 +1967,10 @@ ${tierElements.join('\n')}
                             />
                           ))}
                       </div>
-                    </tr>
+                    </div>
                     {layerMovementCandidates.length > 0 && (
-                      <tr className="layer similarity-candidate-layer movement-candidate-layer">
-                        <th>
+                      <div className="layer similarity-candidate-layer movement-candidate-layer">
+                        <div className="layer-header">
                           <div className="layer-name similarity-candidate-header">
                             <div className="similarity-candidate-title">
                               <span>
@@ -2104,7 +1983,7 @@ ${tierElements.join('\n')}
                               </span>
                             </div>
                           </div>
-                        </th>
+                        </div>
                         <div
                           className="timeline similarity-candidate-timeline"
                           style={{
@@ -2175,18 +2054,24 @@ ${tierElements.join('\n')}
                             )
                           })}
                         </div>
-                      </tr>
+                      </div>
                     )}
                     {layerSimilarityCandidates.length > 0 && (
-                      <tr className="layer similarity-candidate-layer">
-                        <th>
+                      <div className="layer similarity-candidate-layer">
+                        <div className="layer-header">
                           <div className="layer-name similarity-candidate-header">
                             <div className="similarity-candidate-title">
-                              <span>{'候補: '}{name}</span>
-                              <span>{layerSimilarityCandidates.length}{'件'}</span>
+                              <span>
+                                {'候補: '}
+                                {name}
+                              </span>
+                              <span>
+                                {layerSimilarityCandidates.length}
+                                {'件'}
+                              </span>
                             </div>
                           </div>
-                        </th>
+                        </div>
                         <div
                           className="timeline similarity-candidate-timeline"
                           style={{
@@ -2249,12 +2134,12 @@ ${tierElements.join('\n')}
                             )
                           })}
                         </div>
-                      </tr>
+                      </div>
                     )}
                   </React.Fragment>
                 )
               })}
-            </table>
+            </div>
           )}
         </div>
         <div className="zoom-controls">

@@ -58,7 +58,7 @@ public化や配布前の確認項目は `docs/public-release-checklist.md` を�
 - 部分再生
 - 再生速度調整
 - CSVエクスポート
-- EAFエクスポート
+- ELAN EAFの読み込み・編集・再出力
 - AIによる人物候補画像の抽出
 - AIによる動作区間検出
 
