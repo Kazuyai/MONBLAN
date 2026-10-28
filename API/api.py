@@ -185,7 +185,7 @@ def _format_subprocess_error(error: subprocess.CalledProcessError, job_dir: str 
 @app.get("/health/")
 async def get_health_status():
     """ElectronからAPIプロセスの起動完了だけを軽量に確認する。"""
-    return {"status": "ok"}
+    return {"status": "ok", "service": "monblan-api", "protocol_version": 1}
 
 
 @app.get("/environment/")
