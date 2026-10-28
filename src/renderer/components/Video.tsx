@@ -87,7 +87,8 @@ export const Video: React.FC<VideoProps> = ({
 
     document.addEventListener('keydown', handleKeyDown)
 
-    videoRefs.current.forEach((video) => {
+    const videos = [...videoRefs.current]
+    videos.forEach((video) => {
       if (video) {
         video.addEventListener('loadedmetadata', handleLoadedMetadata)
       }
@@ -95,13 +96,13 @@ export const Video: React.FC<VideoProps> = ({
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
-      videoRefs.current.forEach((video) => {
+      videos.forEach((video) => {
         if (video) {
           video.removeEventListener('loadedmetadata', handleLoadedMetadata)
         }
       })
     }
-  }, [setVideoDuration, isEditing, videoSrcs])
+  }, [setIsPlaying, setPlaySpeed, setVideoDuration, isEditing, videoSrcs])
 
   useEffect(() => {
     videoRefs.current.forEach((video) => {
@@ -112,7 +113,6 @@ export const Video: React.FC<VideoProps> = ({
       }
     })
   }, [currentFrame, isPlaying, isPartiallyPlaying, frameRate])
-
 
   useEffect(() => {
     if (!isPartiallyPlaying) return

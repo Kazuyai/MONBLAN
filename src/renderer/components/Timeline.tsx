@@ -25,7 +25,6 @@ import { generateEafContent } from '../utils/eaf'
 interface TimelineProps {
   videoSrcs: string[]
   videoDuration: number
-  isEditing: boolean
   setIsEditing: Dispatch<SetStateAction<boolean>>
   frameRate: number
   currentFrame: number
@@ -79,7 +78,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     {
       videoSrcs,
       videoDuration,
-      isEditing,
       setIsEditing,
       frameRate,
       currentFrame,
@@ -136,7 +134,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const redoRef = useRef<() => void>(() => undefined)
 
     const [zoomLevel, setZoomLevel] = useState(defaultZoomLevel)
-    const [minZoomLevel, setMinZoomLevel] = useState(0.5)
+    const minZoomLevel = 0.5
     const frameWidth = 10 * zoomLevel
     const timelineWidth = frameWidth * Math.max(totalFrames - 1, 0)
     const [focusedAnnotationId, setFocusedAnnotationId] = useState<
@@ -860,42 +858,44 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     // ズーム処理
     const maxZoomLevel = 5
 
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault()
-        setZoomLevel((prevZoom) => {
-          const newZoom = prevZoom + e.deltaY * -0.01
-          return Math.max(minZoomLevel, Math.min(maxZoomLevel, newZoom))
-        })
-      }
-    }
-
     useEffect(() => {
+      const handleWheel = (e: WheelEvent) => {
+        if (e.ctrlKey) {
+          e.preventDefault()
+          setZoomLevel((prevZoom) => {
+            const newZoom = prevZoom + e.deltaY * -0.01
+            return Math.max(minZoomLevel, Math.min(maxZoomLevel, newZoom))
+          })
+        }
+      }
       const timelines = timelinesRef.current
       timelines?.addEventListener('wheel', handleWheel)
       return () => {
         timelines?.removeEventListener('wheel', handleWheel)
       }
-    }, [minZoomLevel]) // minZoomLevelの変更を監視
+    }, [])
 
-    const syncPlayheadToFrame = (frame: number) => {
-      const remInPixels = parseFloat(
-        getComputedStyle(document.documentElement).fontSize
-      )
-      const offset = 140 * remInPixels
-      const clampedFrame = Math.max(1, Math.min(totalFrames, frame))
-      const nextPlayheadLeft = offset + (clampedFrame - 1) * frameWidth
+    const syncPlayheadToFrame = useCallback(
+      (frame: number) => {
+        const remInPixels = parseFloat(
+          getComputedStyle(document.documentElement).fontSize
+        )
+        const offset = 140 * remInPixels
+        const clampedFrame = Math.max(1, Math.min(totalFrames, frame))
+        const nextPlayheadLeft = offset + (clampedFrame - 1) * frameWidth
 
-      setCurrentFrame(clampedFrame)
-      setPlayheadLeft(nextPlayheadLeft)
-      if (playheadRef.current) {
-        playheadRef.current.style.left = `${nextPlayheadLeft}px`
-      }
-    }
+        setCurrentFrame(clampedFrame)
+        setPlayheadLeft(nextPlayheadLeft)
+        if (playheadRef.current) {
+          playheadRef.current.style.left = `${nextPlayheadLeft}px`
+        }
+      },
+      [frameWidth, setCurrentFrame, totalFrames]
+    )
 
     useEffect(() => {
       syncPlayheadToFrame(currentFrame)
-    }, [currentFrame, frameWidth])
+    }, [currentFrame, syncPlayheadToFrame])
 
     useEffect(() => {
       if (selectionFrameWidth === 0) {
@@ -925,32 +925,27 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     })
 
     // プレイヘッドの位置を更新する関数
-    const updatePlayheadPosition = (clientX: number) => {
-      const remInPixels = parseFloat(
-        getComputedStyle(document.documentElement).fontSize
-      )
-      const offset = 140 * remInPixels
+    const updatePlayheadPosition = useCallback(
+      (clientX: number) => {
+        const remInPixels = parseFloat(
+          getComputedStyle(document.documentElement).fontSize
+        )
+        const timeBarRect = timeBarRef.current?.getBoundingClientRect()
+        if (!timeBarRect) return
 
-      const timeBarRect = timeBarRef.current?.getBoundingClientRect()
-      if (!timeBarRect) return
+        const relativeX = clientX - timeBarRect.left - (0.05 + 10) * remInPixels
 
-      const relativeX = clientX - timeBarRect.left - (0.05 + 10) * remInPixels
+        const frameIndex = Math.round(relativeX / frameWidth) + 1
+        const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
 
-      const frameIndex = Math.round(relativeX / frameWidth) + 1
-      const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
-
-      syncPlayheadToFrame(clampedFrameIndex)
-    }
+        syncPlayheadToFrame(clampedFrameIndex)
+      },
+      [frameWidth, syncPlayheadToFrame, totalFrames]
+    )
 
     const handlePlayheadMoveDown = (clientX: number) => {
       setIsDragging(true)
       updatePlayheadPosition(clientX)
-    }
-
-    const handlePlayheadMove = (clientX: number) => {
-      if (isDragging) {
-        updatePlayheadPosition(clientX)
-      }
     }
 
     // 選択範囲の開始処理
@@ -1000,37 +995,50 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     }
 
     // 選択範囲のマウス移動処理
-    const handleSelectionMouseMove = (e: MouseEvent) => {
-      if (isSelecting) {
-        const containerRect = timelinesRef.current?.getBoundingClientRect()
-        if (!containerRect) return
+    const handleSelectionMouseMove = useCallback(
+      (e: MouseEvent) => {
+        if (isSelecting) {
+          const containerRect = timelinesRef.current?.getBoundingClientRect()
+          if (!containerRect) return
 
-        const remInPixels = parseFloat(
-          getComputedStyle(document.documentElement).fontSize
-        )
-        const offset = 140 * remInPixels
-        const relativeX = e.clientX - containerRect.left - offset
-        const frameIndex = Math.round(relativeX / frameWidth) + 1
-        const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
-        const anchorFrameIndex = selectionAnchorFrameRef.current
-        const startFrame = Math.min(anchorFrameIndex, clampedFrameIndex)
-        const frameWidthCount = Math.abs(anchorFrameIndex - clampedFrameIndex)
+          const remInPixels = parseFloat(
+            getComputedStyle(document.documentElement).fontSize
+          )
+          const offset = 140 * remInPixels
+          const relativeX = e.clientX - containerRect.left - offset
+          const frameIndex = Math.round(relativeX / frameWidth) + 1
+          const clampedFrameIndex = Math.max(
+            1,
+            Math.min(totalFrames, frameIndex)
+          )
+          const anchorFrameIndex = selectionAnchorFrameRef.current
+          const startFrame = Math.min(anchorFrameIndex, clampedFrameIndex)
+          const frameWidthCount = Math.abs(anchorFrameIndex - clampedFrameIndex)
 
-        setSelectionStartFrame(startFrame)
-        setSelectionStart((startFrame - 1) * frameWidth + offset)
-        setSelectionFrameWidth(frameWidthCount)
-        setSelectionWidth(frameWidthCount * frameWidth)
-        syncPlayheadToFrame(clampedFrameIndex)
-      }
-    }
+          setSelectionStartFrame(startFrame)
+          setSelectionStart((startFrame - 1) * frameWidth + offset)
+          setSelectionFrameWidth(frameWidthCount)
+          setSelectionWidth(frameWidthCount * frameWidth)
+          syncPlayheadToFrame(clampedFrameIndex)
+        }
+      },
+      [
+        frameWidth,
+        isSelecting,
+        setSelectionFrameWidth,
+        setSelectionStartFrame,
+        syncPlayheadToFrame,
+        totalFrames
+      ]
+    )
 
     // 選択範囲の終了処理
-    const handleSelectionMouseUp = () => {
+    const handleSelectionMouseUp = useCallback(() => {
       if (isSelecting) {
         setIsSelecting(false)
         // 選択範囲が確定した後の処理をここに追加できます
       }
-    }
+    }, [isSelecting])
 
     // アノテーションの更新を処理する関数
     const handleAnnotationChange = (
@@ -1513,7 +1521,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         document.removeEventListener('mousemove', handleMouseMove)
         document.removeEventListener('mouseup', handleMouseUp)
       }
-    }, [isDragging, isSelecting])
+    }, [
+      handleSelectionMouseMove,
+      handleSelectionMouseUp,
+      isDragging,
+      isSelecting,
+      updatePlayheadPosition
+    ])
 
     // ドキュメント全体でUndo/Redoのキーボードショートカットを監視
     useEffect(() => {

@@ -244,11 +244,6 @@ setAiSetupStatusListener((status) => {
   mainWindow?.webContents.send('ai-setup:status-changed', status)
 })
 
-ipcMain.on('ipc-example', async (event) => {
-  const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`
-  event.reply('ipc-example', msgTemplate('pong'))
-})
-
 if (process.env.NODE_ENV === 'production') {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const sourceMapSupport = require('source-map-support')
@@ -261,10 +256,6 @@ const isDebug =
 if (isDebug) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   require('electron-debug')({ showDevTools: false })
-}
-
-const openFile = (_event: unknown, url: string) => {
-  mainWindow?.webContents.send('send-file', url)
 }
 
 const installExtensions = async () => {
@@ -293,9 +284,10 @@ const createWindow = async () => {
     autoHideMenuBar: true,
     icon: getWindowIconPath(),
     webPreferences: {
-      preload: app.isPackaged
-        ? path.join(__dirname, 'preload.js')
-        : path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
       webSecurity: false
     }
   })
@@ -353,7 +345,16 @@ const createWindow = async () => {
   })
 
   mainWindow.webContents.setWindowOpenHandler((edata) => {
-    shell.openExternal(edata.url)
+    try {
+      const url = new URL(edata.url)
+      if (url.protocol === 'https:' || url.protocol === 'http:') {
+        void shell.openExternal(url.toString())
+      } else {
+        log.warn(`Blocked unsupported external URL: ${edata.url}`)
+      }
+    } catch {
+      log.warn(`Blocked invalid external URL: ${edata.url}`)
+    }
     return { action: 'deny' }
   })
 
@@ -382,7 +383,6 @@ app
       log.error('Failed to start API server', error)
     })
     createWindow()
-    ipcMain.on('open-file', openFile)
     app.on('activate', () => {
       if (mainWindow === null) createWindow()
     })

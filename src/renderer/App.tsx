@@ -286,7 +286,6 @@ const App = () => {
         ref={timelineRef}
         videoSrcs={videoSrcs}
         videoDuration={videoDuration}
-        isEditing={isEditing}
         setIsEditing={setIsEditing}
         frameRate={frameRate}
         currentFrame={currentFrame}

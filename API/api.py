@@ -71,13 +71,16 @@ except ImportError:
 
 app = FastAPI()
 
-# 現状はローカル利用前提で全許可。Electron連携時にlocalhost限定へ絞る。
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "null",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 LOG_FILE = os.path.join(BASE_DIR, "api_log.txt")
