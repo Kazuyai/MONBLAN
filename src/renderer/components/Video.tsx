@@ -130,25 +130,47 @@ export const Video: React.FC<VideoProps> = ({
 
       if (isEditing || isTextEntryTarget) return
 
-      videoRefs.current.forEach((video) => {
-        if (!video) return
+      const videos = videoRefs.current.filter(
+        (video): video is HTMLVideoElement => Boolean(video)
+      )
+      if (videos.length === 0) return
 
-        switch (event.code) {
-          case 'ArrowLeft':
-            video.currentTime = Math.max(0, video.currentTime - 5)
-            break
-          case 'ArrowRight':
-            video.currentTime = Math.min(video.duration, video.currentTime + 5)
-            break
-          case 'Space':
-            event.preventDefault()
-            setIsPlaying?.((prev) => !prev)
-            setPlaySpeed?.(1)
-            break
-          default:
-            break
+      if (event.code === 'Space') {
+        event.preventDefault()
+        setPlaySpeed?.(1)
+        if (isPartiallyPlaying) {
+          setIsPartiallyPlaying?.(false)
+          setIsPlaying?.(false)
+        } else {
+          setIsPlaying?.((prev) => !prev)
         }
-      })
+        return
+      }
+
+      if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
+        event.preventDefault()
+        if (isPartiallyPlaying) {
+          setIsPartiallyPlaying?.(false)
+        }
+        const primaryVideo = videos[0]
+        const duration = Number.isFinite(primaryVideo.duration)
+          ? primaryVideo.duration
+          : videoDuration
+        const offsetSeconds = event.code === 'ArrowLeft' ? -5 : 5
+        const targetTime = Math.max(
+          0,
+          Math.min(duration, primaryVideo.currentTime + offsetSeconds)
+        )
+        videos.forEach((video) => {
+          video.currentTime = targetTime
+        })
+        setCurrentFrame(
+          Math.max(
+            1,
+            Math.min(totalFrames, Math.round(targetTime * frameRate) + 1)
+          )
+        )
+      }
     }
 
     const handleLoadedMetadata = (event: Event) => {
@@ -175,7 +197,19 @@ export const Video: React.FC<VideoProps> = ({
         }
       })
     }
-  }, [setIsPlaying, setPlaySpeed, setVideoDuration, isEditing, videoSrcs])
+  }, [
+    setIsPlaying,
+    setIsPartiallyPlaying,
+    setPlaySpeed,
+    setVideoDuration,
+    setCurrentFrame,
+    frameRate,
+    isEditing,
+    isPartiallyPlaying,
+    totalFrames,
+    videoDuration,
+    videoSrcs
+  ])
 
   useEffect(() => {
     videoRefs.current.forEach((video) => {

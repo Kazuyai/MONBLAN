@@ -230,4 +230,99 @@ describe('Video', () => {
     })
     expect(mediaEvents).toContain('play')
   })
+
+  it('複数動画でもSpaceによる再生状態の反転は1回だけ行う', async () => {
+    const setIsPlaying = vi.fn()
+
+    await act(async () => {
+      root.render(
+        <Video
+          videoSrcs={['front.mp4', 'side.mp4']}
+          videoDuration={10}
+          setVideoDuration={vi.fn()}
+          isEditing={false}
+          currentFrame={1}
+          setCurrentFrame={vi.fn()}
+          frameRate={30}
+          isPlaying={false}
+          setIsPlaying={setIsPlaying}
+          playSpeed={1}
+          setPlaySpeed={vi.fn()}
+          isPartiallyPlaying={false}
+          setIsPartiallyPlaying={vi.fn()}
+          selectionStartFrame={0}
+          selectionFrameWidth={0}
+        />
+      )
+    })
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }))
+
+    expect(setIsPlaying).toHaveBeenCalledOnce()
+    const update = setIsPlaying.mock.calls[0][0] as (value: boolean) => boolean
+    expect(update(false)).toBe(true)
+  })
+
+  it('部分再生中のSpaceは通常再生へ移行せず停止する', async () => {
+    const setIsPlaying = vi.fn()
+    const setIsPartiallyPlaying = vi.fn()
+
+    await act(async () => {
+      root.render(
+        <Video
+          videoSrcs={['test.mp4']}
+          videoDuration={10}
+          setVideoDuration={vi.fn()}
+          isEditing={false}
+          currentFrame={121}
+          setCurrentFrame={vi.fn()}
+          frameRate={30}
+          isPlaying={false}
+          setIsPlaying={setIsPlaying}
+          playSpeed={1}
+          setPlaySpeed={vi.fn()}
+          isPartiallyPlaying
+          setIsPartiallyPlaying={setIsPartiallyPlaying}
+          selectionStartFrame={121}
+          selectionFrameWidth={60}
+        />
+      )
+    })
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }))
+
+    expect(setIsPartiallyPlaying).toHaveBeenCalledWith(false)
+    expect(setIsPlaying).toHaveBeenCalledWith(false)
+  })
+
+  it('停止中の左右キー操作を現在フレームへ反映する', async () => {
+    const setCurrentFrame = vi.fn()
+
+    await act(async () => {
+      root.render(
+        <Video
+          videoSrcs={['test.mp4']}
+          videoDuration={10}
+          setVideoDuration={vi.fn()}
+          isEditing={false}
+          currentFrame={1}
+          setCurrentFrame={setCurrentFrame}
+          frameRate={30}
+          isPlaying={false}
+          setIsPlaying={vi.fn()}
+          playSpeed={1}
+          setPlaySpeed={vi.fn()}
+          isPartiallyPlaying={false}
+          setIsPartiallyPlaying={vi.fn()}
+          selectionStartFrame={0}
+          selectionFrameWidth={0}
+        />
+      )
+    })
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowRight' }))
+
+    expect(currentTime).toBeCloseTo(5.001, 3)
+    expect(setCurrentFrame).toHaveBeenCalledWith(151)
+  })
 })
