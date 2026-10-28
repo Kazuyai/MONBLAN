@@ -22,8 +22,7 @@ interface GenerateEafOptions {
 }
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>'
-const LEADING_XML_DECLARATIONS =
-  /^(?:\uFEFF?\s*<\?xml\s+[^?]*\?>\s*)+/i
+const LEADING_XML_DECLARATIONS = /^(?:\uFEFF?\s*<\?xml\s+[^?]*\?>\s*)+/i
 const MONBLAN_FRAME_RATE_PROPERTY = 'MONBLAN_FRAME_RATE'
 const MONBLAN_FORMAT_VERSION_PROPERTY = 'MONBLAN_FORMAT_VERSION'
 const MONBLAN_FORMAT_VERSION = '1'

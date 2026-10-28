@@ -24,6 +24,7 @@ import type {
   TimelineAnnotationResult
 } from '../types'
 import { generateEafContent } from '../utils/eaf'
+import { buildStoredVideoMetadata } from '../utils/videoMetadata'
 
 interface TimelineProps {
   videoSrcs: string[]
@@ -1379,23 +1380,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const fileNames = parseStringArray(localStorage.getItem('videoFileNames'))
       const filePaths = parseStringArray(localStorage.getItem('videoFilePaths'))
 
-      return videoSrcs.map((videoSrc, index) => ({
-        name:
-          fileNames[index] ||
-          videoSrc
-            .split(/[/\\]/)
-            .pop()
-            ?.replace(/^file:/, '') ||
-          `video${index + 1}`,
-        path:
-          filePaths[index] ||
-          (videoSrc.startsWith('file:///')
-            ? decodeURIComponent(videoSrc.replace('file:///', '')).replace(
-                /\//g,
-                '\\'
-              )
-            : undefined)
-      }))
+      return buildStoredVideoMetadata(videoSrcs, fileNames, filePaths)
     }
 
     const importProjectJson = (project: AnnotationProject) => {
