@@ -63,6 +63,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     forceDialog?: boolean
   }): Promise<SaveTextFileResult> =>
     ipcRenderer.invoke('annotation:export', request),
+  createLocalMediaUrl: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke('media:create-url', filePath),
   getAiSetupStatus: (): Promise<AiSetupStatus> =>
     ipcRenderer.invoke('ai-setup:get-status'),
   runAiSetupOperation: (operation: AiSetupOperation): Promise<AiSetupStatus> =>

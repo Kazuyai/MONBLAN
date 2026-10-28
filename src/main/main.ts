@@ -23,6 +23,13 @@ import {
   stopApiServer
 } from './apiServer'
 import { APP_ID, getRuntimePaths } from './runtimePaths'
+import {
+  createLocalMediaUrl,
+  installLocalMediaProtocol,
+  registerLocalMediaScheme
+} from './localMediaProtocol'
+
+registerLocalMediaScheme()
 
 class AppUpdater {
   constructor() {
@@ -50,6 +57,10 @@ interface SaveTextFileResult {
   canceled: boolean
   filePath: string | null
 }
+
+ipcMain.handle('media:create-url', (_event, filePath: string) =>
+  createLocalMediaUrl(filePath)
+)
 
 const showSaveDialog = async (
   options: Electron.SaveDialogOptions
@@ -288,7 +299,7 @@ const createWindow = async () => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      webSecurity: false
+      webSecurity: true
     }
   })
   mainWindow.removeMenu()
@@ -371,8 +382,9 @@ app.on('window-all-closed', () => {
 
 app
   .whenReady()
-  .then(() => {
+  .then(async () => {
     app.setAppUserModelId(APP_ID)
+    await installLocalMediaProtocol()
     if (process.platform === 'darwin' && app.dock) {
       app.dock.setIcon(getAssetPath('icon.png'))
     }

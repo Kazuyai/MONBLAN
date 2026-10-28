@@ -46,7 +46,7 @@ interface SettingsProps {
   onImportProjectJson: (
     project: AnnotationProject,
     sourceEafFilePath?: string
-  ) => void
+  ) => Promise<void>
   setAutoAnnotationResponseData: (data: TimelineAnnotationResult[]) => void
   setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void
   apiStatus: ApiStatus | null

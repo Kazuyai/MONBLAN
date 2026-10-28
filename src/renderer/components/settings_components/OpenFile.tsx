@@ -20,7 +20,7 @@ interface SettingsProps {
   onImportProjectJson: (
     project: AnnotationProject,
     sourceEafFilePath?: string
-  ) => void
+  ) => Promise<void>
 }
 
 const FALLBACK_FRAME_RATE = 30
@@ -172,7 +172,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
         throw new Error('Unsupported project file format')
       }
 
-      onImportProjectJson(project)
+      await onImportProjectJson(project)
       setManualFrameRate(String(project.frameRate))
       showSnackbar(
         'プロジェクトを読み込みました。動画が表示されない場合は、動画ファイルを開き直してください。',
@@ -198,7 +198,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
         sourceFilePath: getElectronFilePath(pending.file)
       })
       if (selectedVideos) project.videos = selectedVideos
-      onImportProjectJson(
+      await onImportProjectJson(
         project,
         getElectronFilePath(pending.file) ?? undefined
       )
