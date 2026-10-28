@@ -212,7 +212,7 @@ Python環境を有効化した状態で、以下を実行する。
 .\scripts\check-ai-environment.ps1
 ```
 
-既定では、Electronアプリと同じく `ANNOTATION_TOOL_PYTHON` があればそれを使い、なければ `python` を使う。`API\venv` を明示的に使う場合は以下を指定する。
+既定では、Electronアプリと同じく `MONBLAN_PYTHON` があればそれを使い、なければ `python` を使う。旧環境との互換用に `ANNOTATION_TOOL_PYTHON` も認識する。`API\venv` を明示的に使う場合は以下を指定する。
 
 ```powershell
 .\scripts\check-ai-environment.ps1 -UseVenv
@@ -240,15 +240,15 @@ python -c "from API.environment import check_environment; import json; print(jso
 
 `false` の場合は `missing` に不足項目が出る。主な対応は以下。
 
-| missing の name | 対応 |
-| --- | --- |
-| `AlphaPose directory` | `API\AlphaPose` を配置する |
-| `AlphaPose script` | AlphaPose の配置内容を確認する |
-| `AlphaPose checkpoint` | `halpe26_fast_res50_256x192.pth` を指定パスに配置する |
-| `MotionBERT directory` | `API\MotionBERT` を配置する |
-| `MotionBERT script` | MotionBERT の配置内容を確認する |
-| `MotionBERT checkpoint` | `best_epoch.bin` を指定パスに配置する |
-| `CUDA / PyTorch` | PyTorchを必須確認し、CUDA・GPUが利用できない場合は警告を表示する |
+| missing の name         | 対応                                                             |
+| ----------------------- | ---------------------------------------------------------------- |
+| `AlphaPose directory`   | `API\AlphaPose` を配置する                                       |
+| `AlphaPose script`      | AlphaPose の配置内容を確認する                                   |
+| `AlphaPose checkpoint`  | `halpe26_fast_res50_256x192.pth` を指定パスに配置する            |
+| `MotionBERT directory`  | `API\MotionBERT` を配置する                                      |
+| `MotionBERT script`     | MotionBERT の配置内容を確認する                                  |
+| `MotionBERT checkpoint` | `best_epoch.bin` を指定パスに配置する                            |
+| `CUDA / PyTorch`        | PyTorchを必須確認し、CUDA・GPUが利用できない場合は警告を表示する |
 
 ## API起動確認
 

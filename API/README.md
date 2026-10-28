@@ -136,10 +136,8 @@ Electronアプリからは、動画全体のアップロードを避けるため
   "file_path": "C:\\path\\to\\video.mp4",
   "humanId": 0,
   "selectedJoints": [14, 15],
-  "templateSegments": [
-    {"startFrame": 153, "endFrame": 177}
-  ],
-  "analysisRange": {"startFrame": 101, "endFrame": 900},
+  "templateSegments": [{ "startFrame": 153, "endFrame": 177 }],
+  "analysisRange": { "startFrame": 101, "endFrame": 900 },
   "layerName": "右 右腕の動き",
   "layerIndex": 2
 }
@@ -291,10 +289,11 @@ python -m uvicorn API.api:app --host 127.0.0.1 --port 8000
 実装上の前提:
 
 - Electronの `child_process.spawn` からAPIを起動する
-- `cwd` はリポジトリルートに固定する
+- 開発版ではリポジトリルート、配布版では同梱したランタイムを `cwd` にする
 - 既に `127.0.0.1:8000` でAPIが起動している場合は、そのプロセスを再利用する
-- Python実行ファイルは既定で `python` を使う
-- 別のPythonを使う場合は `ANNOTATION_TOOL_PYTHON` 環境変数で指定できる
+- AI環境の構築後はMONBLAN専用venvのPythonを使い、未構築時は `python` にフォールバックする
+- 別のPythonを使う場合は `MONBLAN_PYTHON` 環境変数で指定できる
+- 旧環境との互換用に `ANNOTATION_TOOL_PYTHON` も引き続き認識する
 
 renderer側は preload 経由でAPI状態を受け取ります。
 
