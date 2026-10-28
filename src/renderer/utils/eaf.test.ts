@@ -42,6 +42,16 @@ const referencedEaf = `<?xml version="1.0" encoding="UTF-8"?>
 </ANNOTATION_DOCUMENT>`
 
 describe('EAF round trip', () => {
+  it('XML宣言が重複した既存EAFからfpsを読み取れる', () => {
+    const eaf = generateSampleEaf()
+    const duplicatedDeclaration = eaf.replace(
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<?xml version="1.0" encoding="UTF-8"?>\n<?xml version="1.0" encoding="UTF-8"?>'
+    )
+
+    expect(readEafFrameRate(duplicatedDeclaration)).toBe(30)
+  })
+
   it('MONBLANのfpsを保持し、フレーム境界をずらさない', () => {
     const eaf = generateSampleEaf()
 
@@ -87,6 +97,8 @@ describe('EAF round trip', () => {
     expect(updatedEaf).toContain(
       '<PROPERTY NAME="CUSTOM_METADATA">preserved</PROPERTY>'
     )
+    expect(updatedEaf.match(/<\?xml\s/g)).toHaveLength(1)
+    expect(readEafFrameRate(updatedEaf)).toBe(30)
     expect(updatedEaf).toContain('<ANNOTATION_VALUE>更新後</ANNOTATION_VALUE>')
     expect(updatedEaf).toContain('file:///D:/data/replacement.mp4')
     expect(updatedEaf).toContain('TIME_SLOT_REF1="ts1"')
