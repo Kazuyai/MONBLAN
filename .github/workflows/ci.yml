@@ -33,3 +33,4 @@ jobs:
       - run: yarn typecheck
       - run: yarn build
       - run: python -m py_compile API/api.py API/environment.py API/pipeline.py API/progress.py
+      - run: python -m unittest discover -s API/tests -v
