@@ -48,6 +48,7 @@ AI環境の具体的なセットアップは `docs/setup-ai-environment.md` を�
 APIの起動方法とエンドポイントは `API/README.md` を参照してください。
 public化や配布前の確認項目は `docs/public-release-checklist.md` を参照してください。
 旧プロジェクトJSONからの移行仕様は `docs/legacy-project-json-format.md` を参照してください。
+開発者向けの構成と責務分担は `docs/architecture.md` を参照してください。
 
 ## 主な機能
 
@@ -82,6 +83,7 @@ scripts/
   fetch-ai-repos.ps1
   verify-ai-pipeline.ps1
 docs/
+  architecture.md
   distribution-policy.md
   setup-ai-environment.md
   legacy-project-json-format.md

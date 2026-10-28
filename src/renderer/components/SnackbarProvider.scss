@@ -1,0 +1,65 @@
+.app-snackbar {
+  position: fixed;
+  right: 20rem;
+  bottom: 20rem;
+  z-index: 10000;
+  display: flex;
+  align-items: flex-start;
+  gap: 14rem;
+  width: min(560rem, calc(100vw - 40rem));
+  padding: 14rem 16rem;
+  color: #eef6fb;
+  font-size: 14rem;
+  line-height: 1.5;
+  background: #25313a;
+  border: 1rem solid #668096;
+  border-radius: 8rem;
+  box-shadow: 0 10rem 30rem #0008;
+
+  &.warning {
+    color: #f8e7bd;
+    background: #3a3121;
+    border-color: #9c793c;
+  }
+
+  &.success {
+    color: #e3f5eb;
+    background: #25382f;
+    border-color: #5f8874;
+  }
+
+  &.error {
+    color: #ffe5e7;
+    background: #43272a;
+    border-color: #a85f65;
+  }
+
+  span {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .app-snackbar-queue-count {
+    flex: 0 0 auto;
+    align-self: center;
+    padding: 2rem 7rem;
+    font-size: 11rem;
+    white-space: nowrap;
+    background: #0004;
+    border-radius: 999rem;
+  }
+
+  button {
+    flex: 0 0 auto;
+    width: 28rem;
+    min-width: 28rem;
+    height: 28rem;
+    min-height: 28rem;
+    padding: 0;
+    color: inherit;
+    font-size: 22rem;
+    line-height: 1;
+    background: transparent;
+    border: 0;
+  }
+}
