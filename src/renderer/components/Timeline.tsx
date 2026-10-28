@@ -11,6 +11,9 @@ import React, {
 import { v4 as uuidv4 } from 'uuid'
 import Annotation from './Annotation'
 import { useSnackbar, type SnackbarType } from './SnackbarProvider'
+import CandidateToolbar from './timeline/CandidateToolbar'
+import TimelineControls from './timeline/TimelineControls'
+import TimelineZoomControls from './timeline/TimelineZoomControls'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
@@ -1576,141 +1579,64 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         className={`${!hasTimelineContent ? 'hide' : ''}`}
         style={{ height: `calc(${100 - topHeight}% - 1.5rem)` }}
       >
-        <div className="controls">
-          <button className="icon-button" onClick={() => setCurrentFrame(1)}>
-            <img src="./skip_start.svg" alt="" />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => setCurrentFrame((frame) => Math.max(1, frame - 1))}
-          >
-            <img src="./1f_left.svg" alt="< 1f" />
-          </button>
-          <button className="icon-button primary-action" onClick={() => play()}>
-            <img
-              src={isPlaying ? './pause.svg' : './play.svg'}
-              alt={isPlaying ? 'pause' : 'play'}
-            />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() =>
-              setCurrentFrame((frame) => Math.min(totalFrames, frame + 1))
-            }
-          >
-            <img src="./1f_right.svg" alt="1f >" />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => setCurrentFrame(totalFrames)}
-          >
-            <img src="./skip_end.svg" alt="" />
-          </button>
-          <button
-            className="secondary-action"
-            onClick={() => {
-              setIsPartiallyPlaying(!isPartiallyPlaying)
-              setIsPlaying?.(false)
-            }}
-          >
-            部分再生
-          </button>
-          <button className="secondary-action" onClick={addLayer}>
-            注釈層追加
-          </button>
-          <button className="danger-action" onClick={deleteLayer}>
-            注釈層削除
-          </button>
-          <button className="secondary-action" onClick={addAnnotation}>
-            注釈追加
-          </button>
-          <button className="danger-action" onClick={deleteAnnotation}>
-            注釈削除
-          </button>
-          <button className="secondary-action" onClick={mergeAnnotations}>
-            結合
-          </button>
-          <button className="secondary-action" onClick={splitAnnotations}>
-            分割
-          </button>
-          <button
-            className="secondary-action"
-            onClick={undo}
-            disabled={undoStack.length === 0}
-          >
-            戻す
-          </button>
-          <button
-            className="secondary-action"
-            onClick={redo}
-            disabled={redoStack.length === 0}
-          >
-            進める
-          </button>
-        </div>
+        <TimelineControls
+          isPlaying={Boolean(isPlaying)}
+          undoDisabled={undoStack.length === 0}
+          redoDisabled={redoStack.length === 0}
+          onJumpToStart={() => setCurrentFrame(1)}
+          onPreviousFrame={() =>
+            setCurrentFrame((frame) => Math.max(1, frame - 1))
+          }
+          onTogglePlayback={() => play()}
+          onNextFrame={() =>
+            setCurrentFrame((frame) => Math.min(totalFrames, frame + 1))
+          }
+          onJumpToEnd={() => setCurrentFrame(totalFrames)}
+          onTogglePartialPlayback={() => {
+            setIsPartiallyPlaying(!isPartiallyPlaying)
+            setIsPlaying?.(false)
+          }}
+          onAddLayer={addLayer}
+          onDeleteLayer={deleteLayer}
+          onAddAnnotation={addAnnotation}
+          onDeleteAnnotation={deleteAnnotation}
+          onMergeAnnotations={mergeAnnotations}
+          onSplitAnnotations={splitAnnotations}
+          onUndo={undo}
+          onRedo={redo}
+        />
         {visibleMovementDetectionCandidates.length > 0 && (
-          <div className="similarity-candidate-toolbar movement-candidate-toolbar">
-            <div className="similarity-candidate-toolbar-summary">
-              <span>{`動作検出候補: ${visibleMovementDetectionCandidates.length}件`}</span>
-              <span>{`挿入可能: ${insertableMovementDetectionCandidates.length}件`}</span>
-              {conflictingMovementDetectionCandidates.length > 0 && (
-                <span className="conflict-count">{`重複: ${conflictingMovementDetectionCandidates.length}件`}</span>
-              )}
-            </div>
-            <div className="similarity-candidate-toolbar-actions">
-              <button
-                type="button"
-                disabled={insertableMovementDetectionCandidates.length === 0}
-                onClick={() =>
-                  insertMovementDetectionCandidates(
-                    visibleMovementDetectionCandidates
-                  )
-                }
-              >
-                すべて挿入
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMovementDetectionCandidates([])
-                  showTimelineNotice('動作検出候補を破棄しました。', 'success')
-                }}
-              >
-                候補を破棄
-              </button>
-            </div>
-          </div>
+          <CandidateToolbar
+            title="動作検出候補"
+            totalCount={visibleMovementDetectionCandidates.length}
+            insertableCount={insertableMovementDetectionCandidates.length}
+            conflictingCount={conflictingMovementDetectionCandidates.length}
+            movement
+            onInsertAll={() =>
+              insertMovementDetectionCandidates(
+                visibleMovementDetectionCandidates
+              )
+            }
+            onDiscardAll={() => {
+              setMovementDetectionCandidates([])
+              showTimelineNotice('動作検出候補を破棄しました。', 'success')
+            }}
+          />
         )}
         {visibleSimilarMotionCandidates.length > 0 && (
-          <div className="similarity-candidate-toolbar">
-            <div className="similarity-candidate-toolbar-summary">
-              <span>{`類似候補: ${visibleSimilarMotionCandidates.length}件`}</span>
-              <span>{`挿入可能: ${insertableSimilarMotionCandidates.length}件`}</span>
-              {conflictingSimilarMotionCandidates.length > 0 && (
-                <span className="conflict-count">{`重複: ${conflictingSimilarMotionCandidates.length}件`}</span>
-              )}
-            </div>
-            <div className="similarity-candidate-toolbar-actions">
-              <button
-                type="button"
-                disabled={insertableSimilarMotionCandidates.length === 0}
-                onClick={() =>
-                  insertSimilarMotionCandidates(visibleSimilarMotionCandidates)
-                }
-              >
-                すべて挿入
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSimilarMotionCandidates([])
-                  showTimelineNotice('類似候補を破棄しました。', 'success')
-                }}
-              >
-                候補を破棄
-              </button>
-            </div>
-          </div>
+          <CandidateToolbar
+            title="類似候補"
+            totalCount={visibleSimilarMotionCandidates.length}
+            insertableCount={insertableSimilarMotionCandidates.length}
+            conflictingCount={conflictingSimilarMotionCandidates.length}
+            onInsertAll={() =>
+              insertSimilarMotionCandidates(visibleSimilarMotionCandidates)
+            }
+            onDiscardAll={() => {
+              setSimilarMotionCandidates([])
+              showTimelineNotice('類似候補を破棄しました。', 'success')
+            }}
+          />
         )}
         <div className="timeline-container">
           {!hasTimelineContent ? (
@@ -2151,26 +2077,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
             </div>
           )}
         </div>
-        <div className="zoom-controls">
-          <button
-            onClick={() => {
-              setZoomLevel(defaultZoomLevel)
-            }}
-          >
-            <img src="./reset.svg" alt="" />
-          </button>
-          <input
-            type="range"
-            min={minZoomLevel}
-            max={maxZoomLevel}
-            step={0.1}
-            value={zoomLevel}
-            onChange={(e) => {
-              const newZoomLevel = parseFloat(e.target.value)
-              setZoomLevel(newZoomLevel)
-            }}
-          />
-        </div>
+        <TimelineZoomControls
+          min={minZoomLevel}
+          max={maxZoomLevel}
+          value={zoomLevel}
+          onReset={() => setZoomLevel(defaultZoomLevel)}
+          onChange={setZoomLevel}
+        />
       </section>
     )
   }
