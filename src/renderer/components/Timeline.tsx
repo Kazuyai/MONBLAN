@@ -155,7 +155,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       0
     )
     const [playheadLeft, setPlayheadLeft] = useState(0)
-    const [isDragging, setIsDragging] = useState<boolean>(false)
+    const isDraggingRef = useRef(false)
 
     const showTimelineNotice = useCallback(
       (message: string, type: SnackbarType = 'warning') => {
@@ -165,7 +165,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     )
 
     // 選択範囲の状態を追加
-    const [isSelecting, setIsSelecting] = useState<boolean>(false)
+    const isSelectingRef = useRef(false)
     const [selectionStart, setSelectionStart] = useState<number>(0)
     const [selectionWidth, setSelectionWidth] = useState<number>(0)
     const selectionAnchorFrameRef = useRef<number>(1)
@@ -947,13 +947,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     )
 
     const handlePlayheadMoveDown = (clientX: number) => {
-      setIsDragging(true)
+      isDraggingRef.current = true
       updatePlayheadPosition(clientX)
     }
 
     // 選択範囲の開始処理
     const handleSelectionMouseDown = (clientX: number) => {
-      setIsSelecting(true)
+      isSelectingRef.current = true
       const containerRect = timelinesRef.current?.getBoundingClientRect()
       if (!containerRect) return
 
@@ -1000,7 +1000,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     // 選択範囲のマウス移動処理
     const handleSelectionMouseMove = useCallback(
       (e: MouseEvent) => {
-        if (isSelecting) {
+        if (isSelectingRef.current) {
           const containerRect = timelinesRef.current?.getBoundingClientRect()
           if (!containerRect) return
 
@@ -1027,7 +1027,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       },
       [
         frameWidth,
-        isSelecting,
         setSelectionFrameWidth,
         setSelectionStartFrame,
         syncPlayheadToFrame,
@@ -1037,11 +1036,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
 
     // 選択範囲の終了処理
     const handleSelectionMouseUp = useCallback(() => {
-      if (isSelecting) {
-        setIsSelecting(false)
-        // 選択範囲が確定した後の処理をここに追加できます
-      }
-    }, [isSelecting])
+      isSelectingRef.current = false
+    }, [])
 
     // アノテーションの更新を処理する関数
     const handleAnnotationChange = (
@@ -1500,19 +1496,17 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     // ドキュメント全体でマウスイベントを監視
     useEffect(() => {
       const handleMouseMove = (e: MouseEvent) => {
-        if (isDragging) {
+        if (isDraggingRef.current) {
           updatePlayheadPosition(e.clientX)
         }
-        if (isSelecting) {
+        if (isSelectingRef.current) {
           handleSelectionMouseMove(e)
         }
       }
 
       const handleMouseUp = () => {
-        if (isDragging) {
-          setIsDragging(false)
-        }
-        if (isSelecting) {
+        isDraggingRef.current = false
+        if (isSelectingRef.current) {
           handleSelectionMouseUp()
         }
       }
@@ -1527,8 +1521,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     }, [
       handleSelectionMouseMove,
       handleSelectionMouseUp,
-      isDragging,
-      isSelecting,
       updatePlayheadPosition
     ])
 
@@ -1581,6 +1573,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       >
         <TimelineControls
           isPlaying={Boolean(isPlaying)}
+          isPartiallyPlaying={isPartiallyPlaying}
+          hasSelectionRange={hasSelectionRange}
           undoDisabled={undoStack.length === 0}
           redoDisabled={redoStack.length === 0}
           onJumpToStart={() => setCurrentFrame(1)}
@@ -1593,8 +1587,14 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
           }
           onJumpToEnd={() => setCurrentFrame(totalFrames)}
           onTogglePartialPlayback={() => {
-            setIsPartiallyPlaying(!isPartiallyPlaying)
+            if (!hasSelectionRange) return
+            if (isPartiallyPlaying) {
+              setIsPartiallyPlaying(false)
+              return
+            }
             setIsPlaying?.(false)
+            setCurrentFrame(selectionStartFrame)
+            setIsPartiallyPlaying(true)
           }}
           onAddLayer={addLayer}
           onDeleteLayer={deleteLayer}

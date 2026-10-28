@@ -1,5 +1,7 @@
 interface TimelineControlsProps {
   isPlaying: boolean
+  isPartiallyPlaying: boolean
+  hasSelectionRange: boolean
   undoDisabled: boolean
   redoDisabled: boolean
   onJumpToStart: () => void
@@ -20,6 +22,8 @@ interface TimelineControlsProps {
 
 const TimelineControls = ({
   isPlaying,
+  isPartiallyPlaying,
+  hasSelectionRange,
   undoDisabled,
   redoDisabled,
   onJumpToStart,
@@ -73,8 +77,18 @@ const TimelineControls = ({
     >
       <img src="./skip_end.svg" alt="" />
     </button>
-    <button className="secondary-action" onClick={onTogglePartialPlayback}>
-      部分再生
+    <button
+      className={`secondary-action${isPartiallyPlaying ? ' active' : ''}`}
+      onClick={onTogglePartialPlayback}
+      disabled={!hasSelectionRange}
+      aria-pressed={isPartiallyPlaying}
+      title={
+        hasSelectionRange
+          ? undefined
+          : '先にタイムラインで範囲を選択してください'
+      }
+    >
+      {isPartiallyPlaying ? '部分再生を停止' : '部分再生'}
     </button>
     <button className="secondary-action" onClick={onAddLayer}>
       注釈層追加
