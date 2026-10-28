@@ -13,7 +13,7 @@ Electron + React + TypeScript による手動アノテーション機能と、�
 
 ## MONBLANを利用する方へ
 
-開発環境を用意せずにMONBLANを利用する場合は、[GitHub Releases](https://github.com/Kazuyai/Annotation-Tool/releases)からWindows向けインストーラーをダウンロードしてください。
+開発環境を用意せずにMONBLANを利用する場合は、[GitHub Releases](https://github.com/Kazuyai/MONBLAN/releases)からWindows向けインストーラーをダウンロードしてください。
 
 1. Releasesにある利用したいバージョンの`Assets`を開く
 2. `MONBLAN-Setup-<バージョン>.exe`をダウンロードする

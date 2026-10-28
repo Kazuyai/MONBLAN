@@ -124,7 +124,7 @@ venv作成だけ確認し、依存インストールを後で行う場合は `-S
 手動で作業する場合は以下を実行する。
 
 ```powershell
-cd C:\ProgrammingPractice\GitHub\Annotation-Tool
+cd C:\path\to\MONBLAN
 py -3.11 -m venv API\venv
 API\venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip

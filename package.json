@@ -5,7 +5,7 @@
   "main": "dist/main/main.js",
   "author": "Kazuya Okamura",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/Kazuyai/Annotation-Tool",
+  "homepage": "https://github.com/Kazuyai/MONBLAN",
   "scripts": {
     "dev": "concurrently -k --names VITE,TS,ELECTRON -c blue,yellow,green \"yarn dev:react\" \"yarn dev:main\" \"yarn dev:electron\"",
     "dev:react": "vite --port 3001 --strictPort",
