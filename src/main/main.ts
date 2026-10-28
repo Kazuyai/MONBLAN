@@ -290,6 +290,7 @@ const createWindow = async () => {
     show: false,
     width: 1600,
     height: 900,
+    autoHideMenuBar: true,
     icon: getWindowIconPath(),
     webPreferences: {
       preload: app.isPackaged
@@ -298,6 +299,7 @@ const createWindow = async () => {
       webSecurity: false
     }
   })
+  mainWindow.removeMenu()
 
   if (process.platform === 'win32') {
     mainWindow.setAppDetails({
