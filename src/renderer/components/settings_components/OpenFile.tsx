@@ -9,6 +9,7 @@ import {
   readEafFrameRate,
   readEafMediaDescriptors
 } from '../../utils/eaf'
+import { getElectronFilePath } from '../../utils/electronFile'
 import { useSnackbar } from '../SnackbarProvider'
 
 interface SettingsProps {
@@ -57,11 +58,6 @@ export const OpenFile: React.FC<SettingsProps> = ({
     String(FALLBACK_FRAME_RATE)
   )
   const [pendingEaf, setPendingEaf] = useState<PendingEaf | null>(null)
-
-  const getElectronFilePath = (file: File) => {
-    const electronFile = file as File & { path?: string }
-    return electronFile.path || null
-  }
 
   const waitForVideoMetadata = (videoUrl: string): Promise<void> => {
     return new Promise((resolve, reject) => {

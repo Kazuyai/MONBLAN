@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { ApiStatus } from '../../../main/preload'
 import type { AnalysisFrameRange, ProcessingTask } from '../../types'
+import { getElectronFilePath } from '../../utils/electronFile'
 import { startProcessingProgress } from '../../utils/processingProgress'
 import {
   AnalysisRangeSelector,
@@ -425,11 +426,6 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
 
   const isAiReady =
     apiStatus?.status === 'ready' && apiStatus.aiAvailable === true
-
-  const getElectronFilePath = (file: File) => {
-    const electronFile = file as File & { path?: string }
-    return electronFile.path || null
-  }
 
   const getStoredVideoPath = () => {
     if (videoSrcs.length === 0) {

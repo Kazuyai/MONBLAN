@@ -1,4 +1,9 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
+import {
+  contextBridge,
+  ipcRenderer,
+  IpcRendererEvent,
+  webUtils
+} from 'electron'
 import type {
   AiSetupModel,
   AiSetupComponent,
@@ -65,6 +70,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('annotation:export', request),
   createLocalMediaUrl: (filePath: string): Promise<string> =>
     ipcRenderer.invoke('media:create-url', filePath),
+  getPathForFile: (
+    file: Parameters<typeof webUtils.getPathForFile>[0]
+  ): string => webUtils.getPathForFile(file),
   getAiSetupStatus: (): Promise<AiSetupStatus> =>
     ipcRenderer.invoke('ai-setup:get-status'),
   runAiSetupOperation: (operation: AiSetupOperation): Promise<AiSetupStatus> =>
