@@ -8,6 +8,7 @@ import React, {
   useState
 } from 'react'
 import { createPortal } from 'react-dom'
+import './SnackbarProvider.scss'
 
 export type SnackbarType = 'info' | 'success' | 'warning' | 'error'
 

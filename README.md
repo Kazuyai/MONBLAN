@@ -35,18 +35,20 @@ Electron + React + TypeScript による手動アノテーション機能と、�
 
 ## 対応方針
 
-| 機能 | 現時点の対象 |
-| --- | --- |
-| 手動アノテーション | 初期ベータ版はWindowsを対象。Electronアプリとして動作。 |
-| AI自動アノテーション | Windowsを対象。NVIDIA GPU + CUDAを推奨し、CPU実行も許可。 |
-| macOS | 現時点では配布・AI機能ともに正式対象外。 |
-| Linux | 将来的な候補。現時点では正式対象外。 |
-| Docker | 将来的なAI API安定化オプション。現時点では主経路にしない。 |
+| 機能                 | 現時点の対象                                               |
+| -------------------- | ---------------------------------------------------------- |
+| 手動アノテーション   | 初期ベータ版はWindowsを対象。Electronアプリとして動作。    |
+| AI自動アノテーション | Windowsを対象。NVIDIA GPU + CUDAを推奨し、CPU実行も許可。  |
+| macOS                | 現時点では配布・AI機能ともに正式対象外。                   |
+| Linux                | 将来的な候補。現時点では正式対象外。                       |
+| Docker               | 将来的なAI API安定化オプション。現時点では主経路にしない。 |
 
 配布方針の詳細は `docs/distribution-policy.md` を参照してください。
 AI環境の具体的なセットアップは `docs/setup-ai-environment.md` を参照してください。
 APIの起動方法とエンドポイントは `API/README.md` を参照してください。
 public化や配布前の確認項目は `docs/public-release-checklist.md` を参照してください。
+旧プロジェクトJSONからの移行仕様は `docs/legacy-project-json-format.md` を参照してください。
+開発者向けの構成と責務分担は `docs/architecture.md` を参照してください。
 
 ## 主な機能
 
@@ -81,9 +83,11 @@ scripts/
   fetch-ai-repos.ps1
   verify-ai-pipeline.ps1
 docs/
+  architecture.md
   distribution-policy.md
   setup-ai-environment.md
-  issues-triage.md
+  legacy-project-json-format.md
+  public-release-checklist.md
 ```
 
 ## 同梱しないもの

@@ -1,4 +1,76 @@
-import React, { useEffect, useRef, Dispatch, SetStateAction } from 'react'
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  Dispatch,
+  SetStateAction
+} from 'react'
+
+const waitForMetadata = (video: HTMLVideoElement): Promise<void> => {
+  if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    return Promise.resolve()
+  }
+  return new Promise((resolve, reject) => {
+    const handleLoadedMetadata = () => {
+      cleanup()
+      resolve()
+    }
+    const handleError = () => {
+      cleanup()
+      reject(new Error('動画のメタデータを読み込めませんでした。'))
+    }
+    const cleanup = () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      video.removeEventListener('error', handleError)
+    }
+    video.addEventListener('loadedmetadata', handleLoadedMetadata)
+    video.addEventListener('error', handleError)
+  })
+}
+
+const waitForSeeked = (video: HTMLVideoElement): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      cleanup()
+      reject(new Error('動画のシークがタイムアウトしました。'))
+    }, 5000)
+    const handleSeeked = () => {
+      cleanup()
+      resolve()
+    }
+    const handleError = () => {
+      cleanup()
+      reject(new Error('動画の再生位置を変更できませんでした。'))
+    }
+    const cleanup = () => {
+      window.clearTimeout(timeoutId)
+      video.removeEventListener('seeked', handleSeeked)
+      video.removeEventListener('error', handleError)
+    }
+    video.addEventListener('seeked', handleSeeked)
+    video.addEventListener('error', handleError)
+  })
+
+const seekVideo = async (
+  video: HTMLVideoElement,
+  targetTime: number
+): Promise<void> => {
+  await waitForMetadata(video)
+  const toleranceSeconds = 0.05
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (Math.abs(video.currentTime - targetTime) <= toleranceSeconds) return
+
+    const seeked = waitForSeeked(video)
+    video.currentTime = targetTime
+    await seeked
+    if (Math.abs(video.currentTime - targetTime) <= toleranceSeconds) return
+  }
+
+  throw new Error(
+    `動画を選択開始位置へ移動できませんでした（要求: ${targetTime.toFixed(3)}秒、実際: ${video.currentTime.toFixed(3)}秒）。`
+  )
+}
 
 interface VideoProps {
   videoSrcs: string[]
@@ -37,6 +109,7 @@ export const Video: React.FC<VideoProps> = ({
 }) => {
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([])
   const animationFrameId = useRef<number>()
+  const [isPartialPlaybackReady, setIsPartialPlaybackReady] = useState(false)
   const totalFrames = Math.ceil(videoDuration * frameRate)
 
   const selectionEndTime =
@@ -57,25 +130,47 @@ export const Video: React.FC<VideoProps> = ({
 
       if (isEditing || isTextEntryTarget) return
 
-      videoRefs.current.forEach((video) => {
-        if (!video) return
+      const videos = videoRefs.current.filter(
+        (video): video is HTMLVideoElement => Boolean(video)
+      )
+      if (videos.length === 0) return
 
-        switch (event.code) {
-          case 'ArrowLeft':
-            video.currentTime = Math.max(0, video.currentTime - 5)
-            break
-          case 'ArrowRight':
-            video.currentTime = Math.min(video.duration, video.currentTime + 5)
-            break
-          case 'Space':
-            event.preventDefault()
-            setIsPlaying?.((prev) => !prev)
-            setPlaySpeed?.(1)
-            break
-          default:
-            break
+      if (event.code === 'Space') {
+        event.preventDefault()
+        setPlaySpeed?.(1)
+        if (isPartiallyPlaying) {
+          setIsPartiallyPlaying?.(false)
+          setIsPlaying?.(false)
+        } else {
+          setIsPlaying?.((prev) => !prev)
         }
-      })
+        return
+      }
+
+      if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
+        event.preventDefault()
+        if (isPartiallyPlaying) {
+          setIsPartiallyPlaying?.(false)
+        }
+        const primaryVideo = videos[0]
+        const duration = Number.isFinite(primaryVideo.duration)
+          ? primaryVideo.duration
+          : videoDuration
+        const offsetSeconds = event.code === 'ArrowLeft' ? -5 : 5
+        const targetTime = Math.max(
+          0,
+          Math.min(duration, primaryVideo.currentTime + offsetSeconds)
+        )
+        videos.forEach((video) => {
+          video.currentTime = targetTime
+        })
+        setCurrentFrame(
+          Math.max(
+            1,
+            Math.min(totalFrames, Math.round(targetTime * frameRate) + 1)
+          )
+        )
+      }
     }
 
     const handleLoadedMetadata = (event: Event) => {
@@ -87,7 +182,8 @@ export const Video: React.FC<VideoProps> = ({
 
     document.addEventListener('keydown', handleKeyDown)
 
-    videoRefs.current.forEach((video) => {
+    const videos = [...videoRefs.current]
+    videos.forEach((video) => {
       if (video) {
         video.addEventListener('loadedmetadata', handleLoadedMetadata)
       }
@@ -95,13 +191,25 @@ export const Video: React.FC<VideoProps> = ({
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
-      videoRefs.current.forEach((video) => {
+      videos.forEach((video) => {
         if (video) {
           video.removeEventListener('loadedmetadata', handleLoadedMetadata)
         }
       })
     }
-  }, [setVideoDuration, isEditing, videoSrcs])
+  }, [
+    setIsPlaying,
+    setIsPartiallyPlaying,
+    setPlaySpeed,
+    setVideoDuration,
+    setCurrentFrame,
+    frameRate,
+    isEditing,
+    isPartiallyPlaying,
+    totalFrames,
+    videoDuration,
+    videoSrcs
+  ])
 
   useEffect(() => {
     videoRefs.current.forEach((video) => {
@@ -113,19 +221,62 @@ export const Video: React.FC<VideoProps> = ({
     })
   }, [currentFrame, isPlaying, isPartiallyPlaying, frameRate])
 
-
   useEffect(() => {
-    if (!isPartiallyPlaying) return
+    if (!isPartiallyPlaying) {
+      setIsPartialPlaybackReady(false)
+      return
+    }
+    if (selectionStartFrame < 1 || selectionFrameWidth < 1) {
+      setIsPartialPlaybackReady(false)
+      setIsPartiallyPlaying?.(false)
+      return
+    }
+
+    setIsPartialPlaybackReady(false)
 
     const startTime =
       Math.round(((selectionStartFrame - 1) / frameRate) * 1000) / 1000 + 0.001
 
-    videoRefs.current.forEach((video) => {
-      if (!video) return
-      video.currentTime = startTime
-      video.playbackRate = playSpeed || 1
+    let canceled = false
+    const startPartialPlayback = async () => {
+      const videos = videoRefs.current.filter(
+        (video): video is HTMLVideoElement => Boolean(video)
+      )
+      await Promise.all(
+        videos.map(async (video) => {
+          await seekVideo(video, startTime)
+        })
+      )
+      if (canceled) return
+      await Promise.all(
+        videos.map(async (video) => {
+          video.playbackRate = playSpeed || 1
+          await video.play()
+        })
+      )
+      if (!canceled) {
+        setIsPartialPlaybackReady(true)
+      }
+    }
+
+    void startPartialPlayback().catch((error) => {
+      if (canceled) return
+      console.error('Partial playback failed:', error)
+      setIsPartialPlaybackReady(false)
+      setIsPartiallyPlaying?.(false)
     })
-  }, [isPartiallyPlaying, selectionStartFrame, frameRate, playSpeed])
+
+    return () => {
+      canceled = true
+    }
+  }, [
+    isPartiallyPlaying,
+    selectionStartFrame,
+    selectionFrameWidth,
+    frameRate,
+    playSpeed,
+    setIsPartiallyPlaying
+  ])
 
   useEffect(() => {
     videoRefs.current.forEach((video) => {
@@ -133,6 +284,9 @@ export const Video: React.FC<VideoProps> = ({
 
       const shouldPlay = isPlaying || isPartiallyPlaying
 
+      if (isPartiallyPlaying) {
+        return
+      }
       if (shouldPlay) {
         video.playbackRate = playSpeed || 1
         const p = video.play()
@@ -154,7 +308,7 @@ export const Video: React.FC<VideoProps> = ({
               setIsPlaying?.(false)
             }
           } else if (isPartiallyPlaying) {
-            if (video.currentTime > selectionEndTime) {
+            if (video.currentTime >= selectionEndTime) {
               video.currentTime = selectionEndTime
               setIsPartiallyPlaying?.(false)
             }
@@ -164,7 +318,7 @@ export const Video: React.FC<VideoProps> = ({
       animationFrameId.current = requestAnimationFrame(updateCurrentFrame)
     }
 
-    if (isPlaying || isPartiallyPlaying) {
+    if (isPlaying || (isPartiallyPlaying && isPartialPlaybackReady)) {
       animationFrameId.current = requestAnimationFrame(updateCurrentFrame)
     }
 
@@ -176,6 +330,7 @@ export const Video: React.FC<VideoProps> = ({
   }, [
     isPlaying,
     isPartiallyPlaying,
+    isPartialPlaybackReady,
     isEditing,
     frameRate,
     selectionEndTime,

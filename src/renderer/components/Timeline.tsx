@@ -11,6 +11,9 @@ import React, {
 import { v4 as uuidv4 } from 'uuid'
 import Annotation from './Annotation'
 import { useSnackbar, type SnackbarType } from './SnackbarProvider'
+import CandidateToolbar from './timeline/CandidateToolbar'
+import TimelineControls from './timeline/TimelineControls'
+import TimelineZoomControls from './timeline/TimelineZoomControls'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
@@ -21,11 +24,11 @@ import type {
   TimelineAnnotationResult
 } from '../types'
 import { generateEafContent } from '../utils/eaf'
+import { buildStoredVideoMetadata } from '../utils/videoMetadata'
 
 interface TimelineProps {
   videoSrcs: string[]
   videoDuration: number
-  isEditing: boolean
   setIsEditing: Dispatch<SetStateAction<boolean>>
   frameRate: number
   currentFrame: number
@@ -79,7 +82,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     {
       videoSrcs,
       videoDuration,
-      isEditing,
       setIsEditing,
       frameRate,
       currentFrame,
@@ -136,7 +138,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const redoRef = useRef<() => void>(() => undefined)
 
     const [zoomLevel, setZoomLevel] = useState(defaultZoomLevel)
-    const [minZoomLevel, setMinZoomLevel] = useState(0.5)
+    const minZoomLevel = 0.5
     const frameWidth = 10 * zoomLevel
     const timelineWidth = frameWidth * Math.max(totalFrames - 1, 0)
     const [focusedAnnotationId, setFocusedAnnotationId] = useState<
@@ -154,7 +156,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       0
     )
     const [playheadLeft, setPlayheadLeft] = useState(0)
-    const [isDragging, setIsDragging] = useState<boolean>(false)
+    const isDraggingRef = useRef(false)
 
     const showTimelineNotice = useCallback(
       (message: string, type: SnackbarType = 'warning') => {
@@ -164,7 +166,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     )
 
     // 選択範囲の状態を追加
-    const [isSelecting, setIsSelecting] = useState<boolean>(false)
+    const isSelectingRef = useRef(false)
     const [selectionStart, setSelectionStart] = useState<number>(0)
     const [selectionWidth, setSelectionWidth] = useState<number>(0)
     const selectionAnchorFrameRef = useRef<number>(1)
@@ -860,42 +862,44 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     // ズーム処理
     const maxZoomLevel = 5
 
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault()
-        setZoomLevel((prevZoom) => {
-          const newZoom = prevZoom + e.deltaY * -0.01
-          return Math.max(minZoomLevel, Math.min(maxZoomLevel, newZoom))
-        })
-      }
-    }
-
     useEffect(() => {
+      const handleWheel = (e: WheelEvent) => {
+        if (e.ctrlKey) {
+          e.preventDefault()
+          setZoomLevel((prevZoom) => {
+            const newZoom = prevZoom + e.deltaY * -0.01
+            return Math.max(minZoomLevel, Math.min(maxZoomLevel, newZoom))
+          })
+        }
+      }
       const timelines = timelinesRef.current
       timelines?.addEventListener('wheel', handleWheel)
       return () => {
         timelines?.removeEventListener('wheel', handleWheel)
       }
-    }, [minZoomLevel]) // minZoomLevelの変更を監視
+    }, [])
 
-    const syncPlayheadToFrame = (frame: number) => {
-      const remInPixels = parseFloat(
-        getComputedStyle(document.documentElement).fontSize
-      )
-      const offset = 140 * remInPixels
-      const clampedFrame = Math.max(1, Math.min(totalFrames, frame))
-      const nextPlayheadLeft = offset + (clampedFrame - 1) * frameWidth
+    const syncPlayheadToFrame = useCallback(
+      (frame: number) => {
+        const remInPixels = parseFloat(
+          getComputedStyle(document.documentElement).fontSize
+        )
+        const offset = 140 * remInPixels
+        const clampedFrame = Math.max(1, Math.min(totalFrames, frame))
+        const nextPlayheadLeft = offset + (clampedFrame - 1) * frameWidth
 
-      setCurrentFrame(clampedFrame)
-      setPlayheadLeft(nextPlayheadLeft)
-      if (playheadRef.current) {
-        playheadRef.current.style.left = `${nextPlayheadLeft}px`
-      }
-    }
+        setCurrentFrame(clampedFrame)
+        setPlayheadLeft(nextPlayheadLeft)
+        if (playheadRef.current) {
+          playheadRef.current.style.left = `${nextPlayheadLeft}px`
+        }
+      },
+      [frameWidth, setCurrentFrame, totalFrames]
+    )
 
     useEffect(() => {
       syncPlayheadToFrame(currentFrame)
-    }, [currentFrame, frameWidth])
+    }, [currentFrame, syncPlayheadToFrame])
 
     useEffect(() => {
       if (selectionFrameWidth === 0) {
@@ -925,37 +929,32 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     })
 
     // プレイヘッドの位置を更新する関数
-    const updatePlayheadPosition = (clientX: number) => {
-      const remInPixels = parseFloat(
-        getComputedStyle(document.documentElement).fontSize
-      )
-      const offset = 140 * remInPixels
+    const updatePlayheadPosition = useCallback(
+      (clientX: number) => {
+        const remInPixels = parseFloat(
+          getComputedStyle(document.documentElement).fontSize
+        )
+        const timeBarRect = timeBarRef.current?.getBoundingClientRect()
+        if (!timeBarRect) return
 
-      const timeBarRect = timeBarRef.current?.getBoundingClientRect()
-      if (!timeBarRect) return
+        const relativeX = clientX - timeBarRect.left - (0.05 + 10) * remInPixels
 
-      const relativeX = clientX - timeBarRect.left - (0.05 + 10) * remInPixels
+        const frameIndex = Math.round(relativeX / frameWidth) + 1
+        const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
 
-      const frameIndex = Math.round(relativeX / frameWidth) + 1
-      const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
-
-      syncPlayheadToFrame(clampedFrameIndex)
-    }
+        syncPlayheadToFrame(clampedFrameIndex)
+      },
+      [frameWidth, syncPlayheadToFrame, totalFrames]
+    )
 
     const handlePlayheadMoveDown = (clientX: number) => {
-      setIsDragging(true)
+      isDraggingRef.current = true
       updatePlayheadPosition(clientX)
-    }
-
-    const handlePlayheadMove = (clientX: number) => {
-      if (isDragging) {
-        updatePlayheadPosition(clientX)
-      }
     }
 
     // 選択範囲の開始処理
     const handleSelectionMouseDown = (clientX: number) => {
-      setIsSelecting(true)
+      isSelectingRef.current = true
       const containerRect = timelinesRef.current?.getBoundingClientRect()
       if (!containerRect) return
 
@@ -1000,37 +999,46 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     }
 
     // 選択範囲のマウス移動処理
-    const handleSelectionMouseMove = (e: MouseEvent) => {
-      if (isSelecting) {
-        const containerRect = timelinesRef.current?.getBoundingClientRect()
-        if (!containerRect) return
+    const handleSelectionMouseMove = useCallback(
+      (e: MouseEvent) => {
+        if (isSelectingRef.current) {
+          const containerRect = timelinesRef.current?.getBoundingClientRect()
+          if (!containerRect) return
 
-        const remInPixels = parseFloat(
-          getComputedStyle(document.documentElement).fontSize
-        )
-        const offset = 140 * remInPixels
-        const relativeX = e.clientX - containerRect.left - offset
-        const frameIndex = Math.round(relativeX / frameWidth) + 1
-        const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
-        const anchorFrameIndex = selectionAnchorFrameRef.current
-        const startFrame = Math.min(anchorFrameIndex, clampedFrameIndex)
-        const frameWidthCount = Math.abs(anchorFrameIndex - clampedFrameIndex)
+          const remInPixels = parseFloat(
+            getComputedStyle(document.documentElement).fontSize
+          )
+          const offset = 140 * remInPixels
+          const relativeX = e.clientX - containerRect.left - offset
+          const frameIndex = Math.round(relativeX / frameWidth) + 1
+          const clampedFrameIndex = Math.max(
+            1,
+            Math.min(totalFrames, frameIndex)
+          )
+          const anchorFrameIndex = selectionAnchorFrameRef.current
+          const startFrame = Math.min(anchorFrameIndex, clampedFrameIndex)
+          const frameWidthCount = Math.abs(anchorFrameIndex - clampedFrameIndex)
 
-        setSelectionStartFrame(startFrame)
-        setSelectionStart((startFrame - 1) * frameWidth + offset)
-        setSelectionFrameWidth(frameWidthCount)
-        setSelectionWidth(frameWidthCount * frameWidth)
-        syncPlayheadToFrame(clampedFrameIndex)
-      }
-    }
+          setSelectionStartFrame(startFrame)
+          setSelectionStart((startFrame - 1) * frameWidth + offset)
+          setSelectionFrameWidth(frameWidthCount)
+          setSelectionWidth(frameWidthCount * frameWidth)
+          syncPlayheadToFrame(clampedFrameIndex)
+        }
+      },
+      [
+        frameWidth,
+        setSelectionFrameWidth,
+        setSelectionStartFrame,
+        syncPlayheadToFrame,
+        totalFrames
+      ]
+    )
 
     // 選択範囲の終了処理
-    const handleSelectionMouseUp = () => {
-      if (isSelecting) {
-        setIsSelecting(false)
-        // 選択範囲が確定した後の処理をここに追加できます
-      }
-    }
+    const handleSelectionMouseUp = useCallback(() => {
+      isSelectingRef.current = false
+    }, [])
 
     // アノテーションの更新を処理する関数
     const handleAnnotationChange = (
@@ -1372,23 +1380,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const fileNames = parseStringArray(localStorage.getItem('videoFileNames'))
       const filePaths = parseStringArray(localStorage.getItem('videoFilePaths'))
 
-      return videoSrcs.map((videoSrc, index) => ({
-        name:
-          fileNames[index] ||
-          videoSrc
-            .split(/[/\\]/)
-            .pop()
-            ?.replace(/^file:/, '') ||
-          `video${index + 1}`,
-        path:
-          filePaths[index] ||
-          (videoSrc.startsWith('file:///')
-            ? decodeURIComponent(videoSrc.replace('file:///', '')).replace(
-                /\//g,
-                '\\'
-              )
-            : undefined)
-      }))
+      return buildStoredVideoMetadata(videoSrcs, fileNames, filePaths)
     }
 
     const importProjectJson = (project: AnnotationProject) => {
@@ -1489,19 +1481,17 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     // ドキュメント全体でマウスイベントを監視
     useEffect(() => {
       const handleMouseMove = (e: MouseEvent) => {
-        if (isDragging) {
+        if (isDraggingRef.current) {
           updatePlayheadPosition(e.clientX)
         }
-        if (isSelecting) {
+        if (isSelectingRef.current) {
           handleSelectionMouseMove(e)
         }
       }
 
       const handleMouseUp = () => {
-        if (isDragging) {
-          setIsDragging(false)
-        }
-        if (isSelecting) {
+        isDraggingRef.current = false
+        if (isSelectingRef.current) {
           handleSelectionMouseUp()
         }
       }
@@ -1513,7 +1503,11 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         document.removeEventListener('mousemove', handleMouseMove)
         document.removeEventListener('mouseup', handleMouseUp)
       }
-    }, [isDragging, isSelecting])
+    }, [
+      handleSelectionMouseMove,
+      handleSelectionMouseUp,
+      updatePlayheadPosition
+    ])
 
     // ドキュメント全体でUndo/Redoのキーボードショートカットを監視
     useEffect(() => {
@@ -1562,141 +1556,72 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         className={`${!hasTimelineContent ? 'hide' : ''}`}
         style={{ height: `calc(${100 - topHeight}% - 1.5rem)` }}
       >
-        <div className="controls">
-          <button className="icon-button" onClick={() => setCurrentFrame(1)}>
-            <img src="./skip_start.svg" alt="" />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => setCurrentFrame((frame) => Math.max(1, frame - 1))}
-          >
-            <img src="./1f_left.svg" alt="< 1f" />
-          </button>
-          <button className="icon-button primary-action" onClick={() => play()}>
-            <img
-              src={isPlaying ? './pause.svg' : './play.svg'}
-              alt={isPlaying ? 'pause' : 'play'}
-            />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() =>
-              setCurrentFrame((frame) => Math.min(totalFrames, frame + 1))
+        <TimelineControls
+          isPlaying={Boolean(isPlaying)}
+          isPartiallyPlaying={isPartiallyPlaying}
+          hasSelectionRange={hasSelectionRange}
+          undoDisabled={undoStack.length === 0}
+          redoDisabled={redoStack.length === 0}
+          onJumpToStart={() => setCurrentFrame(1)}
+          onPreviousFrame={() =>
+            setCurrentFrame((frame) => Math.max(1, frame - 1))
+          }
+          onTogglePlayback={() => play()}
+          onNextFrame={() =>
+            setCurrentFrame((frame) => Math.min(totalFrames, frame + 1))
+          }
+          onJumpToEnd={() => setCurrentFrame(totalFrames)}
+          onTogglePartialPlayback={() => {
+            if (!hasSelectionRange) return
+            if (isPartiallyPlaying) {
+              setIsPartiallyPlaying(false)
+              return
             }
-          >
-            <img src="./1f_right.svg" alt="1f >" />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => setCurrentFrame(totalFrames)}
-          >
-            <img src="./skip_end.svg" alt="" />
-          </button>
-          <button
-            className="secondary-action"
-            onClick={() => {
-              setIsPartiallyPlaying(!isPartiallyPlaying)
-              setIsPlaying?.(false)
-            }}
-          >
-            部分再生
-          </button>
-          <button className="secondary-action" onClick={addLayer}>
-            注釈層追加
-          </button>
-          <button className="danger-action" onClick={deleteLayer}>
-            注釈層削除
-          </button>
-          <button className="secondary-action" onClick={addAnnotation}>
-            注釈追加
-          </button>
-          <button className="danger-action" onClick={deleteAnnotation}>
-            注釈削除
-          </button>
-          <button className="secondary-action" onClick={mergeAnnotations}>
-            結合
-          </button>
-          <button className="secondary-action" onClick={splitAnnotations}>
-            分割
-          </button>
-          <button
-            className="secondary-action"
-            onClick={undo}
-            disabled={undoStack.length === 0}
-          >
-            戻す
-          </button>
-          <button
-            className="secondary-action"
-            onClick={redo}
-            disabled={redoStack.length === 0}
-          >
-            進める
-          </button>
-        </div>
+            setIsPlaying?.(false)
+            setCurrentFrame(selectionStartFrame)
+            setIsPartiallyPlaying(true)
+          }}
+          onAddLayer={addLayer}
+          onDeleteLayer={deleteLayer}
+          onAddAnnotation={addAnnotation}
+          onDeleteAnnotation={deleteAnnotation}
+          onMergeAnnotations={mergeAnnotations}
+          onSplitAnnotations={splitAnnotations}
+          onUndo={undo}
+          onRedo={redo}
+        />
         {visibleMovementDetectionCandidates.length > 0 && (
-          <div className="similarity-candidate-toolbar movement-candidate-toolbar">
-            <div className="similarity-candidate-toolbar-summary">
-              <span>{`動作検出候補: ${visibleMovementDetectionCandidates.length}件`}</span>
-              <span>{`挿入可能: ${insertableMovementDetectionCandidates.length}件`}</span>
-              {conflictingMovementDetectionCandidates.length > 0 && (
-                <span className="conflict-count">{`重複: ${conflictingMovementDetectionCandidates.length}件`}</span>
-              )}
-            </div>
-            <div className="similarity-candidate-toolbar-actions">
-              <button
-                type="button"
-                disabled={insertableMovementDetectionCandidates.length === 0}
-                onClick={() =>
-                  insertMovementDetectionCandidates(
-                    visibleMovementDetectionCandidates
-                  )
-                }
-              >
-                すべて挿入
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMovementDetectionCandidates([])
-                  showTimelineNotice('動作検出候補を破棄しました。', 'success')
-                }}
-              >
-                候補を破棄
-              </button>
-            </div>
-          </div>
+          <CandidateToolbar
+            title="動作検出候補"
+            totalCount={visibleMovementDetectionCandidates.length}
+            insertableCount={insertableMovementDetectionCandidates.length}
+            conflictingCount={conflictingMovementDetectionCandidates.length}
+            movement
+            onInsertAll={() =>
+              insertMovementDetectionCandidates(
+                visibleMovementDetectionCandidates
+              )
+            }
+            onDiscardAll={() => {
+              setMovementDetectionCandidates([])
+              showTimelineNotice('動作検出候補を破棄しました。', 'success')
+            }}
+          />
         )}
         {visibleSimilarMotionCandidates.length > 0 && (
-          <div className="similarity-candidate-toolbar">
-            <div className="similarity-candidate-toolbar-summary">
-              <span>{`類似候補: ${visibleSimilarMotionCandidates.length}件`}</span>
-              <span>{`挿入可能: ${insertableSimilarMotionCandidates.length}件`}</span>
-              {conflictingSimilarMotionCandidates.length > 0 && (
-                <span className="conflict-count">{`重複: ${conflictingSimilarMotionCandidates.length}件`}</span>
-              )}
-            </div>
-            <div className="similarity-candidate-toolbar-actions">
-              <button
-                type="button"
-                disabled={insertableSimilarMotionCandidates.length === 0}
-                onClick={() =>
-                  insertSimilarMotionCandidates(visibleSimilarMotionCandidates)
-                }
-              >
-                すべて挿入
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSimilarMotionCandidates([])
-                  showTimelineNotice('類似候補を破棄しました。', 'success')
-                }}
-              >
-                候補を破棄
-              </button>
-            </div>
-          </div>
+          <CandidateToolbar
+            title="類似候補"
+            totalCount={visibleSimilarMotionCandidates.length}
+            insertableCount={insertableSimilarMotionCandidates.length}
+            conflictingCount={conflictingSimilarMotionCandidates.length}
+            onInsertAll={() =>
+              insertSimilarMotionCandidates(visibleSimilarMotionCandidates)
+            }
+            onDiscardAll={() => {
+              setSimilarMotionCandidates([])
+              showTimelineNotice('類似候補を破棄しました。', 'success')
+            }}
+          />
         )}
         <div className="timeline-container">
           {!hasTimelineContent ? (
@@ -2137,26 +2062,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
             </div>
           )}
         </div>
-        <div className="zoom-controls">
-          <button
-            onClick={() => {
-              setZoomLevel(defaultZoomLevel)
-            }}
-          >
-            <img src="./reset.svg" alt="" />
-          </button>
-          <input
-            type="range"
-            min={minZoomLevel}
-            max={maxZoomLevel}
-            step={0.1}
-            value={zoomLevel}
-            onChange={(e) => {
-              const newZoomLevel = parseFloat(e.target.value)
-              setZoomLevel(newZoomLevel)
-            }}
-          />
-        </div>
+        <TimelineZoomControls
+          min={minZoomLevel}
+          max={maxZoomLevel}
+          value={zoomLevel}
+          onReset={() => setZoomLevel(defaultZoomLevel)}
+          onChange={setZoomLevel}
+        />
       </section>
     )
   }

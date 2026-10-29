@@ -20,7 +20,7 @@ interface SettingsProps {
   onImportProjectJson: (
     project: AnnotationProject,
     sourceEafFilePath?: string
-  ) => void
+  ) => Promise<void>
 }
 
 const FALLBACK_FRAME_RATE = 30
@@ -172,7 +172,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
         throw new Error('Unsupported project file format')
       }
 
-      onImportProjectJson(project)
+      await onImportProjectJson(project)
       setManualFrameRate(String(project.frameRate))
       showSnackbar(
         'プロジェクトを読み込みました。動画が表示されない場合は、動画ファイルを開き直してください。',
@@ -198,7 +198,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
         sourceFilePath: getElectronFilePath(pending.file)
       })
       if (selectedVideos) project.videos = selectedVideos
-      onImportProjectJson(
+      await onImportProjectJson(
         project,
         getElectronFilePath(pending.file) ?? undefined
       )
@@ -256,8 +256,8 @@ export const OpenFile: React.FC<SettingsProps> = ({
         title: 'EAFを読み込み中',
         description: '関連付けられた動画からフレームレートを確認しています。'
       })
-      const pending = { file, xml: await file.text() }
       try {
+        const pending = { file, xml: await file.text() }
         const embeddedFrameRate = readEafFrameRate(pending.xml)
         if (embeddedFrameRate) {
           applyFrameRate(embeddedFrameRate)
@@ -268,17 +268,28 @@ export const OpenFile: React.FC<SettingsProps> = ({
           pending.xml,
           getElectronFilePath(file)
         )
-        const detectedFrameRate = await detectFrameRateFromVideos(videos)
-        applyFrameRate(detectedFrameRate)
-        await importEafFile(pending, detectedFrameRate)
+        try {
+          const detectedFrameRate = await detectFrameRateFromVideos(videos)
+          applyFrameRate(detectedFrameRate)
+          await importEafFile(pending, detectedFrameRate)
+        } catch (error) {
+          console.info('EAF media frame rate detection skipped:', error)
+          setPendingEaf(pending)
+          setManualFrameRate(String(frameRate || FALLBACK_FRAME_RATE))
+          setFrameRateWarning(
+            'EAFに記録された動画からfpsを取得できませんでした。fpsを入力するか、対象動画を選択してください。'
+          )
+          setShowManualFrameRateInput(true)
+        }
       } catch (error) {
-        console.info('EAF media frame rate detection skipped:', error)
-        setPendingEaf(pending)
-        setManualFrameRate(String(frameRate || FALLBACK_FRAME_RATE))
+        console.error('EAF import preparation failed:', error)
+        setPendingEaf(null)
         setFrameRateWarning(
-          'EAFに記録された動画からfpsを取得できませんでした。fpsを入力するか、対象動画を選択してください。'
+          error instanceof Error
+            ? error.message
+            : 'EAFの読み込みに失敗しました。'
         )
-        setShowManualFrameRateInput(true)
+        setShowManualFrameRateInput(false)
       } finally {
         setProcessingTask(null)
       }

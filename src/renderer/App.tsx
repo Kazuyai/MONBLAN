@@ -150,10 +150,10 @@ const App = () => {
     [activeEafFilePath]
   )
 
-  const handleImportProjectJson = (
+  const handleImportProjectJson = async (
     project: AnnotationProject,
     sourceEafFilePath?: string
-  ) => {
+  ): Promise<void> => {
     if (!timelineRef.current) return
 
     setFrameRate(project.frameRate)
@@ -177,12 +177,15 @@ const App = () => {
       'videoFilePaths',
       JSON.stringify(project.videos.map((video) => video.path ?? ''))
     )
-    setVideoSrcs(
-      project.videos
-        .map((video) => video.path)
-        .filter((path): path is string => Boolean(path))
-        .map((path) => `file:///${encodeURI(path.replace(/\\/g, '/'))}`)
+    const storedVideoPaths = project.videos
+      .map((video) => video.path)
+      .filter((videoPath): videoPath is string => Boolean(videoPath))
+    const localMediaUrls = await Promise.all(
+      storedVideoPaths.map((videoPath) =>
+        window.electronAPI.createLocalMediaUrl(videoPath)
+      )
     )
+    setVideoSrcs(localMediaUrls)
 
     timelineRef.current.importProjectJson(project)
   }
@@ -286,7 +289,6 @@ const App = () => {
         ref={timelineRef}
         videoSrcs={videoSrcs}
         videoDuration={videoDuration}
-        isEditing={isEditing}
         setIsEditing={setIsEditing}
         frameRate={frameRate}
         currentFrame={currentFrame}

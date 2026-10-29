@@ -4,8 +4,8 @@ on:
   push:
     branches:
       - main
-      - "feat/**"
-      - "fix/**"
+      - 'feat/**'
+      - 'fix/**'
   pull_request:
 
 permissions:
@@ -20,9 +20,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
           cache: yarn
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - run: yarn install --frozen-lockfile
+      - run: yarn lint
+      - run: yarn test
       - run: yarn typecheck
       - run: yarn build
+      - run: python -m py_compile API/api.py API/environment.py API/pipeline.py API/progress.py
+      - run: python -m unittest discover -s API/tests -v

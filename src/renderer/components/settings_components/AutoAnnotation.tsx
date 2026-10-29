@@ -99,7 +99,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
   // 画像サイズ
   //   width : 170rem
   //   height: 300rem
-  const [selectableKeyPoints, setSelectableKeyPoints] = useState<KeyPoint[]>([
+  const [selectableKeyPoints] = useState<KeyPoint[]>([
     { name: '右腰', number: 1, x: 51, y: 176 },
     { name: '右ひざ', number: 2, x: 51, y: 230 },
     { name: '左腰', number: 4, x: 119, y: 176 },

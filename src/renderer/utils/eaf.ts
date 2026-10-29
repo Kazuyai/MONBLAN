@@ -22,6 +22,7 @@ interface GenerateEafOptions {
 }
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>'
+const LEADING_XML_DECLARATIONS = /^(?:\uFEFF?\s*<\?xml\s+[^?]*\?>\s*)+/i
 const MONBLAN_FRAME_RATE_PROPERTY = 'MONBLAN_FRAME_RATE'
 const MONBLAN_FORMAT_VERSION_PROPERTY = 'MONBLAN_FORMAT_VERSION'
 const MONBLAN_FORMAT_VERSION = '1'
@@ -42,7 +43,14 @@ const parseXml = (xml: string): XMLDocument => {
     throw new Error('DOCTYPEまたはENTITYを含むEAFは安全のため読み込めません。')
   }
 
-  const document = new DOMParser().parseFromString(xml, 'application/xml')
+  const normalizedXml = xml.replace(
+    LEADING_XML_DECLARATIONS,
+    `${XML_DECLARATION}\n`
+  )
+  const document = new DOMParser().parseFromString(
+    normalizedXml,
+    'application/xml'
+  )
   if (
     document.documentElement.localName === 'parsererror' ||
     elementsByLocalName(document, 'parsererror').length > 0
@@ -407,8 +415,12 @@ const updateMonblanProperties = (document: XMLDocument, frameRate: number) => {
   )
 }
 
-const serializeDocument = (document: XMLDocument): string =>
-  `${XML_DECLARATION}\n${new XMLSerializer().serializeToString(document)}`
+const serializeDocument = (document: XMLDocument): string => {
+  const serialized = new XMLSerializer()
+    .serializeToString(document)
+    .replace(LEADING_XML_DECLARATIONS, '')
+  return `${XML_DECLARATION}\n${serialized}`
+}
 
 const generateNewEaf = (options: GenerateEafOptions): string => {
   assertUniqueLayerNames(options.layerNames)

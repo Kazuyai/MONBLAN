@@ -1,6 +1,7 @@
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from 'child_process'
 import { existsSync } from 'fs'
 import http from 'http'
+import net from 'net'
 import path from 'path'
 import log from 'electron-log'
 
@@ -46,6 +47,12 @@ const API_POLL_INTERVAL_MS = 500
 const API_REQUEST_TIMEOUT_MS = 3000
 const API_ENVIRONMENT_TIMEOUT_MS = 120000
 
+interface ApiHealthStatus {
+  status: 'ok'
+  service: 'monblan-api'
+  protocol_version: number
+}
+
 let apiProcess: ChildProcessWithoutNullStreams | null = null
 let apiStatus: ApiStatus = {
   status: 'stopped',
@@ -81,6 +88,22 @@ const updateStatus = (partial: Partial<ApiStatus>) => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+const isApiPortInUse = (): Promise<boolean> =>
+  new Promise((resolve) => {
+    const socket = net.createConnection({ host: API_HOST, port: API_PORT })
+    let settled = false
+    const finish = (inUse: boolean) => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolve(inUse)
+    }
+    socket.setTimeout(API_REQUEST_TIMEOUT_MS)
+    socket.once('connect', () => finish(true))
+    socket.once('timeout', () => finish(false))
+    socket.once('error', () => finish(false))
+  })
+
 const requestJson = <T>(
   url: string,
   timeoutMs = API_REQUEST_TIMEOUT_MS
@@ -115,6 +138,18 @@ const requestJson = <T>(
     })
     request.on('error', reject)
   })
+}
+
+const requestApiHealth = async (): Promise<ApiHealthStatus> => {
+  const health = await requestJson<ApiHealthStatus>(`${API_BASE_URL}/health/`)
+  if (
+    health.status !== 'ok' ||
+    health.service !== 'monblan-api' ||
+    health.protocol_version !== 1
+  ) {
+    throw new Error('Port 8000 is not serving a compatible MONBLAN API')
+  }
+  return health
 }
 
 export const refreshApiEnvironment = async (options = { force: false }) => {
@@ -160,7 +195,7 @@ const waitForApiReady = async () => {
 
   while (Date.now() - startedAt < API_START_TIMEOUT_MS) {
     try {
-      await requestJson<{ status: string }>(`${API_BASE_URL}/health/`)
+      await requestApiHealth()
       updateStatus({ status: 'ready', error: null })
       return apiStatus
     } catch (error) {
@@ -215,7 +250,7 @@ export const startApiServer = async (projectRoot: string, aiRoot?: string) => {
 
   try {
     // 既にユーザーがAPIを起動している場合は、そのプロセスを再利用する。
-    await requestJson<{ status: string }>(`${API_BASE_URL}/health/`)
+    await requestApiHealth()
     updateStatus({
       status: 'ready',
       managed: false,
@@ -225,7 +260,15 @@ export const startApiServer = async (projectRoot: string, aiRoot?: string) => {
     })
     return apiStatus
   } catch {
-    // 未起動ならElectron管理プロセスとして起動する。
+    if (await isApiPortInUse()) {
+      updateStatus({
+        status: 'failed',
+        managed: false,
+        error:
+          'ポート8000が別のプロセスで使用されています。該当プロセスを終了してからAPIを再起動してください。'
+      })
+      return apiStatus
+    }
   }
 
   if (apiProcess && !apiProcess.killed) {

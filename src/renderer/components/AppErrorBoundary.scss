@@ -1,0 +1,58 @@
+.app-error-boundary {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 2rem;
+  color: #f2f2f2;
+  background: #1e1e1e;
+
+  .app-error-boundary-card {
+    width: min(36rem, 100%);
+    padding: 2rem;
+    text-align: center;
+    background: #292929;
+    border: 1px solid #4a4a4a;
+    border-radius: 0.5rem;
+  }
+
+  .app-error-boundary-brand {
+    color: #dcb17b;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+
+  h1 {
+    margin: 1rem 0;
+    font-size: 1.4rem;
+  }
+
+  p {
+    margin: 0;
+    line-height: 1.7;
+    color: #d0d0d0;
+  }
+
+  pre {
+    max-height: 8rem;
+    margin: 1.5rem 0;
+    padding: 0.75rem;
+    overflow: auto;
+    color: #f2c2c2;
+    text-align: left;
+    white-space: pre-wrap;
+    background: #181818;
+    border: 1px solid #734545;
+    border-radius: 0.25rem;
+  }
+
+  button {
+    padding: 0.65rem 1.1rem;
+    color: #fff;
+    font-weight: 600;
+    background: #3e6f8c;
+    border: 1px solid #6894ad;
+    border-radius: 0.25rem;
+    cursor: pointer;
+  }
+}
