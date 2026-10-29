@@ -517,6 +517,8 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       const data = (await response.json()) as SimilarMotionResponse
       const candidates = data.candidates.map((candidate) => ({
         ...candidate,
+        displayText: candidate.text,
+        text: confirmedTemplate.text,
         id: uuidv4(),
         status: 'pending' as const
       }))

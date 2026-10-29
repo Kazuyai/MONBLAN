@@ -97,6 +97,43 @@ describe('Video', () => {
     expect(mediaEvents).toEqual(['seek:4.001', 'play'])
   })
 
+  it('部分再生終了時は選択範囲の末尾フレームで停止する', async () => {
+    const setCurrentFrame = vi.fn()
+    const setIsPartiallyPlaying = vi.fn()
+
+    await act(async () => {
+      root.render(
+        <Video
+          videoSrcs={['test.mp4']}
+          videoDuration={10}
+          setVideoDuration={vi.fn()}
+          isEditing={false}
+          currentFrame={121}
+          setCurrentFrame={setCurrentFrame}
+          frameRate={30}
+          isPlaying={false}
+          setIsPlaying={vi.fn()}
+          playSpeed={1}
+          setPlaySpeed={vi.fn()}
+          isPartiallyPlaying
+          setIsPartiallyPlaying={setIsPartiallyPlaying}
+          selectionStartFrame={121}
+          selectionFrameWidth={60}
+        />
+      )
+    })
+
+    currentTime = 6.001
+    const updateCurrentFrame = requestAnimationFrameMock.mock.calls[0]?.[0] as
+      | (() => void)
+      | undefined
+    act(() => updateCurrentFrame?.())
+
+    expect(setCurrentFrame).toHaveBeenLastCalledWith(181)
+    expect(currentTime).toBeCloseTo(6.001, 3)
+    expect(setIsPartiallyPlaying).toHaveBeenCalledWith(false)
+  })
+
   it('選択範囲がない場合は部分再生を開始しない', async () => {
     const setIsPartiallyPlaying = vi.fn()
 

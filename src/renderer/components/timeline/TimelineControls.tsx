@@ -78,17 +78,18 @@ const TimelineControls = ({
       <img src="./skip_end.svg" alt="" />
     </button>
     <button
-      className={`secondary-action${isPartiallyPlaying ? ' active' : ''}`}
+      className="secondary-action"
       onClick={onTogglePartialPlayback}
-      disabled={!hasSelectionRange}
-      aria-pressed={isPartiallyPlaying}
+      disabled={!hasSelectionRange || isPartiallyPlaying}
       title={
-        hasSelectionRange
-          ? undefined
-          : '先にタイムラインで範囲を選択してください'
+        isPartiallyPlaying
+          ? '再生・停止ボタンで部分再生を停止できます'
+          : hasSelectionRange
+            ? undefined
+            : '先にタイムラインで範囲を選択してください'
       }
     >
-      {isPartiallyPlaying ? '部分再生を停止' : '部分再生'}
+      部分再生
     </button>
     <button className="secondary-action" onClick={onAddLayer}>
       注釈層追加

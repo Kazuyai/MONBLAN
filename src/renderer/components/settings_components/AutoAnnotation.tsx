@@ -161,6 +161,7 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     setHumanIds([])
     setManualAnalysisStartFrame(null)
     setManualAnalysisEndFrame(null)
+    setApiError(null)
   }, [videoSrc])
 
   useEffect(() => {
@@ -172,7 +173,9 @@ export const AutoAnnotation: React.FC<SettingsProps> = ({
     const removedConfiguration =
       layerWasDeleted &&
       autoAnnotationLayer.some(
-        (layer) => !timelineLayerNames.includes(layer.layerName)
+        (layer) =>
+          !timelineLayerNames.includes(layer.layerName) &&
+          layer.points.length > 0
       )
     setAutoAnnotationLayer((currentLayers) => {
       const remappedLayers = currentLayers.flatMap((layer) => {

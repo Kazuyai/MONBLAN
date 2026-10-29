@@ -82,6 +82,7 @@ export interface SelectedTimelineAnnotation extends TimelineAnnotationResult {
 
 export interface SimilarMotionCandidate extends TimelineAnnotationResult {
   id: string
+  displayText: string
   humanId: number
   similarity: number
   dtwSimilarity: number
