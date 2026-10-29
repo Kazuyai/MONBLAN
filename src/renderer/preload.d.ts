@@ -21,6 +21,7 @@ declare global {
         forceDialog?: boolean
       }) => Promise<SaveTextFileResult>
       createLocalMediaUrl: (filePath: string) => Promise<string>
+      getPathForFile: (file: File) => string
       getAiSetupStatus: () => Promise<AiSetupStatus>
       runAiSetupOperation: (
         operation: AiSetupOperation

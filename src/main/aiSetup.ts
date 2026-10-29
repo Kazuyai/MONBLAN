@@ -519,7 +519,9 @@ const getFileSha256 = (filePath: string) =>
   new Promise<string>((resolve, reject) => {
     const hash = createHash('sha256')
     const stream = createReadStream(filePath)
-    stream.on('data', (chunk) => hash.update(chunk))
+    stream.on('data', (chunk) =>
+      hash.update(typeof chunk === 'string' ? chunk : Uint8Array.from(chunk))
+    )
     stream.on('error', reject)
     stream.on('end', () => resolve(hash.digest('hex')))
   })
