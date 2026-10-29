@@ -109,7 +109,7 @@ docs/
 
 ### フロントエンド
 
-- Node.js 18以上
+- Node.js 22.12以上
 - Yarn 1.22以上
 - Electron 28
 - React 18
