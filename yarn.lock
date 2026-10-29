@@ -4414,12 +4414,7 @@ smart-buffer@^4.0.2:
   resolved "https://registry.yarnpkg.com/smart-buffer/-/smart-buffer-4.2.0.tgz#6e1d71fa4f18c05f7d0ff216dd16a481d0e8d9ae"
   integrity sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==
 
-"source-map-js@>=0.6.2 <2.0.0":
-  version "1.2.1"
-  resolved "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz"
-  integrity sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==
-
-source-map-js@^1.2.2:
+"source-map-js@>=0.6.2 <2.0.0", source-map-js@^1.2.2:
   version "1.2.2"
   resolved "https://registry.yarnpkg.com/source-map-js/-/source-map-js-1.2.2.tgz#79fb88d97535a21cb27162cb05d211b67acea4ab"
   integrity sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==
