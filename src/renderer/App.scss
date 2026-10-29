@@ -2,6 +2,122 @@
   font-size: 0.0625vw; /* 1600px蝓ｺ貅・*/
 }
 
+.annotation-list-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12rem;
+  height: 100%;
+  min-height: 0;
+  color: #eee;
+
+  .annotation-list-toolbar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 10rem;
+
+    label {
+      font-size: 14rem;
+      font-weight: 600;
+    }
+
+    select {
+      min-width: 180rem;
+      height: 34rem;
+      padding: 0 10rem;
+      border: 1rem solid #666;
+      border-radius: 4rem;
+      background: #1d1d1d;
+      color: #fff;
+      font-size: 14rem;
+    }
+
+    span {
+      color: #bbb;
+      font-size: 13rem;
+    }
+  }
+
+  .annotation-list-table-container {
+    min-height: 0;
+    overflow: auto;
+    border: 1rem solid #4c4c4c;
+    border-radius: 6rem;
+    background: #202020;
+  }
+
+  .annotation-list-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 13rem;
+    font-variant-numeric: tabular-nums;
+
+    th,
+    td {
+      padding: 9rem 10rem;
+      border-bottom: 1rem solid #444;
+      text-align: left;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #303030;
+      color: #ddd;
+      font-weight: 600;
+    }
+
+    th:first-child,
+    td:first-child {
+      width: 54rem;
+      text-align: right;
+    }
+
+    th:nth-child(3),
+    td:nth-child(3),
+    th:nth-child(4),
+    td:nth-child(4),
+    th:nth-child(5),
+    td:nth-child(5) {
+      width: 92rem;
+      text-align: right;
+    }
+
+    tbody tr:not(.empty) {
+      cursor: pointer;
+
+      &:hover,
+      &:focus-visible {
+        outline: none;
+        background: #333;
+      }
+
+      &.selected {
+        background: #29445a;
+        box-shadow: inset 3rem 0 #70b7e7;
+      }
+    }
+
+    td:nth-child(2) {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .empty td {
+      padding: 24rem;
+      color: #aaa;
+      text-align: center;
+    }
+  }
+}
+
 :root {
   --button-bg: #3a3a3a;
   --button-bg-hover: #484848;
@@ -2058,7 +2174,7 @@ button {
       display: flex;
       flex-direction: column;
       height: 45%;
-      padding: 10rem 50rem;
+      padding: 10rem 20rem;
       // border-top: 3rem solid #000;
       opacity: 1;
       &.hide {
@@ -2073,7 +2189,7 @@ button {
         gap: 2rem;
         max-height: 40rem;
         margin: 0 auto 10rem;
-        padding-left: 130rem;
+        padding-left: 200rem;
         button {
           width: fit-content;
           min-height: 34rem;
@@ -2102,7 +2218,7 @@ button {
         justify-content: space-between;
         gap: 16rem;
         min-height: 36rem;
-        margin: 0 0 10rem 140rem;
+        margin: 0 0 10rem 210rem;
         padding: 6rem 10rem;
         border: 1rem solid #456a88;
         border-radius: 6rem;
@@ -2225,7 +2341,7 @@ button {
               position: sticky;
               top: 0;
               left: 0;
-              width: 130rem;
+              width: 200rem;
               z-index: 12;
               &::before {
                 content: '';
@@ -2275,6 +2391,7 @@ button {
             }
           }
           .layer {
+            position: relative;
             display: flex;
             flex-direction: row;
             gap: 10rem;
@@ -2282,11 +2399,36 @@ button {
             height: 50rem;
             // margin-left: 10rem;
             &.selected {
-              .layer-header div {
+              .layer-header .layer-name {
                 opacity: 1;
               }
               .timeline {
                 background: #333;
+              }
+            }
+            &.dragging {
+              opacity: 0.55;
+            }
+            &.drag-over {
+              &::before {
+                content: '';
+                position: absolute;
+                right: 0;
+                left: 0;
+                z-index: 30;
+                height: 5rem;
+                border-radius: 999rem;
+                background: #70b7e7;
+                box-shadow: 0 0 8rem #70b7e7cc;
+                pointer-events: none;
+              }
+
+              &.drag-over-before::before {
+                top: -2.5rem;
+              }
+
+              &.drag-over-after::before {
+                bottom: -2.5rem;
               }
             }
             &:nth-of-type(2) {
@@ -2308,7 +2450,7 @@ button {
               justify-content: flex-end;
               left: 0;
               height: 50rem;
-              width: 130rem;
+              width: 200rem;
               // padding: 5rem 10rem;
               background: #232323;
               // opacity: 0.5;
@@ -2320,8 +2462,48 @@ button {
                 left: 0;
                 width: 100%;
                 height: 100%;
+                pointer-events: none;
               }
-              div {
+              .layer-reorder-handle {
+                position: relative;
+                z-index: 2;
+                display: grid;
+                flex: 0 0 24rem;
+                place-items: center;
+                width: 24rem;
+                min-width: 24rem;
+                height: 32rem;
+                min-height: 32rem;
+                padding: 0;
+                border: 0;
+                background: transparent;
+                color: #aaa;
+                cursor: grab;
+
+                &:hover,
+                &:focus-visible {
+                  background: #343434;
+                  color: #fff;
+                  box-shadow: none;
+                }
+
+                &:active {
+                  cursor: grabbing;
+                }
+
+                &.locked {
+                  color: #666;
+                  cursor: not-allowed;
+                }
+
+                svg {
+                  width: 12rem;
+                  height: 18rem;
+                  fill: currentColor;
+                }
+              }
+              .layer-name {
+                min-width: 0;
                 display: flex;
                 justify-content: right;
                 align-items: center;
@@ -2330,6 +2512,16 @@ button {
                 padding: 5rem 10rem;
                 opacity: 0.5;
                 font-size: 15rem;
+              }
+              .layer-name {
+                flex: 1;
+                overflow: hidden;
+
+                > div {
+                  overflow: hidden;
+                  text-overflow: ellipsis;
+                  white-space: nowrap;
+                }
               }
               input {
                 position: relative;
@@ -2556,7 +2748,7 @@ button {
           .playhead {
             position: absolute;
             top: 0;
-            left: calc(140rem + 10px * 4);
+            left: calc(210rem + 10px * 4);
             width: 2rem;
             height: var(--timeline-container-height);
             transform: translateX(-50%);

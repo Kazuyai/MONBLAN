@@ -5,6 +5,7 @@ import type {
   AnalysisFrameRange,
   AnnotationProject,
   ProcessingTask,
+  ProjectAnnotation,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
   TimelineAnnotationResult
@@ -15,13 +16,15 @@ import {
   AudioVideoControls,
   ExportFile,
   SimilarityCompletion,
-  AiEnvironmentSetup
+  AiEnvironmentSetup,
+  AnnotationList
 } from './settings_components'
 
 type SettingsTabId =
   | 'open-file'
   | 'auto-annotation'
   | 'similarity-completion'
+  | 'annotation-list'
   | 'play-speed'
   | 'export-file'
   | 'ai-environment'
@@ -56,7 +59,10 @@ interface SettingsProps {
   selectionStartFrame: number
   selectionFrameWidth: number
   selectedTimelineAnnotation: SelectedTimelineAnnotation | null
+  timelineAnnotations: ProjectAnnotation[]
   timelineLayerNames: string[]
+  selectedTimelineLayerIndex: number | null
+  onSelectTimelineAnnotation: (annotationId: string) => void
   onCreateTimelineLayer: (name: string) => number | null
   onRefreshApiStatus: () => Promise<void>
   onRestartApi: () => Promise<void>
@@ -94,7 +100,10 @@ export const Settings: React.FC<SettingsProps> = ({
   selectionStartFrame,
   selectionFrameWidth,
   selectedTimelineAnnotation,
+  timelineAnnotations,
   timelineLayerNames,
+  selectedTimelineLayerIndex,
+  onSelectTimelineAnnotation,
   onCreateTimelineLayer,
   onRefreshApiStatus,
   onRestartApi,
@@ -162,6 +171,20 @@ export const Settings: React.FC<SettingsProps> = ({
       />
     )
   }
+  const annotationListTab: SettingsTab = {
+    label: '注釈一覧',
+    id: 'annotation-list',
+    component: () => (
+      <AnnotationList
+        annotations={timelineAnnotations}
+        layerNames={timelineLayerNames}
+        selectedLayerIndex={selectedTimelineLayerIndex}
+        selectedAnnotationId={selectedTimelineAnnotation?.id}
+        frameRate={frameRate}
+        onSelectAnnotation={onSelectTimelineAnnotation}
+      />
+    )
+  }
   const playSpeedTab: SettingsTab = {
     label: '再生速度',
     id: 'play-speed',
@@ -190,13 +213,20 @@ export const Settings: React.FC<SettingsProps> = ({
   const tabs: SettingsTab[] = aiAvailable
     ? [
         openFileTab,
+        annotationListTab,
         autoAnnotationTab,
         similarityCompletionTab,
         playSpeedTab,
         exportFileTab,
         aiEnvironmentTab
       ]
-    : [openFileTab, aiEnvironmentTab, playSpeedTab, exportFileTab]
+    : [
+        openFileTab,
+        annotationListTab,
+        aiEnvironmentTab,
+        playSpeedTab,
+        exportFileTab
+      ]
   const tabIds = tabs.map((tab) => tab.id).join(',')
 
   useEffect(() => {

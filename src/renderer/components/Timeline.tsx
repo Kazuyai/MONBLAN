@@ -14,6 +14,7 @@ import { useSnackbar, type SnackbarType } from './SnackbarProvider'
 import CandidateToolbar from './timeline/CandidateToolbar'
 import TimelineControls from './timeline/TimelineControls'
 import TimelineZoomControls from './timeline/TimelineZoomControls'
+import { moveArrayItem, remapLayerIndex } from '../utils/timelineLayers'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
@@ -49,7 +50,9 @@ interface TimelineProps {
   setSelectedTimelineAnnotation: Dispatch<
     SetStateAction<SelectedTimelineAnnotation | null>
   >
+  onAnnotationsChange: (annotations: ProjectAnnotation[]) => void
   onLayerNamesChange: (layerNames: string[]) => void
+  onSelectedLayerIndexChange: (layerIndex: number | null) => void
   topHeight: number
 }
 
@@ -58,6 +61,7 @@ interface TimelineHandle {
   saveEAF: (filePath?: string, forceDialog?: boolean) => Promise<string | null>
   importProjectJson: (project: AnnotationProject) => void
   addLayer: (name: string) => number
+  selectAnnotation: (annotationId: string) => void
 }
 
 type AnnotationType = ProjectAnnotation
@@ -76,6 +80,7 @@ interface MovementDetectionCandidate extends TimelineAnnotationResult {
 type AnnotationCandidate = SimilarMotionCandidate | MovementDetectionCandidate
 
 const MAX_HISTORY_LENGTH = 100
+const TIMELINE_CONTENT_OFFSET_REM = 210
 
 const Timeline = forwardRef<TimelineHandle, TimelineProps>(
   (
@@ -100,13 +105,16 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       similarMotionCandidates,
       setSimilarMotionCandidates,
       setSelectedTimelineAnnotation,
+      onAnnotationsChange,
       onLayerNamesChange,
+      onSelectedLayerIndexChange,
       topHeight
     },
     ref
   ) => {
     const { showSnackbar } = useSnackbar()
     const containerRefs = useRef<React.RefObject<HTMLDivElement>[]>([])
+    const timelineViewportRef = useRef<HTMLDivElement>(null)
     const timelineContainerRef = useRef<HTMLDivElement>(null)
     const timelinesRef = useRef<HTMLDivElement>(null)
     const timeBarRef = useRef<HTMLDivElement>(null)
@@ -154,6 +162,12 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const cancelLayerNameEditRef = useRef(false)
     const [selectedLayerIndex, setSelectedLayerIndex] = useState<number | null>(
       0
+    )
+    const [draggedLayerIndex, setDraggedLayerIndex] = useState<number | null>(
+      null
+    )
+    const [dragOverLayerIndex, setDragOverLayerIndex] = useState<number | null>(
+      null
     )
     const [playheadLeft, setPlayheadLeft] = useState(0)
     const isDraggingRef = useRef(false)
@@ -303,8 +317,12 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
 
     // 動画を再生/停止する関数
     const play = (playSpeed?: number) => {
+      if (isPartiallyPlaying) {
+        setIsPartiallyPlaying(false)
+        setIsPlaying?.(false)
+        return
+      }
       setIsPlaying?.((prev) => !prev)
-      setIsPartiallyPlaying(false)
       if (playSpeed !== undefined) {
         setPlaySpeed?.(playSpeed)
       }
@@ -430,6 +448,115 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       visibleMovementDetectionCandidates.filter((candidate) =>
         hasAnnotationConflict(candidate)
       )
+    const isLayerReorderingLocked =
+      visibleMovementDetectionCandidates.length > 0 ||
+      visibleSimilarMotionCandidates.length > 0
+
+    const reorderLayer = (fromIndex: number, toIndex: number) => {
+      if (
+        isLayerReorderingLocked ||
+        fromIndex === toIndex ||
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= layerNames.length ||
+        toIndex >= layerNames.length
+      ) {
+        return
+      }
+
+      pushToUndoStack(state)
+      const nextState: TimelineState = {
+        layerNames: moveArrayItem(state.layerNames, fromIndex, toIndex),
+        eafTierIds: moveArrayItem(state.eafTierIds, fromIndex, toIndex),
+        annotations: state.annotations.map((annotation) => ({
+          ...annotation,
+          layerIndex: remapLayerIndex(
+            annotation.layerIndex,
+            fromIndex,
+            toIndex
+          )
+        }))
+      }
+
+      stateRef.current = nextState
+      setState(nextState)
+      setMovementDetectionCandidates((current) =>
+        current.map((candidate) => ({
+          ...candidate,
+          layerIndex: remapLayerIndex(candidate.layerIndex, fromIndex, toIndex)
+        }))
+      )
+      setSimilarMotionCandidates((current) =>
+        current.map((candidate) => ({
+          ...candidate,
+          layerIndex: remapLayerIndex(candidate.layerIndex, fromIndex, toIndex)
+        }))
+      )
+      setSelectedLayerIndex((current) =>
+        current === null
+          ? null
+          : remapLayerIndex(current, fromIndex, toIndex)
+      )
+      setEditingLayerIndex(null)
+      updateContainerRefs(nextState.layerNames)
+    }
+
+    const handleLayerPointerDown = (
+      event: React.PointerEvent<HTMLDivElement>,
+      layerIndex: number
+    ) => {
+      if (isLayerReorderingLocked) {
+        event.preventDefault()
+        showTimelineNotice(
+          '候補を挿入または破棄してから注釈層を並べ替えてください。'
+        )
+        return
+      }
+      if (event.button !== 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      setDraggedLayerIndex(layerIndex)
+      setDragOverLayerIndex(layerIndex)
+    }
+
+    const handleLayerPointerUp = (
+      event: React.PointerEvent<HTMLDivElement>,
+      layerIndex: number
+    ) => {
+      event.stopPropagation()
+      if (draggedLayerIndex !== null) {
+        reorderLayer(draggedLayerIndex, layerIndex)
+      }
+      setDraggedLayerIndex(null)
+      setDragOverLayerIndex(null)
+    }
+
+    useEffect(() => {
+      if (draggedLayerIndex === null) return
+      const updateLayerReorderingTarget = (event: PointerEvent) => {
+        const target = document
+          .elementFromPoint(event.clientX, event.clientY)
+          ?.closest<HTMLElement>('[data-timeline-layer-index]')
+        if (!target) {
+          setDragOverLayerIndex(null)
+          return
+        }
+        const targetIndex = Number(target.dataset.timelineLayerIndex)
+        setDragOverLayerIndex(Number.isInteger(targetIndex) ? targetIndex : null)
+      }
+      const stopLayerReordering = () => {
+        setDraggedLayerIndex(null)
+        setDragOverLayerIndex(null)
+      }
+      document.addEventListener('pointermove', updateLayerReorderingTarget)
+      document.addEventListener('pointerup', stopLayerReordering)
+      document.addEventListener('pointercancel', stopLayerReordering)
+      return () => {
+        document.removeEventListener('pointermove', updateLayerReorderingTarget)
+        document.removeEventListener('pointerup', stopLayerReordering)
+        document.removeEventListener('pointercancel', stopLayerReordering)
+      }
+    }, [draggedLayerIndex])
 
     const removeSimilarMotionCandidate = (candidateId: string) => {
       setSimilarMotionCandidates((current) =>
@@ -617,7 +744,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const remInPixels = parseFloat(
         getComputedStyle(document.documentElement).fontSize
       )
-      const offset = 140 * remInPixels // 左側のオフセット
+      const offset = TIMELINE_CONTENT_OFFSET_REM * remInPixels
 
       const relativeX = positionX - offset
       const frameIndex = Math.round(relativeX / frameWidth) + 1
@@ -859,6 +986,47 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       setSelectedLayerIndex(index)
     }
 
+    const selectAnnotation = (annotationId: string) => {
+      const annotation = stateRef.current.annotations.find(
+        (item) => item.id === annotationId
+      )
+      if (!annotation) return
+
+      setIsPlaying?.(false)
+      setIsPartiallyPlaying(false)
+      setSelectedLayerIndex(annotation.layerIndex)
+      setFocusedAnnotationId(annotation.id)
+      setSelectedAnnotationIds([annotation.id])
+      setSelectionStartFrame(annotation.startFrame)
+      setSelectionFrameWidth(annotation.endFrame - annotation.startFrame)
+      setCurrentFrame(annotation.startFrame)
+
+      window.requestAnimationFrame(() => {
+        const viewport = timelineViewportRef.current
+        if (!viewport) return
+
+        const remInPixels = parseFloat(
+          getComputedStyle(document.documentElement).fontSize
+        )
+        const offset = TIMELINE_CONTENT_OFFSET_REM * remInPixels
+        const annotationStart =
+          offset + (annotation.startFrame - 1) * frameWidth
+        const annotationEnd = offset + annotation.endFrame * frameWidth
+        const centeredScrollLeft =
+          (annotationStart + annotationEnd) / 2 - viewport.clientWidth / 2
+        const layerElement = containerRefs.current[annotation.layerIndex]?.current
+        const centeredScrollTop = layerElement
+          ? layerElement.offsetTop - viewport.clientHeight / 2
+          : viewport.scrollTop
+
+        viewport.scrollTo({
+          left: Math.max(0, centeredScrollLeft),
+          top: Math.max(0, centeredScrollTop),
+          behavior: 'smooth'
+        })
+      })
+    }
+
     // ズーム処理
     const maxZoomLevel = 5
 
@@ -884,7 +1052,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         const remInPixels = parseFloat(
           getComputedStyle(document.documentElement).fontSize
         )
-        const offset = 140 * remInPixels
+        const offset = TIMELINE_CONTENT_OFFSET_REM * remInPixels
         const clampedFrame = Math.max(1, Math.min(totalFrames, frame))
         const nextPlayheadLeft = offset + (clampedFrame - 1) * frameWidth
 
@@ -910,7 +1078,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const remInPixels = parseFloat(
         getComputedStyle(document.documentElement).fontSize
       )
-      const offset = 140 * remInPixels
+      const offset = TIMELINE_CONTENT_OFFSET_REM * remInPixels
       const nextSelectionStart = (selectionStartFrame - 1) * frameWidth + offset
       setSelectionStart(nextSelectionStart)
       setSelectionWidth(selectionFrameWidth * frameWidth)
@@ -961,7 +1129,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const remInPixels = parseFloat(
         getComputedStyle(document.documentElement).fontSize
       )
-      const offset = 140 * remInPixels
+      const offset = TIMELINE_CONTENT_OFFSET_REM * remInPixels
       const startX = clientX - containerRect.left - offset
       const frameIndex = Math.round(startX / frameWidth) + 1
       const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
@@ -1008,7 +1176,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
           const remInPixels = parseFloat(
             getComputedStyle(document.documentElement).fontSize
           )
-          const offset = 140 * remInPixels
+          const offset = TIMELINE_CONTENT_OFFSET_REM * remInPixels
           const relativeX = e.clientX - containerRect.left - offset
           const frameIndex = Math.round(relativeX / frameWidth) + 1
           const clampedFrameIndex = Math.max(
@@ -1536,7 +1704,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       exportCSV,
       saveEAF,
       importProjectJson,
-      addLayer: addLayerWithName
+      addLayer: addLayerWithName,
+      selectAnnotation
     }))
 
     if (containerRefs.current.length !== layerNames.length) {
@@ -1547,8 +1716,16 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     }
 
     useEffect(() => {
+      onAnnotationsChange(annotations.map((annotation) => ({ ...annotation })))
+    }, [annotations, onAnnotationsChange])
+
+    useEffect(() => {
       onLayerNamesChange([...layerNames])
     }, [layerNames, onLayerNamesChange])
+
+    useEffect(() => {
+      onSelectedLayerIndexChange(selectedLayerIndex)
+    }, [onSelectedLayerIndexChange, selectedLayerIndex])
 
     return (
       <section
@@ -1557,7 +1734,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         style={{ height: `calc(${100 - topHeight}% - 1.5rem)` }}
       >
         <TimelineControls
-          isPlaying={Boolean(isPlaying)}
+          isPlaying={Boolean(isPlaying) || isPartiallyPlaying}
           isPartiallyPlaying={isPartiallyPlaying}
           hasSelectionRange={hasSelectionRange}
           undoDisabled={undoStack.length === 0}
@@ -1573,10 +1750,6 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
           onJumpToEnd={() => setCurrentFrame(totalFrames)}
           onTogglePartialPlayback={() => {
             if (!hasSelectionRange) return
-            if (isPartiallyPlaying) {
-              setIsPartiallyPlaying(false)
-              return
-            }
             setIsPlaying?.(false)
             setCurrentFrame(selectionStartFrame)
             setIsPartiallyPlaying(true)
@@ -1623,7 +1796,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
             }}
           />
         )}
-        <div className="timeline-container">
+        <div className="timeline-container" ref={timelineViewportRef}>
           {!hasTimelineContent ? (
             <div className="empty-timeline-guide">
               <div className="empty-timeline-guide-card">
@@ -1730,7 +1903,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
                   <div
                     className="analysis-range-preview"
                     style={{
-                      left: `calc(140rem + ${(normalizedAnalysisRangePreview.startFrame - 1) * frameWidth}px)`,
+                      left: `calc(${TIMELINE_CONTENT_OFFSET_REM}rem + ${(normalizedAnalysisRangePreview.startFrame - 1) * frameWidth}px)`,
                       width: `${(normalizedAnalysisRangePreview.endFrame - normalizedAnalysisRangePreview.startFrame + 1) * frameWidth}px`
                     }}
                   >
@@ -1786,7 +1959,19 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
                 return (
                   <React.Fragment key={layerIndex}>
                     <div
-                      className={`layer ${selectedLayerIndex === layerIndex ? 'selected' : ''} ${hasLayerCandidates ? 'has-similarity-candidates' : ''}`}
+                      data-timeline-layer-index={layerIndex}
+                      className={`layer ${selectedLayerIndex === layerIndex ? 'selected' : ''} ${hasLayerCandidates ? 'has-similarity-candidates' : ''} ${draggedLayerIndex === layerIndex ? 'dragging' : ''} ${dragOverLayerIndex === layerIndex && draggedLayerIndex !== null && draggedLayerIndex !== layerIndex ? `drag-over ${draggedLayerIndex < layerIndex ? 'drag-over-after' : 'drag-over-before'}` : ''}`}
+                      onPointerEnter={() => {
+                        if (
+                          !isLayerReorderingLocked &&
+                          draggedLayerIndex !== null
+                        ) {
+                          setDragOverLayerIndex(layerIndex)
+                        }
+                      }}
+                      onPointerUp={(event) =>
+                        handleLayerPointerUp(event, layerIndex)
+                      }
                     >
                       <div
                         className="layer-header"
@@ -1795,6 +1980,54 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
                           handleLayerNameDoubleClick(layerIndex)
                         }
                       >
+                        <div
+                          className={`layer-reorder-handle${isLayerReorderingLocked ? ' locked' : ''}`}
+                          role="button"
+                          tabIndex={0}
+                          aria-disabled={isLayerReorderingLocked}
+                          aria-label={`${name}を並べ替え。Altキーと上下矢印キーでも移動できます`}
+                          title={
+                            isLayerReorderingLocked
+                              ? '候補を挿入または破棄すると並べ替えできます'
+                              : 'ドラッグして注釈層を並べ替え'
+                          }
+                          onClick={(event) => event.stopPropagation()}
+                          onDoubleClick={(event) => event.stopPropagation()}
+                          onPointerDown={(event) =>
+                            handleLayerPointerDown(event, layerIndex)
+                          }
+                          onKeyDown={(event) => {
+                            if (!event.altKey) return
+                            if (
+                              event.key !== 'ArrowUp' &&
+                              event.key !== 'ArrowDown'
+                            ) {
+                              return
+                            }
+                            event.preventDefault()
+                            event.stopPropagation()
+                            if (isLayerReorderingLocked) {
+                              showTimelineNotice(
+                                '候補を挿入または破棄してから注釈層を並べ替えてください。'
+                              )
+                              return
+                            }
+                            const destination =
+                              event.key === 'ArrowUp'
+                                ? layerIndex - 1
+                                : layerIndex + 1
+                            reorderLayer(layerIndex, destination)
+                          }}
+                        >
+                          <svg viewBox="0 0 12 18" aria-hidden="true">
+                            <circle cx="3" cy="3" r="1.5" />
+                            <circle cx="9" cy="3" r="1.5" />
+                            <circle cx="3" cy="9" r="1.5" />
+                            <circle cx="9" cy="9" r="1.5" />
+                            <circle cx="3" cy="15" r="1.5" />
+                            <circle cx="9" cy="15" r="1.5" />
+                          </svg>
+                        </div>
                         <div key={layerIndex} className={`layer-name`}>
                           {editingLayerIndex === layerIndex ? (
                             <input
@@ -2011,7 +2244,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
                                 }}
                                 title={`類似度: ${candidate.similarity.toFixed(3)}${hasConflict ? '・既存注釈と重複' : ''}`}
                               >
-                                <span>{candidate.text}</span>
+                                <span>{candidate.displayText}</span>
                                 <span>{candidate.similarity.toFixed(2)}</span>
                                 <div className="similarity-candidate-actions">
                                   {hasConflict ? (

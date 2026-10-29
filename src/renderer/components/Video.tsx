@@ -112,9 +112,10 @@ export const Video: React.FC<VideoProps> = ({
   const [isPartialPlaybackReady, setIsPartialPlaybackReady] = useState(false)
   const totalFrames = Math.ceil(videoDuration * frameRate)
 
-  const selectionEndTime =
+  const selectionStopFrame = selectionStartFrame + selectionFrameWidth
+  const selectionEndBoundaryTime =
     Math.round(
-      ((selectionStartFrame + selectionFrameWidth - 1) / frameRate) * 1000
+      ((selectionStopFrame - 1) / frameRate) * 1000
     ) /
       1000 +
     0.001
@@ -308,8 +309,10 @@ export const Video: React.FC<VideoProps> = ({
               setIsPlaying?.(false)
             }
           } else if (isPartiallyPlaying) {
-            if (video.currentTime >= selectionEndTime) {
-              video.currentTime = selectionEndTime
+            if (video.currentTime >= selectionEndBoundaryTime) {
+              video.pause()
+              video.currentTime = selectionEndBoundaryTime
+              setCurrentFrame(selectionStopFrame)
               setIsPartiallyPlaying?.(false)
             }
           }
@@ -333,7 +336,8 @@ export const Video: React.FC<VideoProps> = ({
     isPartialPlaybackReady,
     isEditing,
     frameRate,
-    selectionEndTime,
+    selectionEndBoundaryTime,
+    selectionStopFrame,
     totalFrames,
     setCurrentFrame,
     setIsPlaying,

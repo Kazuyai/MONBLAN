@@ -3,6 +3,7 @@ import type { ApiStatus } from '../main/preload'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
+  ProjectAnnotation,
   ProcessingTask,
   SimilarMotionCandidate,
   SelectedTimelineAnnotation,
@@ -47,6 +48,12 @@ const App = () => {
     'レイヤー2',
     'レイヤー3'
   ])
+  const [timelineAnnotations, setTimelineAnnotations] = useState<
+    ProjectAnnotation[]
+  >([])
+  const [selectedTimelineLayerIndex, setSelectedTimelineLayerIndex] = useState<
+    number | null
+  >(0)
 
   const timelineRef = useRef<{
     exportCSV: () => Promise<void>
@@ -56,6 +63,7 @@ const App = () => {
     ) => Promise<string | null>
     importProjectJson: (project: AnnotationProject) => void
     addLayer: (name: string) => number
+    selectAnnotation: (annotationId: string) => void
   }>(null)
 
   const MAX_HEIGHT = 80
@@ -277,7 +285,12 @@ const App = () => {
           selectionStartFrame={selectionStartFrame}
           selectionFrameWidth={selectionFrameWidth}
           selectedTimelineAnnotation={selectedTimelineAnnotation}
+          timelineAnnotations={timelineAnnotations}
           timelineLayerNames={timelineLayerNames}
+          selectedTimelineLayerIndex={selectedTimelineLayerIndex}
+          onSelectTimelineAnnotation={(annotationId) =>
+            timelineRef.current?.selectAnnotation(annotationId)
+          }
           onCreateTimelineLayer={handleCreateTimelineLayer}
           onRefreshApiStatus={refreshApiStatus}
           onRestartApi={restartApi}
@@ -307,7 +320,9 @@ const App = () => {
         similarMotionCandidates={similarMotionCandidates}
         setSimilarMotionCandidates={setSimilarMotionCandidates}
         setSelectedTimelineAnnotation={setSelectedTimelineAnnotation}
+        onAnnotationsChange={setTimelineAnnotations}
         onLayerNamesChange={setTimelineLayerNames}
+        onSelectedLayerIndexChange={setSelectedTimelineLayerIndex}
         topHeight={topHeight}
       />
       {processingTask && <Processing task={processingTask} />}

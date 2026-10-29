@@ -71,17 +71,21 @@ describe('TimelineControls', () => {
     expect(onToggle).not.toHaveBeenCalled()
   })
 
-  it('部分再生中は停止操作であることを表示する', () => {
+  it('部分再生中は開始ボタンを無効化する', () => {
     const onToggle = vi.fn()
     renderControls(true, true, onToggle)
 
     const button = Array.from(container.querySelectorAll('button')).find(
-      (element) => element.textContent === '部分再生を停止'
+      (element) => element.textContent === '部分再生'
     )
-    expect(button?.getAttribute('aria-pressed')).toBe('true')
+    expect(button).toBeInstanceOf(HTMLButtonElement)
+    expect((button as HTMLButtonElement).disabled).toBe(true)
+    expect(button?.getAttribute('title')).toBe(
+      '再生・停止ボタンで部分再生を停止できます'
+    )
 
     act(() => button?.click())
-    expect(onToggle).toHaveBeenCalledOnce()
+    expect(onToggle).not.toHaveBeenCalled()
   })
 
   it('各操作ボタンを対応する処理へ委譲する', () => {
