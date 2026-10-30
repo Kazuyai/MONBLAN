@@ -140,6 +140,40 @@ describe('EAF round trip', () => {
     expect(updatedEaf.match(/MEDIA_DESCRIPTOR/g)).toHaveLength(2)
   })
 
+  it('画面上で並べ替えた注釈層の順序をEAFへ反映する', () => {
+    const project = parseEafProject(referencedEaf, {
+      frameRate: 30,
+      fileName: 'referenced.eaf'
+    })
+    project.layerNames = ['分類', '動作']
+    project.eafTierIds = ['分類', '動作']
+    project.annotations = project.annotations.map((annotation) => ({
+      ...annotation,
+      layerIndex: annotation.eafTierId === '動作' ? 1 : 0
+    }))
+
+    const updatedEaf = generateEafContent({
+      annotations: project.annotations,
+      layerNames: project.layerNames,
+      eafTierIds: project.eafTierIds,
+      eafSource: project.eafSource ?? null,
+      frameRate: project.frameRate,
+      videos: project.videos
+    })
+
+    expect(updatedEaf.indexOf('TIER_ID="分類"')).toBeLessThan(
+      updatedEaf.indexOf('TIER_ID="動作"')
+    )
+    expect(updatedEaf).toContain('REF_ANNOTATION')
+
+    const reopenedProject = parseEafProject(updatedEaf, {
+      frameRate: 30,
+      fileName: 'reopened.eaf'
+    })
+    expect(reopenedProject.layerNames).toEqual(['分類', '動作'])
+    expect(reopenedProject.annotations[0].layerIndex).toBe(1)
+  })
+
   it('参照注釈の親になっている注釈は削除を拒否する', () => {
     const project = parseEafProject(referencedEaf, {
       frameRate: 30,

@@ -134,10 +134,6 @@
   --button-focus: #75a7cc;
 }
 
-root {
-  --timeline-container-height: 0;
-}
-
 #auto-annotation,
 #similarity-completion {
   .analysis-step-navigation {
@@ -2279,6 +2275,7 @@ button {
         flex: 1;
         display: flex;
         flex-direction: row;
+        align-items: flex-start;
         gap: 10rem;
         // height: 250rem;
         // overflow: hidden;
@@ -2317,61 +2314,83 @@ button {
         }
         .timeline-table {
           position: relative;
-          border-collapse: collapse;
-          // height: 60rem;
-          &::before {
-            content: '';
-            position: sticky;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 250rem;
-            background: #232323;
-          }
+          display: flex;
+          flex: 0 0 auto;
+          flex-direction: column;
+          align-self: flex-start;
+          width: max-content;
+          min-width: 100%;
           .timelines {
             position: sticky;
             top: 0;
-            left: 0;
             display: flex;
+            flex: 0 0 40rem;
             flex-direction: row;
+            width: max-content;
+            min-width: 100%;
             height: 40rem;
             background: #232323;
-            z-index: 10;
+            z-index: 20;
             .timeline-spacer {
               position: sticky;
-              top: 0;
               left: 0;
+              flex: 0 0 200rem;
               width: 200rem;
-              z-index: 12;
-              &::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: var(--timeline-container-height);
-                background: #232323;
-              }
-              &::after {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: #232323;
-              }
+              background: #232323;
+              z-index: 22;
             }
             .time-bar {
-              position: sticky;
-              top: 0;
+              position: relative;
+              flex: 0 0 auto;
               height: 40rem;
               padding-top: 10rem;
-              // transform: translateX(-50%);
               background: #5f5f5f;
-              overflow-x: auto;
-              &::-webkit-scrollbar {
-                display: none;
+              overflow: hidden;
+              .ruler-selected-area {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                background: rgba(0, 120, 215, 0.3);
+                pointer-events: none;
+                z-index: 1;
+              }
+              .ruler-playhead {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 2rem;
+                transform: translateX(-50%);
+                background: red;
+                pointer-events: none;
+                z-index: 3;
+              }
+              .selection-range-label {
+                position: absolute;
+                top: 4rem;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                gap: 8rem;
+                width: max-content;
+                max-width: 360rem;
+                padding: 4rem 8rem;
+                transform: translateX(-50%);
+                border: 1rem solid #8fc7ff;
+                border-radius: 999rem;
+                background: #102338e6;
+                color: #f4fbff;
+                box-shadow: 0 4rem 12rem #0008;
+                font-size: 12rem;
+                font-weight: 600;
+                line-height: 1.2;
+                white-space: nowrap;
+                z-index: 4;
+                span:last-child {
+                  padding-left: 8rem;
+                  border-left: 1rem solid #ffffff55;
+                  color: #bfe3ff;
+                  font-weight: 500;
+                }
               }
             }
             .time-marker {
@@ -2753,7 +2772,7 @@ button {
             height: var(--timeline-container-height);
             transform: translateX(-50%);
             background-color: red;
-            z-index: 11;
+            z-index: 6;
             pointer-events: none;
           }
           .selected-area {
@@ -2763,6 +2782,7 @@ button {
             width: 100rem;
             height: var(--timeline-container-height);
             pointer-events: none;
+            z-index: 5;
             &::before {
               content: '';
               position: absolute;
@@ -2770,41 +2790,13 @@ button {
               background-color: rgba(0, 120, 215, 0.3);
               z-index: 8;
             }
-            .selection-range-label {
-              position: absolute;
-              top: 6rem;
-              left: 50%;
-              display: flex;
-              flex-direction: row;
-              align-items: center;
-              gap: 8rem;
-              width: max-content;
-              max-width: 360rem;
-              padding: 4rem 8rem;
-              transform: translateX(-50%);
-              border: 1rem solid #8fc7ff;
-              border-radius: 999rem;
-              background: #102338e6;
-              color: #f4fbff;
-              box-shadow: 0 4rem 12rem #0008;
-              font-size: 12rem;
-              font-weight: 600;
-              line-height: 1.2;
-              white-space: nowrap;
-              z-index: 40;
-              span:last-child {
-                padding-left: 8rem;
-                border-left: 1rem solid #ffffff55;
-                color: #bfe3ff;
-                font-weight: 500;
-              }
-            }
           }
           .analysis-range-preview {
             position: absolute;
             top: 0;
             height: var(--timeline-container-height);
             pointer-events: none;
+            z-index: 5;
 
             &::before {
               position: absolute;

@@ -14,7 +14,12 @@ import { useSnackbar, type SnackbarType } from './SnackbarProvider'
 import CandidateToolbar from './timeline/CandidateToolbar'
 import TimelineControls from './timeline/TimelineControls'
 import TimelineZoomControls from './timeline/TimelineZoomControls'
-import { moveArrayItem, remapLayerIndex } from '../utils/timelineLayers'
+import {
+  getScrollOffsetToRevealRange,
+  getVerticalAutoScrollDelta,
+  moveArrayItem,
+  remapLayerIndex
+} from '../utils/timelineLayers'
 import type {
   AnalysisFrameRange,
   AnnotationProject,
@@ -82,6 +87,9 @@ type AnnotationCandidate = SimilarMotionCandidate | MovementDetectionCandidate
 
 const MAX_HISTORY_LENGTH = 100
 const TIMELINE_CONTENT_OFFSET_REM = 210
+const TIMELINE_RULER_HEIGHT_REM = 40
+const LAYER_DRAG_AUTO_SCROLL_EDGE_PX = 72
+const LAYER_DRAG_AUTO_SCROLL_MAX_SPEED = 18
 
 const Timeline = forwardRef<TimelineHandle, TimelineProps>(
   (
@@ -176,6 +184,14 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [dragOverLayerIndex, setDragOverLayerIndex] = useState<number | null>(
       null
     )
+    const dragOverLayerIndexRef = useRef<number | null>(null)
+    const layerDragPointerRef = useRef<{
+      clientX: number
+      clientY: number
+    } | null>(null)
+    const reorderLayerRef = useRef<
+      (fromIndex: number, toIndex: number) => void
+    >(() => undefined)
     const [playheadLeft, setPlayheadLeft] = useState(0)
     const isDraggingRef = useRef(false)
 
@@ -477,11 +493,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         eafTierIds: moveArrayItem(state.eafTierIds, fromIndex, toIndex),
         annotations: state.annotations.map((annotation) => ({
           ...annotation,
-          layerIndex: remapLayerIndex(
-            annotation.layerIndex,
-            fromIndex,
-            toIndex
-          )
+          layerIndex: remapLayerIndex(annotation.layerIndex, fromIndex, toIndex)
         }))
       }
 
@@ -500,13 +512,22 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         }))
       )
       setSelectedLayerIndex((current) =>
-        current === null
-          ? null
-          : remapLayerIndex(current, fromIndex, toIndex)
+        current === null ? null : remapLayerIndex(current, fromIndex, toIndex)
       )
       setEditingLayerIndex(null)
       updateContainerRefs(nextState.layerNames)
     }
+    reorderLayerRef.current = reorderLayer
+
+    const updateDragOverLayerIndex = useCallback(
+      (layerIndex: number | null) => {
+        dragOverLayerIndexRef.current = layerIndex
+        setDragOverLayerIndex((current) =>
+          current === layerIndex ? current : layerIndex
+        )
+      },
+      []
+    )
 
     const handleLayerPointerDown = (
       event: React.PointerEvent<HTMLDivElement>,
@@ -522,48 +543,148 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       if (event.button !== 0) return
       event.preventDefault()
       event.stopPropagation()
-      setDraggedLayerIndex(layerIndex)
-      setDragOverLayerIndex(layerIndex)
-    }
-
-    const handleLayerPointerUp = (
-      event: React.PointerEvent<HTMLDivElement>,
-      layerIndex: number
-    ) => {
-      event.stopPropagation()
-      if (draggedLayerIndex !== null) {
-        reorderLayer(draggedLayerIndex, layerIndex)
+      layerDragPointerRef.current = {
+        clientX: event.clientX,
+        clientY: event.clientY
       }
-      setDraggedLayerIndex(null)
-      setDragOverLayerIndex(null)
+      setDraggedLayerIndex(layerIndex)
+      updateDragOverLayerIndex(layerIndex)
     }
 
     useEffect(() => {
       if (draggedLayerIndex === null) return
-      const updateLayerReorderingTarget = (event: PointerEvent) => {
-        const target = document
-          .elementFromPoint(event.clientX, event.clientY)
-          ?.closest<HTMLElement>('[data-timeline-layer-index]')
-        if (!target) {
-          setDragOverLayerIndex(null)
-          return
+
+      let autoScrollFrame: number | null = null
+
+      const findNearestLayerIndex = (
+        clientX: number,
+        clientY: number
+      ): number | null => {
+        const viewport = timelineViewportRef.current
+        if (!viewport) return null
+        const viewportRect = viewport.getBoundingClientRect()
+        if (clientY < viewportRect.top || clientY > viewportRect.bottom) {
+          return null
         }
-        const targetIndex = Number(target.dataset.timelineLayerIndex)
-        setDragOverLayerIndex(Number.isInteger(targetIndex) ? targetIndex : null)
+
+        const directTarget = document
+          .elementFromPoint(clientX, clientY)
+          ?.closest<HTMLElement>('[data-timeline-layer-index]')
+        if (directTarget) {
+          const directIndex = Number(directTarget.dataset.timelineLayerIndex)
+          if (Number.isInteger(directIndex)) return directIndex
+        }
+
+        const remInPixels = parseFloat(
+          getComputedStyle(document.documentElement).fontSize
+        )
+        const visibleTop =
+          viewportRect.top + TIMELINE_RULER_HEIGHT_REM * remInPixels
+        const visibleBottom = viewportRect.top + viewport.clientHeight
+        const visibleLayers = Array.from(
+          viewport.querySelectorAll<HTMLElement>('[data-timeline-layer-index]')
+        ).filter((layer) => {
+          const rect = layer.getBoundingClientRect()
+          return rect.bottom > visibleTop && rect.top < visibleBottom
+        })
+        if (visibleLayers.length === 0) return null
+
+        const nearestLayer = visibleLayers.reduce((nearest, layer) => {
+          const nearestRect = nearest.getBoundingClientRect()
+          const layerRect = layer.getBoundingClientRect()
+          const nearestDistance = Math.abs(
+            clientY - (nearestRect.top + nearestRect.bottom) / 2
+          )
+          const layerDistance = Math.abs(
+            clientY - (layerRect.top + layerRect.bottom) / 2
+          )
+          return layerDistance < nearestDistance ? layer : nearest
+        })
+        const nearestIndex = Number(nearestLayer.dataset.timelineLayerIndex)
+        return Number.isInteger(nearestIndex) ? nearestIndex : null
       }
-      const stopLayerReordering = () => {
+
+      const updateLayerReorderingTarget = (
+        clientX: number,
+        clientY: number
+      ) => {
+        updateDragOverLayerIndex(findNearestLayerIndex(clientX, clientY))
+      }
+
+      const runAutoScroll = () => {
+        autoScrollFrame = null
+        const viewport = timelineViewportRef.current
+        const pointer = layerDragPointerRef.current
+        if (!viewport || !pointer) return
+
+        const viewportRect = viewport.getBoundingClientRect()
+        const remInPixels = parseFloat(
+          getComputedStyle(document.documentElement).fontSize
+        )
+        const visibleTop =
+          viewportRect.top + TIMELINE_RULER_HEIGHT_REM * remInPixels
+        const visibleBottom = viewportRect.top + viewport.clientHeight
+        const scrollDelta = getVerticalAutoScrollDelta(
+          pointer.clientY,
+          visibleTop,
+          visibleBottom,
+          LAYER_DRAG_AUTO_SCROLL_EDGE_PX,
+          LAYER_DRAG_AUTO_SCROLL_MAX_SPEED
+        )
+        if (scrollDelta === 0) return
+
+        const previousScrollTop = viewport.scrollTop
+        viewport.scrollTop += scrollDelta
+        if (viewport.scrollTop === previousScrollTop) return
+
+        updateLayerReorderingTarget(pointer.clientX, pointer.clientY)
+        autoScrollFrame = window.requestAnimationFrame(runAutoScroll)
+      }
+
+      const scheduleAutoScroll = () => {
+        if (autoScrollFrame === null) {
+          autoScrollFrame = window.requestAnimationFrame(runAutoScroll)
+        }
+      }
+
+      const handlePointerMove = (event: PointerEvent) => {
+        layerDragPointerRef.current = {
+          clientX: event.clientX,
+          clientY: event.clientY
+        }
+        updateLayerReorderingTarget(event.clientX, event.clientY)
+        scheduleAutoScroll()
+      }
+
+      const finishLayerReordering = () => {
+        const targetIndex = dragOverLayerIndexRef.current
+        if (targetIndex !== null) {
+          reorderLayerRef.current(draggedLayerIndex, targetIndex)
+        }
+        layerDragPointerRef.current = null
         setDraggedLayerIndex(null)
-        setDragOverLayerIndex(null)
+        updateDragOverLayerIndex(null)
       }
-      document.addEventListener('pointermove', updateLayerReorderingTarget)
-      document.addEventListener('pointerup', stopLayerReordering)
-      document.addEventListener('pointercancel', stopLayerReordering)
+
+      const cancelLayerReordering = () => {
+        layerDragPointerRef.current = null
+        setDraggedLayerIndex(null)
+        updateDragOverLayerIndex(null)
+      }
+
+      document.addEventListener('pointermove', handlePointerMove)
+      document.addEventListener('pointerup', finishLayerReordering)
+      document.addEventListener('pointercancel', cancelLayerReordering)
+      scheduleAutoScroll()
       return () => {
-        document.removeEventListener('pointermove', updateLayerReorderingTarget)
-        document.removeEventListener('pointerup', stopLayerReordering)
-        document.removeEventListener('pointercancel', stopLayerReordering)
+        if (autoScrollFrame !== null) {
+          window.cancelAnimationFrame(autoScrollFrame)
+        }
+        document.removeEventListener('pointermove', handlePointerMove)
+        document.removeEventListener('pointerup', finishLayerReordering)
+        document.removeEventListener('pointercancel', cancelLayerReordering)
       }
-    }, [draggedLayerIndex])
+    }, [draggedLayerIndex, updateDragOverLayerIndex])
 
     const removeSimilarMotionCandidate = (candidateId: string) => {
       setSimilarMotionCandidates((current) =>
@@ -1021,14 +1142,30 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         const annotationEnd = offset + annotation.endFrame * frameWidth
         const centeredScrollLeft =
           (annotationStart + annotationEnd) / 2 - viewport.clientWidth / 2
-        const layerElement = containerRefs.current[annotation.layerIndex]?.current
-        const centeredScrollTop = layerElement
-          ? layerElement.offsetTop - viewport.clientHeight / 2
-          : viewport.scrollTop
+        const layerElement =
+          containerRefs.current[annotation.layerIndex]?.current
+        let scrollTop = viewport.scrollTop
+        if (layerElement) {
+          const viewportRect = viewport.getBoundingClientRect()
+          const layerRect = layerElement.getBoundingClientRect()
+          const rulerHeight = TIMELINE_RULER_HEIGHT_REM * remInPixels
+          const verticalPadding = 8 * remInPixels
+          const visibleTop = viewportRect.top + rulerHeight + verticalPadding
+          const visibleBottom =
+            viewportRect.top + viewport.clientHeight - verticalPadding
+          scrollTop = getScrollOffsetToRevealRange(
+            viewport.scrollTop,
+            visibleTop,
+            visibleBottom,
+            layerRect.top,
+            layerRect.bottom,
+            Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+          )
+        }
 
         viewport.scrollTo({
           left: Math.max(0, centeredScrollLeft),
-          top: Math.max(0, centeredScrollTop),
+          top: scrollTop,
           behavior: 'smooth'
         })
       })
@@ -1052,7 +1189,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       return () => {
         timelines?.removeEventListener('wheel', handleWheel)
       }
-    }, [])
+    }, [hasTimelineContent])
 
     const syncPlayheadToFrame = useCallback(
       (frame: number) => {
@@ -1076,6 +1213,24 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       syncPlayheadToFrame(currentFrame)
     }, [currentFrame, syncPlayheadToFrame])
 
+    const clampClientXToVisibleTimeline = useCallback((clientX: number) => {
+      const viewport = timelineViewportRef.current
+      if (!viewport) return clientX
+
+      const viewportRect = viewport.getBoundingClientRect()
+      const remInPixels = parseFloat(
+        getComputedStyle(document.documentElement).fontSize
+      )
+      const visibleTimelineLeft =
+        viewportRect.left + TIMELINE_CONTENT_OFFSET_REM * remInPixels
+      const visibleTimelineRight = viewportRect.left + viewport.clientWidth
+
+      return Math.min(
+        Math.max(clientX, visibleTimelineLeft),
+        Math.max(visibleTimelineLeft, visibleTimelineRight)
+      )
+    }, [])
+
     useEffect(() => {
       if (selectionFrameWidth === 0) {
         setSelectionWidth(0)
@@ -1092,34 +1247,47 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     }, [frameWidth, selectionFrameWidth, selectionStartFrame])
 
     useEffect(() => {
-      if (timelineContainerRef.current) {
-        const container = timelineContainerRef.current
-        if (container) {
-          document.documentElement.style.setProperty(
-            '--timeline-container-height',
-            `${container.getBoundingClientRect().height}px`
-          )
-        }
+      const container = timelineContainerRef.current
+      if (!container) return
+
+      const updateTimelineContentHeight = () => {
+        container.style.setProperty(
+          '--timeline-container-height',
+          `${container.getBoundingClientRect().height}px`
+        )
       }
-    })
+
+      updateTimelineContentHeight()
+      const resizeObserver = new ResizeObserver(updateTimelineContentHeight)
+      resizeObserver.observe(container)
+
+      return () => resizeObserver.disconnect()
+    }, [hasTimelineContent])
 
     // プレイヘッドの位置を更新する関数
     const updatePlayheadPosition = useCallback(
       (clientX: number) => {
+        const clampedClientX = clampClientXToVisibleTimeline(clientX)
         const remInPixels = parseFloat(
           getComputedStyle(document.documentElement).fontSize
         )
         const timeBarRect = timeBarRef.current?.getBoundingClientRect()
         if (!timeBarRect) return
 
-        const relativeX = clientX - timeBarRect.left - (0.05 + 10) * remInPixels
+        const relativeX =
+          clampedClientX - timeBarRect.left - (0.05 + 10) * remInPixels
 
         const frameIndex = Math.round(relativeX / frameWidth) + 1
         const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
 
         syncPlayheadToFrame(clampedFrameIndex)
       },
-      [frameWidth, syncPlayheadToFrame, totalFrames]
+      [
+        clampClientXToVisibleTimeline,
+        frameWidth,
+        syncPlayheadToFrame,
+        totalFrames
+      ]
     )
 
     const handlePlayheadMoveDown = (clientX: number) => {
@@ -1132,12 +1300,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       isSelectingRef.current = true
       const containerRect = timelinesRef.current?.getBoundingClientRect()
       if (!containerRect) return
+      const clampedClientX = clampClientXToVisibleTimeline(clientX)
 
       const remInPixels = parseFloat(
         getComputedStyle(document.documentElement).fontSize
       )
       const offset = TIMELINE_CONTENT_OFFSET_REM * remInPixels
-      const startX = clientX - containerRect.left - offset
+      const startX = clampedClientX - containerRect.left - offset
       const frameIndex = Math.round(startX / frameWidth) + 1
       const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
       selectionAnchorFrameRef.current = clampedFrameIndex
@@ -1179,12 +1348,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         if (isSelectingRef.current) {
           const containerRect = timelinesRef.current?.getBoundingClientRect()
           if (!containerRect) return
+          const clampedClientX = clampClientXToVisibleTimeline(e.clientX)
 
           const remInPixels = parseFloat(
             getComputedStyle(document.documentElement).fontSize
           )
           const offset = TIMELINE_CONTENT_OFFSET_REM * remInPixels
-          const relativeX = e.clientX - containerRect.left - offset
+          const relativeX = clampedClientX - containerRect.left - offset
           const frameIndex = Math.round(relativeX / frameWidth) + 1
           const clampedFrameIndex = Math.max(
             1,
@@ -1202,6 +1372,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         }
       },
       [
+        clampClientXToVisibleTimeline,
         frameWidth,
         setSelectionFrameWidth,
         setSelectionStartFrame,
@@ -1907,54 +2078,73 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
                       </>
                     )
                   })()}
-                </div>
-                <div
-                  ref={playheadRef}
-                  className="playhead"
-                  style={{ left: `${playheadLeft}px` }}
-                ></div>
-                {normalizedAnalysisRangePreview && (
+                  {hasSelectionRange && selectionWidth !== 0 && (
+                    <div
+                      className="ruler-selected-area"
+                      style={{
+                        left: `calc(${selectionStart}px - 200rem)`,
+                        width: `${selectionWidth}px`
+                      }}
+                    ></div>
+                  )}
                   <div
-                    className="analysis-range-preview"
-                    style={{
-                      left: `calc(${TIMELINE_CONTENT_OFFSET_REM}rem + ${(normalizedAnalysisRangePreview.startFrame - 1) * frameWidth}px)`,
-                      width: `${(normalizedAnalysisRangePreview.endFrame - normalizedAnalysisRangePreview.startFrame + 1) * frameWidth}px`
-                    }}
-                  >
-                    <div className="analysis-range-preview-label">
-                      <span>分析範囲</span>
-                      <strong>
-                        {formatTimelineTime(
-                          (normalizedAnalysisRangePreview.startFrame - 1) /
-                            frameRate
-                        )}{' '}
-                        –{' '}
-                        {formatTimelineTime(
-                          normalizedAnalysisRangePreview.endFrame / frameRate
-                        )}
-                      </strong>
-                    </div>
-                  </div>
-                )}
-                {/* 選択範囲を表示 */}
-                {hasSelectionRange && selectionWidth !== 0 && (
-                  <div
-                    className="selected-area"
-                    style={{
-                      left: `${selectionStart}px`,
-                      width: `${selectionWidth}px`
-                    }}
-                  >
-                    <div className="selection-range-label">
+                    className="ruler-playhead"
+                    style={{ left: `calc(${playheadLeft}px - 200rem)` }}
+                  ></div>
+                  {hasSelectionRange && selectionWidth !== 0 && (
+                    <div
+                      className="selection-range-label"
+                      style={{
+                        left: `clamp(120rem, calc(${selectionStart + selectionWidth / 2}px - 200rem), calc(100% - 120rem))`
+                      }}
+                    >
                       <span>
                         {formatTimelineTime(selectionStartTime)} –{' '}
                         {formatTimelineTime(selectionEndTime)}
                       </span>
                       <span>{formatTimelineTime(selectionDuration)}</span>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
+              <div
+                ref={playheadRef}
+                className="playhead"
+                style={{ left: `${playheadLeft}px` }}
+              ></div>
+              {normalizedAnalysisRangePreview && (
+                <div
+                  className="analysis-range-preview"
+                  style={{
+                    left: `calc(${TIMELINE_CONTENT_OFFSET_REM}rem + ${(normalizedAnalysisRangePreview.startFrame - 1) * frameWidth}px)`,
+                    width: `${(normalizedAnalysisRangePreview.endFrame - normalizedAnalysisRangePreview.startFrame + 1) * frameWidth}px`
+                  }}
+                >
+                  <div className="analysis-range-preview-label">
+                    <span>分析範囲</span>
+                    <strong>
+                      {formatTimelineTime(
+                        (normalizedAnalysisRangePreview.startFrame - 1) /
+                          frameRate
+                      )}{' '}
+                      –{' '}
+                      {formatTimelineTime(
+                        normalizedAnalysisRangePreview.endFrame / frameRate
+                      )}
+                    </strong>
+                  </div>
+                </div>
+              )}
+              {/* 選択範囲を表示 */}
+              {hasSelectionRange && selectionWidth !== 0 && (
+                <div
+                  className="selected-area"
+                  style={{
+                    left: `${selectionStart}px`,
+                    width: `${selectionWidth}px`
+                  }}
+                ></div>
+              )}
 
               {layerNames.map((name, layerIndex) => {
                 // 各レイヤーに対応する containerRef を取得
@@ -1980,12 +2170,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
                           !isLayerReorderingLocked &&
                           draggedLayerIndex !== null
                         ) {
-                          setDragOverLayerIndex(layerIndex)
+                          updateDragOverLayerIndex(layerIndex)
                         }
                       }}
-                      onPointerUp={(event) =>
-                        handleLayerPointerUp(event, layerIndex)
-                      }
                     >
                       <div
                         className="layer-header"
