@@ -67,6 +67,7 @@ interface TimelineHandle {
   saveEAF: (filePath?: string, forceDialog?: boolean) => Promise<string | null>
   importProjectJson: (project: AnnotationProject) => void
   addLayer: (name: string) => number
+  selectLayer: (layerIndex: number) => void
   selectAnnotation: (annotationId: string) => void
 }
 
@@ -1171,6 +1172,13 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       })
     }
 
+    const selectLayer = (layerIndex: number) => {
+      if (layerIndex < 0 || layerIndex >= stateRef.current.layerNames.length) {
+        return
+      }
+      setSelectedLayerIndex(layerIndex)
+    }
+
     // ズーム処理
     const maxZoomLevel = 5
 
@@ -1890,6 +1898,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       saveEAF,
       importProjectJson,
       addLayer: addLayerWithName,
+      selectLayer,
       selectAnnotation
     }))
 

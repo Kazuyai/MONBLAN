@@ -7,6 +7,7 @@ interface AnnotationListProps {
   selectedLayerIndex: number | null
   selectedAnnotationId?: string
   frameRate: number
+  onSelectLayer: (layerIndex: number) => void
   onSelectAnnotation: (annotationId: string) => void
 }
 
@@ -18,6 +19,7 @@ const AnnotationList: React.FC<AnnotationListProps> = ({
   selectedLayerIndex,
   selectedAnnotationId,
   frameRate,
+  onSelectLayer,
   onSelectAnnotation
 }) => {
   const [displayedLayerIndex, setDisplayedLayerIndex] = useState(0)
@@ -56,9 +58,11 @@ const AnnotationList: React.FC<AnnotationListProps> = ({
           id="annotation-list-layer"
           value={displayedLayerIndex}
           disabled={layerNames.length === 0}
-          onChange={(event) =>
-            setDisplayedLayerIndex(Number(event.target.value))
-          }
+          onChange={(event) => {
+            const layerIndex = Number(event.target.value)
+            setDisplayedLayerIndex(layerIndex)
+            onSelectLayer(layerIndex)
+          }}
         >
           {layerNames.map((layerName, layerIndex) => (
             <option key={layerIndex} value={layerIndex}>

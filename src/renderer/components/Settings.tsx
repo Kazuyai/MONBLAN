@@ -62,6 +62,7 @@ interface SettingsProps {
   timelineAnnotations: ProjectAnnotation[]
   timelineLayerNames: string[]
   selectedTimelineLayerIndex: number | null
+  onSelectTimelineLayer: (layerIndex: number) => void
   onSelectTimelineAnnotation: (annotationId: string) => void
   onCreateTimelineLayer: (name: string) => number | null
   onRefreshApiStatus: () => Promise<void>
@@ -103,6 +104,7 @@ export const Settings: React.FC<SettingsProps> = ({
   timelineAnnotations,
   timelineLayerNames,
   selectedTimelineLayerIndex,
+  onSelectTimelineLayer,
   onSelectTimelineAnnotation,
   onCreateTimelineLayer,
   onRefreshApiStatus,
@@ -181,6 +183,7 @@ export const Settings: React.FC<SettingsProps> = ({
         selectedLayerIndex={selectedTimelineLayerIndex}
         selectedAnnotationId={selectedTimelineAnnotation?.id}
         frameRate={frameRate}
+        onSelectLayer={onSelectTimelineLayer}
         onSelectAnnotation={onSelectTimelineAnnotation}
       />
     )
