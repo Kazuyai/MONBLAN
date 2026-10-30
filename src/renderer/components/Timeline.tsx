@@ -53,6 +53,7 @@ interface TimelineProps {
   onAnnotationsChange: (annotations: ProjectAnnotation[]) => void
   onLayerNamesChange: (layerNames: string[]) => void
   onSelectedLayerIndexChange: (layerIndex: number | null) => void
+  onDirtyChange: (isDirty: boolean) => void
   topHeight: number
 }
 
@@ -108,6 +109,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       onAnnotationsChange,
       onLayerNamesChange,
       onSelectedLayerIndexChange,
+      onDirtyChange,
       topHeight
     },
     ref
@@ -128,12 +130,17 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     })
     const [eafSource, setEafSource] = useState<EafSourceDocument | null>(null)
     const stateRef = useRef(state)
+    const savedStateSignatureRef = useRef(JSON.stringify(state))
     const [movementDetectionCandidates, setMovementDetectionCandidates] =
       useState<MovementDetectionCandidate[]>([])
 
     useEffect(() => {
       stateRef.current = state
     }, [state])
+
+    useEffect(() => {
+      onDirtyChange(JSON.stringify(state) !== savedStateSignatureRef.current)
+    }, [onDirtyChange, state])
 
     // 総フレーム数を計算
     const totalFrames = Math.ceil(videoDuration * frameRate)
@@ -1498,6 +1505,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     }
 
     const saveEAF = async (filePath?: string, forceDialog = false) => {
+      const stateBeingSaved = state
       try {
         if (typeof window.electronAPI?.exportAnnotationFile !== 'function') {
           throw new Error(
@@ -1520,6 +1528,10 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
           defaultName: eafSource?.fileName || 'annotations.eaf'
         })
         if (result.canceled || !result.filePath) return null
+        savedStateSignatureRef.current = JSON.stringify(stateBeingSaved)
+        onDirtyChange(
+          JSON.stringify(stateRef.current) !== savedStateSignatureRef.current
+        )
         showTimelineNotice('EAFを保存しました。', 'success')
         return result.filePath
       } catch (error) {
@@ -1577,6 +1589,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         eafTierIds: importedEafTierIds,
         annotations: importedAnnotations
       }
+      savedStateSignatureRef.current = JSON.stringify(importedState)
+      onDirtyChange(false)
       stateRef.current = importedState
       setState(importedState)
       setEafSource(project.eafSource ?? null)

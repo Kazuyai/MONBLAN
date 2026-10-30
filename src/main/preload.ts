@@ -55,6 +55,8 @@ export interface SaveTextFileResult {
   filePath: string | null
 }
 
+export type UnsavedChangesAction = 'save' | 'discard' | 'cancel'
+
 contextBridge.exposeInMainWorld('electronAPI', {
   getApiStatus: (): Promise<ApiStatus> => ipcRenderer.invoke('api:get-status'),
   refreshApiStatus: (): Promise<ApiStatus> =>
@@ -68,6 +70,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     forceDialog?: boolean
   }): Promise<SaveTextFileResult> =>
     ipcRenderer.invoke('annotation:export', request),
+  setDocumentDirty: (isDirty: boolean): void =>
+    ipcRenderer.send('document:set-dirty', isDirty),
+  reportDocumentSaveResult: (requestId: number, saved: boolean): void =>
+    ipcRenderer.send('document:save-result', { requestId, saved }),
+  onDocumentSaveRequested: (
+    callback: (requestId: number) => void
+  ): (() => void) => {
+    const subscription = (_event: IpcRendererEvent, requestId: number) =>
+      callback(requestId)
+    ipcRenderer.on('document:save-requested', subscription)
+
+    return () => {
+      ipcRenderer.removeListener('document:save-requested', subscription)
+    }
+  },
+  confirmReplaceUnsavedDocument: (): Promise<UnsavedChangesAction> =>
+    ipcRenderer.invoke('document:confirm-replace'),
   createLocalMediaUrl: (filePath: string): Promise<string> =>
     ipcRenderer.invoke('media:create-url', filePath),
   getPathForFile: (

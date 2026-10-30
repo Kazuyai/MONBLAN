@@ -17,11 +17,11 @@ interface SettingsProps {
   setVideoSrcs: (srcs: string[]) => void
   setFrameRate: (frameRate: number) => void
   frameRate: number
-  onOpenVideos: () => void
+  onOpenVideos: () => Promise<boolean>
   onImportProjectJson: (
     project: AnnotationProject,
     sourceEafFilePath?: string
-  ) => Promise<void>
+  ) => Promise<boolean>
 }
 
 const FALLBACK_FRAME_RATE = 30
@@ -168,7 +168,8 @@ export const OpenFile: React.FC<SettingsProps> = ({
         throw new Error('Unsupported project file format')
       }
 
-      await onImportProjectJson(project)
+      const imported = await onImportProjectJson(project)
+      if (!imported) return
       setManualFrameRate(String(project.frameRate))
       showSnackbar(
         'プロジェクトを読み込みました。動画が表示されない場合は、動画ファイルを開き直してください。',
@@ -194,10 +195,11 @@ export const OpenFile: React.FC<SettingsProps> = ({
         sourceFilePath: getElectronFilePath(pending.file)
       })
       if (selectedVideos) project.videos = selectedVideos
-      await onImportProjectJson(
+      const imported = await onImportProjectJson(
         project,
         getElectronFilePath(pending.file) ?? undefined
       )
+      if (!imported) return
       setManualFrameRate(String(project.frameRate))
       const warnings = project.eafSource?.warnings.join(' ')
       if (warnings) {
@@ -388,6 +390,7 @@ export const OpenFile: React.FC<SettingsProps> = ({
         ? selectedVideoFiles
         : Array.from(input?.files ?? [])
     if (files.length === 0) return
+    if (!(await onOpenVideos())) return
 
     setProcessingTask({
       title: '動画を読み込み中',
@@ -403,7 +406,6 @@ export const OpenFile: React.FC<SettingsProps> = ({
     localStorage.setItem('videoFileNames', JSON.stringify(fileNames))
     localStorage.setItem('videoFilePaths', JSON.stringify(filePaths))
 
-    onOpenVideos()
     setVideoSrcs(urls)
 
     const file = files[0]
