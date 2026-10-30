@@ -64,6 +64,7 @@ const App = () => {
     ) => Promise<string | null>
     importProjectJson: (project: AnnotationProject) => void
     addLayer: (name: string) => number
+    selectLayer: (layerIndex: number) => void
     selectAnnotation: (annotationId: string) => void
   }>(null)
 
@@ -328,6 +329,9 @@ const App = () => {
           timelineAnnotations={timelineAnnotations}
           timelineLayerNames={timelineLayerNames}
           selectedTimelineLayerIndex={selectedTimelineLayerIndex}
+          onSelectTimelineLayer={(layerIndex) =>
+            timelineRef.current?.selectLayer(layerIndex)
+          }
           onSelectTimelineAnnotation={(annotationId) =>
             timelineRef.current?.selectAnnotation(annotationId)
           }

@@ -24,6 +24,7 @@ describe('AnnotationList', () => {
   })
 
   it('選択中の注釈層を開始時間順で表示し、行選択を通知する', () => {
+    const onSelectLayer = vi.fn()
     const onSelectAnnotation = vi.fn()
     act(() => {
       root.render(
@@ -55,6 +56,7 @@ describe('AnnotationList', () => {
           selectedLayerIndex={1}
           selectedAnnotationId="earlier"
           frameRate={30}
+          onSelectLayer={onSelectLayer}
           onSelectAnnotation={onSelectAnnotation}
         />
       )
@@ -76,5 +78,14 @@ describe('AnnotationList', () => {
 
     act(() => rows[0].click())
     expect(onSelectAnnotation).toHaveBeenCalledWith('earlier')
+
+    const layerSelect = container.querySelector<HTMLSelectElement>(
+      '#annotation-list-layer'
+    )!
+    act(() => {
+      layerSelect.value = '0'
+      layerSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(onSelectLayer).toHaveBeenCalledWith(0)
   })
 })
