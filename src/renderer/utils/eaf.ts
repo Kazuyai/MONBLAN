@@ -594,6 +594,18 @@ const updateSourceEaf = (options: GenerateEafOptions): string => {
     }
   )
 
+  const tierSlots = directChildrenByLocalName(root, 'TIER').map((tier) => {
+    const slot = document.createComment('MONBLAN_TIER_SLOT')
+    root.replaceChild(slot, tier)
+    return slot
+  })
+  if (tierSlots.length !== tierByLayerIndex.length) {
+    throw new Error('注釈層の並び順を更新できませんでした。')
+  }
+  tierByLayerIndex.forEach((tier, index) => {
+    root.replaceChild(tier, tierSlots[index])
+  })
+
   const renamedTiers = new Map<string, string>()
   options.eafTierIds.forEach((originalId, index) => {
     if (originalId) renamedTiers.set(originalId, options.layerNames[index])
