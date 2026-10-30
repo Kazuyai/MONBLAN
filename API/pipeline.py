@@ -23,6 +23,13 @@ import cv2
 import numpy as np
 
 try:
+    from .frame_ranges import (
+        ANNOTATION_FRAME_INDEX_BASE,
+        filter_results_by_frame_range,
+        inclusive_frame_ranges_overlap,
+        local_detection_interval_to_annotation,
+        validate_frame_range,
+    )
     from .paths import (
         ALPHAPOSE_DIR,
         ALPHAPOSE_DETECTOR_CHECKPOINT,
@@ -32,6 +39,13 @@ try:
         MOTIONBERT_DIR,
     )
 except ImportError:
+    from frame_ranges import (
+        ANNOTATION_FRAME_INDEX_BASE,
+        filter_results_by_frame_range,
+        inclusive_frame_ranges_overlap,
+        local_detection_interval_to_annotation,
+        validate_frame_range,
+    )
     from paths import (
         ALPHAPOSE_DIR,
         ALPHAPOSE_DETECTOR_CHECKPOINT,
@@ -47,7 +61,6 @@ ProgressCallback = Callable[[dict], None]
 
 _SIMILARITY_DETECTOR_CLASS = None
 # Existing detect_movement.py returns one-based, inclusive frame ranges.
-ANNOTATION_FRAME_INDEX_BASE = 1
 MIN_MOVEMENT_ANALYSIS_FRAMES = 5
 ALPHAPOSE_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "monblan-alphapose-cache")
 MOTIONBERT_CACHE_ROOT = os.path.join(tempfile.gettempdir(), "monblan-motionbert-cache")
@@ -84,41 +97,6 @@ def report_progress(
             "cacheHit": cache_hit,
         }
     )
-
-
-def validate_frame_range(
-    start_frame: int | None,
-    end_frame: int | None,
-    *,
-    start_name: str,
-    end_name: str,
-) -> None:
-    if start_frame is not None and start_frame < ANNOTATION_FRAME_INDEX_BASE:
-        raise ValueError(f"{start_name} must be frame one or greater")
-    if end_frame is not None and end_frame < ANNOTATION_FRAME_INDEX_BASE:
-        raise ValueError(f"{end_name} must be frame one or greater")
-    if start_frame is not None and end_frame is not None and end_frame < start_frame:
-        raise ValueError(f"{end_name} must be greater than or equal to {start_name}")
-
-
-def filter_results_by_frame_range(
-    results: list[dict],
-    start_frame: int | None,
-    end_frame: int | None,
-) -> list[dict]:
-    if start_frame is None and end_frame is None:
-        return results
-
-    filtered_results = []
-    for result in results:
-        result_start_frame = int(result["startFrame"])
-        result_end_frame = int(result["endFrame"])
-        if start_frame is not None and result_start_frame < start_frame:
-            continue
-        if end_frame is not None and result_end_frame > end_frame:
-            continue
-        filtered_results.append(result)
-    return filtered_results
 
 
 def create_job_dir() -> str:
@@ -733,8 +711,12 @@ def run_similarity_detection(
 
     def overlaps_template(candidate_start_frame: int, candidate_end_frame: int) -> bool:
         return any(
-            candidate_start_frame <= template_end_frame
-            and template_start_frame <= candidate_end_frame
+            inclusive_frame_ranges_overlap(
+                candidate_start_frame,
+                candidate_end_frame,
+                template_start_frame,
+                template_end_frame,
+            )
             for template_start_frame, template_end_frame in template_frame_ranges
         )
 
@@ -749,10 +731,15 @@ def run_similarity_detection(
             continue
         if search_end_frame is not None and end_frame > search_end_frame:
             continue
+        global_start_frame, global_end_frame = local_detection_interval_to_annotation(
+            int(segment.start_frame),
+            int(segment.end_frame),
+            frame_offset,
+        )
         all_candidates.append(
             {
-                "startFrame": start_frame + frame_offset,
-                "endFrame": end_frame + frame_offset,
+                "startFrame": global_start_frame,
+                "endFrame": global_end_frame,
                 "startTime": float(segment.start_time + frame_offset / fps),
                 "endTime": float(segment.end_time + frame_offset / fps),
                 "text": "",

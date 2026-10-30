@@ -7,7 +7,7 @@
 <p align="center"><strong>Motion-based Layered Annotator</strong></p>
 
 MONBLANは、動画に対してタイムラインベースでアノテーションを付与するデスクトップアプリケーションです。
-Electron + React + TypeScript による手動アノテーション機能と、ローカル FastAPI + AlphaPose + MotionBERT によるAI自動アノテーション機能を持ちます。
+Electron + React + TypeScript による手動編集に加え、姿勢推定に基づく動作区間の候補提示と、ユーザーが指定した動作に類似する区間の検索によって注釈作業を支援します。AIの検出結果は自動確定せず、タイムライン上で確認してから挿入または破棄できます。
 
 主に研究用途を想定しています。MONBLAN本体はApache License 2.0ですが、AI機能で利用するAlphaPoseには別途非商用条件があります。
 
@@ -65,6 +65,10 @@ public化や配布前の確認項目は `docs/public-release-checklist.md` を�
 - `Ctrl+S`によるEAFの上書き保存、`Ctrl+Shift+S`による別名保存
 - AIによる人物候補画像の抽出
 - AIによる動作区間検出
+- 選択した注釈区間を基準とする類似動作検索と候補の確認・挿入
+- 姿勢推定・類似動作検索結果のキャッシュによる再分析の短縮
+- 未保存状態の表示と終了時の保存確認
+- 一時ファイルを利用したEAF・CSVの安全な保存
 
 ## 構成
 
@@ -111,7 +115,7 @@ docs/
 
 - Node.js 22.12以上
 - Yarn 1.22以上
-- Electron 28
+- Electron 42
 - React 18
 - TypeScript
 

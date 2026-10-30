@@ -1,5 +1,4 @@
 import path from 'path'
-import fs from 'fs/promises'
 import { app, dialog, BrowserWindow, shell, ipcMain } from 'electron'
 import log from 'electron-log'
 import {
@@ -28,6 +27,7 @@ import {
   installLocalMediaProtocol,
   registerLocalMediaScheme
 } from './localMediaProtocol'
+import { writeTextFileAtomically } from './safeFileSave'
 
 registerLocalMediaScheme()
 
@@ -38,6 +38,11 @@ class AppUpdater {
 }
 
 let mainWindow: BrowserWindow | null = null
+let documentDirty = false
+let allowWindowClose = false
+let closeDialogOpen = false
+let nextSaveRequestId = 1
+const pendingSaveRequests = new Map<number, (saved: boolean) => void>()
 
 const runtimePaths = getRuntimePaths(
   app.isPackaged,
@@ -61,6 +66,55 @@ interface SaveTextFileResult {
 ipcMain.handle('media:create-url', (_event, filePath: string) =>
   createLocalMediaUrl(filePath)
 )
+
+ipcMain.on('document:set-dirty', (event, isDirty: boolean) => {
+  if (event.sender !== mainWindow?.webContents) return
+  documentDirty = isDirty === true
+  mainWindow.setDocumentEdited(documentDirty)
+})
+
+ipcMain.on(
+  'document:save-result',
+  (event, result: { requestId?: number; saved?: boolean }) => {
+    if (event.sender !== mainWindow?.webContents) return
+    if (!Number.isInteger(result?.requestId)) return
+    const resolve = pendingSaveRequests.get(result.requestId!)
+    if (!resolve) return
+    pendingSaveRequests.delete(result.requestId!)
+    resolve(result.saved === true)
+  }
+)
+
+ipcMain.handle('document:confirm-replace', async (event) => {
+  if (event.sender !== mainWindow?.webContents) return 'cancel'
+  if (!mainWindow) return 'cancel'
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['保存して続行', '保存せず続行', 'キャンセル'],
+    defaultId: 0,
+    cancelId: 2,
+    title: '未保存の変更',
+    message: '保存されていない変更があります。',
+    detail: '別のファイルを開く前に変更を保存しますか？'
+  })
+  return response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel'
+})
+
+const requestDocumentSave = async (): Promise<boolean> => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  const requestId = nextSaveRequestId++
+  return new Promise<boolean>((resolve) => {
+    const timeout = setTimeout(() => {
+      pendingSaveRequests.delete(requestId)
+      resolve(false)
+    }, 60_000)
+    pendingSaveRequests.set(requestId, (saved) => {
+      clearTimeout(timeout)
+      resolve(saved)
+    })
+    mainWindow?.webContents.send('document:save-requested', requestId)
+  })
+}
 
 const showSaveDialog = async (
   options: Electron.SaveDialogOptions
@@ -117,7 +171,7 @@ ipcMain.handle(
       targetPath = result.filePath
     }
 
-    await fs.writeFile(targetPath, request.content, 'utf8')
+    await writeTextFileAtomically(targetPath, request.content)
     return { canceled: false, filePath: targetPath }
   }
 )
@@ -336,23 +390,36 @@ const createWindow = async () => {
   })
 
   mainWindow.on('close', async (e: Electron.Event) => {
-    e.preventDefault()
-
-    const { response: num } = await dialog.showMessageBox(mainWindow!, {
-      type: 'info',
-      buttons: ['キャンセル', '終了する'],
-      defaultId: 0,
-      cancelId: 0,
-      title: '確認',
-      message: '本当に終了しますか？'
-    })
-
-    if (num === 0) {
+    if (allowWindowClose || !documentDirty) {
+      stopApiServer()
       return
     }
 
-    stopApiServer()
-    app.exit()
+    e.preventDefault()
+    if (closeDialogOpen) return
+    closeDialogOpen = true
+
+    try {
+      const { response } = await dialog.showMessageBox(mainWindow!, {
+        type: 'warning',
+        buttons: ['保存', '保存せず終了', 'キャンセル'],
+        defaultId: 0,
+        cancelId: 2,
+        title: '未保存の変更',
+        message: '保存されていない変更があります。',
+        detail: '終了する前に変更を保存しますか？'
+      })
+
+      if (response === 2) return
+      if (response === 0 && !(await requestDocumentSave())) return
+
+      documentDirty = false
+      allowWindowClose = true
+      stopApiServer()
+      mainWindow?.close()
+    } finally {
+      closeDialogOpen = false
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler((edata) => {
@@ -372,7 +439,12 @@ const createWindow = async () => {
   new AppUpdater()
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (documentDirty && !allowWindowClose) {
+    event.preventDefault()
+    mainWindow?.close()
+    return
+  }
   stopApiServer()
 })
 

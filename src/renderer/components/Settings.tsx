@@ -41,7 +41,7 @@ interface SettingsProps {
   videoSrcs: string[]
   setIsEditing: (isEditing: boolean) => void
   setFrameRate: (frameRate: number) => void
-  onOpenVideos: () => void
+  onOpenVideos: () => Promise<boolean>
   playSpeed: number
   setPlaySpeed: (playSpeed: number) => void
   onExportCSV: () => void
@@ -49,7 +49,7 @@ interface SettingsProps {
   onImportProjectJson: (
     project: AnnotationProject,
     sourceEafFilePath?: string
-  ) => Promise<void>
+  ) => Promise<boolean>
   setAutoAnnotationResponseData: (data: TimelineAnnotationResult[]) => void
   setSimilarMotionCandidates: (candidates: SimilarMotionCandidate[]) => void
   apiStatus: ApiStatus | null

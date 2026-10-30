@@ -4,7 +4,8 @@ import {
   AiSetupOperation,
   AiSetupStatus,
   ApiStatus,
-  SaveTextFileResult
+  SaveTextFileResult,
+  UnsavedChangesAction
 } from '../main/preload'
 
 declare global {
@@ -20,6 +21,12 @@ declare global {
         defaultName?: string
         forceDialog?: boolean
       }) => Promise<SaveTextFileResult>
+      setDocumentDirty: (isDirty: boolean) => void
+      reportDocumentSaveResult: (requestId: number, saved: boolean) => void
+      onDocumentSaveRequested: (
+        callback: (requestId: number) => void
+      ) => () => void
+      confirmReplaceUnsavedDocument: () => Promise<UnsavedChangesAction>
       createLocalMediaUrl: (filePath: string) => Promise<string>
       getPathForFile: (file: File) => string
       getAiSetupStatus: () => Promise<AiSetupStatus>

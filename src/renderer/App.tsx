@@ -29,6 +29,7 @@ const App = () => {
   const [activeEafFilePath, setActiveEafFilePath] = useState<string | null>(
     null
   )
+  const [isDocumentDirty, setIsDocumentDirty] = useState(false)
 
   const [selectionStartFrame, setSelectionStartFrame] = useState<number>(0)
   const [selectionFrameWidth, setSelectionFrameWidth] = useState<number>(0)
@@ -65,6 +66,15 @@ const App = () => {
     addLayer: (name: string) => number
     selectAnnotation: (annotationId: string) => void
   }>(null)
+
+  const handleDocumentDirtyChange = useCallback((isDirty: boolean) => {
+    setIsDocumentDirty(isDirty)
+    window.electronAPI?.setDocumentDirty(isDirty)
+  }, [])
+
+  useEffect(() => {
+    document.title = isDocumentDirty ? '● MONBLAN' : 'MONBLAN'
+  }, [isDocumentDirty])
 
   const MAX_HEIGHT = 80
 
@@ -146,23 +156,45 @@ const App = () => {
 
   const handleSaveCurrentDocument = useCallback(
     async (saveAs = false) => {
-      if (!timelineRef.current) return
+      if (!timelineRef.current) return false
       const savedPath = await timelineRef.current.saveEAF(
         activeEafFilePath ?? undefined,
         saveAs
       )
       if (savedPath) {
         setActiveEafFilePath(savedPath)
+        return true
       }
+      return false
     },
     [activeEafFilePath]
   )
 
+  const confirmCanReplaceDocument = useCallback(async () => {
+    if (!isDocumentDirty) return true
+    const action = await window.electronAPI.confirmReplaceUnsavedDocument()
+    if (action === 'cancel') return false
+    if (action === 'save') return handleSaveCurrentDocument(false)
+    return true
+  }, [handleSaveCurrentDocument, isDocumentDirty])
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onDocumentSaveRequested(
+      async (requestId) => {
+        const saved = await handleSaveCurrentDocument(false)
+        window.electronAPI.reportDocumentSaveResult(requestId, saved)
+      }
+    )
+    return () => unsubscribe?.()
+  }, [handleSaveCurrentDocument])
+
   const handleImportProjectJson = async (
     project: AnnotationProject,
     sourceEafFilePath?: string
-  ): Promise<void> => {
-    if (!timelineRef.current) return
+  ): Promise<boolean> => {
+    if (!timelineRef.current || !(await confirmCanReplaceDocument())) {
+      return false
+    }
 
     setFrameRate(project.frameRate)
     setVideoDuration(project.videoDuration)
@@ -196,6 +228,14 @@ const App = () => {
     setVideoSrcs(localMediaUrls)
 
     timelineRef.current.importProjectJson(project)
+    return true
+  }
+
+  const handleOpenVideos = async () => {
+    if (!(await confirmCanReplaceDocument())) return false
+    setActiveEafFilePath(null)
+    handleDocumentDirtyChange(true)
+    return true
   }
 
   useEffect(() => {
@@ -270,7 +310,7 @@ const App = () => {
           videoSrcs={videoSrcs}
           setIsEditing={setIsEditing}
           setFrameRate={setFrameRate}
-          onOpenVideos={() => setActiveEafFilePath(null)}
+          onOpenVideos={handleOpenVideos}
           playSpeed={playSpeed}
           setPlaySpeed={setPlaySpeed}
           onExportCSV={handleExportCSV}
@@ -323,6 +363,7 @@ const App = () => {
         onAnnotationsChange={setTimelineAnnotations}
         onLayerNamesChange={setTimelineLayerNames}
         onSelectedLayerIndexChange={setSelectedTimelineLayerIndex}
+        onDirtyChange={handleDocumentDirtyChange}
         topHeight={topHeight}
       />
       {processingTask && <Processing task={processingTask} />}
