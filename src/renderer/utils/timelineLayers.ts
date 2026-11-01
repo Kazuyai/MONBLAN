@@ -9,6 +9,17 @@ export const moveArrayItem = <T>(
   return nextItems
 }
 
+export const insertArrayItem = <T>(
+  items: T[],
+  index: number,
+  item: T
+): T[] => [...items.slice(0, index), item, ...items.slice(index)]
+
+export const shiftLayerIndexForInsertion = (
+  layerIndex: number,
+  insertionIndex: number
+): number => (layerIndex >= insertionIndex ? layerIndex + 1 : layerIndex)
+
 export const remapLayerIndex = (
   layerIndex: number,
   fromIndex: number,

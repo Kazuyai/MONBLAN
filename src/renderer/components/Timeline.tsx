@@ -17,8 +17,10 @@ import TimelineZoomControls from './timeline/TimelineZoomControls'
 import {
   getScrollOffsetToRevealRange,
   getVerticalAutoScrollDelta,
+  insertArrayItem,
   moveArrayItem,
-  remapLayerIndex
+  remapLayerIndex,
+  shiftLayerIndexForInsertion
 } from '../utils/timelineLayers'
 import type {
   AnalysisFrameRange,
@@ -975,19 +977,59 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     // 注釈層の追加
     const addLayerWithName = (name?: string) => {
       const currentState = stateRef.current
-      const newLayerIndex = currentState.layerNames.length
-      const layerName = name?.trim() || `レイヤー${newLayerIndex + 1}`
+      const newLayerIndex =
+        selectedLayerIndex !== null &&
+        selectedLayerIndex >= 0 &&
+        selectedLayerIndex < currentState.layerNames.length
+          ? selectedLayerIndex + 1
+          : currentState.layerNames.length
+      const layerName =
+        name?.trim() || `レイヤー${currentState.layerNames.length + 1}`
       pushToUndoStack(currentState)
-      const newLayerNames = [...currentState.layerNames, layerName]
+      const newLayerNames = insertArrayItem(
+        currentState.layerNames,
+        newLayerIndex,
+        layerName
+      )
       const nextState = {
         ...currentState,
         layerNames: newLayerNames,
-        eafTierIds: [...currentState.eafTierIds, null]
+        eafTierIds: insertArrayItem(
+          currentState.eafTierIds,
+          newLayerIndex,
+          null
+        ),
+        annotations: currentState.annotations.map((annotation) => ({
+          ...annotation,
+          layerIndex: shiftLayerIndexForInsertion(
+            annotation.layerIndex,
+            newLayerIndex
+          )
+        }))
       }
       stateRef.current = nextState
       setState(nextState)
-      setSelectedLayerIndex(newLayerNames.length - 1)
+      setMovementDetectionCandidates((current) =>
+        current.map((candidate) => ({
+          ...candidate,
+          layerIndex: shiftLayerIndexForInsertion(
+            candidate.layerIndex,
+            newLayerIndex
+          )
+        }))
+      )
+      setSimilarMotionCandidates((current) =>
+        current.map((candidate) => ({
+          ...candidate,
+          layerIndex: shiftLayerIndexForInsertion(
+            candidate.layerIndex,
+            newLayerIndex
+          )
+        }))
+      )
+      setSelectedLayerIndex(newLayerIndex)
       setEditingLayerIndex(null)
+      updateContainerRefs(newLayerNames)
       return newLayerIndex
     }
 
