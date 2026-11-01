@@ -2,11 +2,25 @@ import { describe, expect, it } from 'vitest'
 import {
   getScrollOffsetToRevealRange,
   getVerticalAutoScrollDelta,
+  insertArrayItem,
   moveArrayItem,
-  remapLayerIndex
+  remapLayerIndex,
+  shiftLayerIndexForInsertion
 } from './timelineLayers'
 
 describe('timelineLayers', () => {
+  it('選択位置の直後へ新しいレイヤーを挿入できる', () => {
+    expect(insertArrayItem(['A', 'B', 'C'], 2, 'new')).toEqual([
+      'A',
+      'B',
+      'new',
+      'C'
+    ])
+    expect([0, 1, 2].map((index) => shiftLayerIndexForInsertion(index, 2))).toEqual(
+      [0, 1, 3]
+    )
+  })
+
   it('レイヤーと対応情報を同じ順序で移動できる', () => {
     expect(moveArrayItem(['A', 'B', 'C'], 0, 2)).toEqual(['B', 'C', 'A'])
     expect(moveArrayItem(['a-id', 'b-id', 'c-id'], 0, 2)).toEqual([
