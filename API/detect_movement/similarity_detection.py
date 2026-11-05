@@ -1535,15 +1535,80 @@ class MultiTemplateUnion3DDetector(OverlapReject3DDetector):
 
 
 class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
-    def __init__(self, fps: float = 30.0):
+    SENSITIVITY_SETTINGS = {
+        "low": {
+            "greedy_stop_threshold": 0.16,
+            "candidate_relative_margin": 0.05,
+            "final_relative_margin": 0.05,
+        },
+        "standard": {
+            "greedy_stop_threshold": 0.12,
+            "candidate_relative_margin": 0.08,
+            "final_relative_margin": 0.08,
+        },
+        "high": {
+            "greedy_stop_threshold": 0.08,
+            "candidate_relative_margin": 0.12,
+            "final_relative_margin": 0.12,
+        },
+    }
+    CUSTOM_WINDOW_SCALES = [
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.75,
+        0.9,
+        1.0,
+        1.1,
+        1.25,
+        1.4,
+        1.6,
+        1.8,
+        2.0,
+        2.25,
+        2.5,
+        2.75,
+        3.0,
+    ]
+
+    def __init__(
+        self,
+        fps: float = 30.0,
+        min_len_ratio: float = 0.70,
+        max_len_ratio: float = 1.40,
+        sensitivity: str = "standard",
+    ):
         super().__init__(fps)
+        if not 0.30 <= min_len_ratio <= 3.00:
+            raise ValueError("min_len_ratio must be between 0.30 and 3.00")
+        if not 0.30 <= max_len_ratio <= 3.00:
+            raise ValueError("max_len_ratio must be between 0.30 and 3.00")
+        if min_len_ratio > max_len_ratio:
+            raise ValueError("min_len_ratio must not exceed max_len_ratio")
+        if sensitivity not in self.SENSITIVITY_SETTINGS:
+            raise ValueError(f"Unsupported sensitivity: {sensitivity}")
+
+        self.min_len_ratio = min_len_ratio
+        self.max_len_ratio = max_len_ratio
+        self.sensitivity = sensitivity
+        if min_len_ratio != 0.70 or max_len_ratio != 1.40:
+            scales = [
+                scale
+                for scale in self.CUSTOM_WINDOW_SCALES
+                if min_len_ratio <= scale <= max_len_ratio
+            ]
+            scales.extend([min_len_ratio, max_len_ratio])
+            self.window_scales = sorted(set(scales))
+
         self.feature_type_name = "joint_specific_per_joint_dtw_pure_refined"
         self.greedy_refine_radius = max(2, int(round(self.fps * 0.20)))
 
-        # DTW only, but keep practical selection guards.
-        self.greedy_stop_threshold = 0.12
-        self.candidate_relative_margin = 0.08
-        self.final_relative_margin = 0.08
+        sensitivity_settings = self.SENSITIVITY_SETTINGS[sensitivity]
+        self.greedy_stop_threshold = sensitivity_settings["greedy_stop_threshold"]
+        self.candidate_relative_margin = sensitivity_settings["candidate_relative_margin"]
+        self.final_relative_margin = sensitivity_settings["final_relative_margin"]
 
         # Detect same-event duplicates more robustly than IoU only.
         self.candidate_overlap_iou = 0.18
@@ -1964,5 +2029,8 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
                 "final_union_iou": self.final_union_iou,
                 "final_union_cover": self.final_union_cover,
                 "near_duplicate_gap_frames": self.near_duplicate_gap_frames,
+                "min_len_ratio": self.min_len_ratio,
+                "max_len_ratio": self.max_len_ratio,
+                "sensitivity": self.sensitivity,
             },
         }

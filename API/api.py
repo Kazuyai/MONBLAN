@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import time
 from datetime import datetime
+from typing import Literal
 
 from fastapi import FastAPI, File, Form, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -126,6 +127,9 @@ class SimilarMotionPathRequest(VideoPathRequest):
     layerIndex: int
     analysisRange: AnalysisRange | None = None
     singlePerson: bool = False
+    minDurationRatio: float = 0.70
+    maxDurationRatio: float = 1.40
+    sensitivity: Literal["low", "standard", "high"] = "standard"
 
 
 @app.get("/processing/{progress_id}")
@@ -706,6 +710,9 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
             alphapose_results_path=alphapose_results_path,
             single_person=request.singlePerson,
             progress_callback=progress_callback,
+            min_duration_ratio=request.minDurationRatio,
+            max_duration_ratio=request.maxDurationRatio,
+            sensitivity=request.sensitivity,
         )
 
         end_time = time.time()

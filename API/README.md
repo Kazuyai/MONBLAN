@@ -138,6 +138,9 @@ Electronアプリからは、動画全体のアップロードを避けるため
   "selectedJoints": [14, 15],
   "templateSegments": [{ "startFrame": 153, "endFrame": 177 }],
   "analysisRange": { "startFrame": 101, "endFrame": 900 },
+  "minDurationRatio": 0.7,
+  "maxDurationRatio": 1.4,
+  "sensitivity": "standard",
   "layerName": "右 右腕の動き",
   "layerIndex": 2
 }
@@ -168,6 +171,9 @@ Electronアプリからは、動画全体のアップロードを避けるため
   },
   "parameters": {
     "algorithm": "v40_dtw_pure_refined",
+    "minDurationRatio": 0.7,
+    "maxDurationRatio": 1.4,
+    "sensitivity": "standard",
     "searchStartFrame": null,
     "searchEndFrame": null
   }
@@ -177,6 +183,8 @@ Electronアプリからは、動画全体のアップロードを避けるため
 - `humanId` は人物選択UIの0始まりのIDである。MotionBERTへは内部で1始まりの`focus`として渡す。
 - `selectedJoints` は選択可能な10関節のIDを指定する。
 - `templateSegments` はタイムライン上のテンプレート区間であり、開始・終了フレームをともに含む。既存の自動動作検出に合わせてフレーム番号は1始まりである。
+- `minDurationRatio`と`maxDurationRatio`は、テンプレート区間の長さに対して検索する候補区間長の最小・最大比率である。既定値は`0.7`と`1.4`で、`0.3`～`3.0`の範囲を指定できる。
+- `sensitivity`は候補の残しやすさを`low`、`standard`、`high`から指定する。`low`は候補を厳選し、`high`は弱い候補も多めに提示する。既定値は`standard`である。
 - テンプレート区間と重なる検出結果は候補から除外される。
 - `analysisRange: {"startFrame": 101, "endFrame": 900}` は任意項目である。指定時はその連続区間だけで姿勢推定・検索を実行する。テンプレート全体を分析区間に含める必要があり、含まれない場合は HTTP 422 を返す。従来の `searchStartFrame` / `searchEndFrame` も受け付ける。
 - レスポンスの`startFrame`と`endFrame`も1始まりであり、既存の自動動作検出と同じ規約である。

@@ -38,6 +38,7 @@ try:
         MOTIONBERT_CHECKPOINT,
         MOTIONBERT_DIR,
     )
+    from .similarity_settings import validate_similarity_search_settings
 except ImportError:
     from frame_ranges import (
         ANNOTATION_FRAME_INDEX_BASE,
@@ -54,6 +55,7 @@ except ImportError:
         MOTIONBERT_CHECKPOINT,
         MOTIONBERT_DIR,
     )
+    from similarity_settings import validate_similarity_search_settings
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +196,9 @@ def _get_similarity_cache_key(
     search_start_frame: int | None,
     search_end_frame: int | None,
     frame_offset: int,
+    min_duration_ratio: float,
+    max_duration_ratio: float,
+    sensitivity: str,
 ) -> str:
     detector_path = os.path.join(DETECT_MOVEMENT_DIR, "similarity_detection.py")
     payload = {
@@ -209,6 +214,9 @@ def _get_similarity_cache_key(
         "searchStartFrame": search_start_frame,
         "searchEndFrame": search_end_frame,
         "frameOffset": frame_offset,
+        "minDurationRatio": min_duration_ratio,
+        "maxDurationRatio": max_duration_ratio,
+        "sensitivity": sensitivity,
     }
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -659,6 +667,9 @@ def run_similarity_detection(
     search_start_frame: int | None = None,
     search_end_frame: int | None = None,
     frame_offset: int = 0,
+    min_duration_ratio: float = 0.70,
+    max_duration_ratio: float = 1.40,
+    sensitivity: str = "standard",
 ) -> dict:
     """v40を実行し、UIで扱う注釈候補と検出メタデータを返す。"""
     if fps <= 0:
@@ -674,6 +685,11 @@ def run_similarity_detection(
         search_end_frame,
         start_name="searchStartFrame",
         end_name="searchEndFrame",
+    )
+    validate_similarity_search_settings(
+        min_duration_ratio,
+        max_duration_ratio,
+        sensitivity,
     )
 
     template_times: list[tuple[float, float]] = []
@@ -704,7 +720,12 @@ def run_similarity_detection(
     if invalid_joints:
         raise ValueError(f"selectedJoints contains unsupported joints: {invalid_joints}")
 
-    detector = detector_class(fps=fps)
+    detector = detector_class(
+        fps=fps,
+        min_len_ratio=min_duration_ratio,
+        max_len_ratio=max_duration_ratio,
+        sensitivity=sensitivity,
+    )
     result = detector.detect(pose_file_path, unique_selected_joints, template_times)
     if "error" in result:
         raise RuntimeError(result["error"])
@@ -782,6 +803,9 @@ def run_similarity_detection(
             "featureType": result["params"]["feature_type"],
             "searchStartFrame": search_start_frame,
             "searchEndFrame": search_end_frame,
+            "minDurationRatio": min_duration_ratio,
+            "maxDurationRatio": max_duration_ratio,
+            "sensitivity": sensitivity,
         },
     }
 
@@ -797,6 +821,9 @@ def get_cached_similarity_results(
     search_start_frame: int | None = None,
     search_end_frame: int | None = None,
     frame_offset: int = 0,
+    min_duration_ratio: float = 0.70,
+    max_duration_ratio: float = 1.40,
+    sensitivity: str = "standard",
 ) -> tuple[dict, bool]:
     cache_key = _get_similarity_cache_key(
         pose_file_path,
@@ -809,6 +836,9 @@ def get_cached_similarity_results(
         search_start_frame,
         search_end_frame,
         frame_offset,
+        min_duration_ratio,
+        max_duration_ratio,
+        sensitivity,
     )
     cache_dir = os.path.join(SIMILARITY_CACHE_ROOT, cache_key)
     cache_path = os.path.join(cache_dir, "result.json")
@@ -836,6 +866,9 @@ def get_cached_similarity_results(
             search_start_frame=search_start_frame,
             search_end_frame=search_end_frame,
             frame_offset=frame_offset,
+            min_duration_ratio=min_duration_ratio,
+            max_duration_ratio=max_duration_ratio,
+            sensitivity=sensitivity,
         )
         os.makedirs(cache_dir, exist_ok=True)
         temporary_path = os.path.join(cache_dir, f"result-{uuid.uuid4().hex}.tmp")
@@ -1108,6 +1141,9 @@ def run_similarity_pipeline(
     analysis_range: dict | None = None,
     single_person: bool = False,
     progress_callback: ProgressCallback | None = None,
+    min_duration_ratio: float = 0.70,
+    max_duration_ratio: float = 1.40,
+    sensitivity: str = "standard",
 ) -> dict:
     """人物・関節・テンプレート区間を指定して、類似動作候補を返す。"""
     owns_job_dir = job_dir is None
@@ -1115,6 +1151,11 @@ def run_similarity_pipeline(
         job_dir = create_job_dir()
     success = False
     try:
+        validate_similarity_search_settings(
+            min_duration_ratio,
+            max_duration_ratio,
+            sensitivity,
+        )
         selected_range = normalize_analysis_range(video_file_path, analysis_range)
         for segment in template_segments:
             if segment["startFrame"] < 1 or segment["endFrame"] < segment["startFrame"]:
@@ -1191,6 +1232,9 @@ def run_similarity_pipeline(
             layer_name=layer_name,
             layer_index=layer_index,
             frame_offset=frame_offset,
+            min_duration_ratio=min_duration_ratio,
+            max_duration_ratio=max_duration_ratio,
+            sensitivity=sensitivity,
         )
         report_progress(
             progress_callback,
