@@ -65,6 +65,14 @@ interface SimilarMotionResponse {
   candidates: SimilarMotionApiCandidate[]
 }
 
+type DurationRangeMode = 'standard' | 'custom'
+type DetectionSensitivity = 'low' | 'standard' | 'high'
+
+const STANDARD_MIN_DURATION_PERCENT = 70
+const STANDARD_MAX_DURATION_PERCENT = 140
+const MIN_CUSTOM_DURATION_PERCENT = 30
+const MAX_CUSTOM_DURATION_PERCENT = 300
+
 const getApiStatusMessage = (apiStatus: ApiStatus | null) => {
   if (!apiStatus || apiStatus.status === 'starting') {
     return 'AI自動アノテーション環境を確認中です。'
@@ -128,6 +136,14 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     { startFrame: number; endFrame: number } | null | undefined
   >(undefined)
   const [selectedJoints, setSelectedJoints] = useState<number[]>([14, 15])
+  const [durationRangeMode, setDurationRangeMode] =
+    useState<DurationRangeMode>('standard')
+  const [customMinDurationPercent, setCustomMinDurationPercent] =
+    useState('60')
+  const [customMaxDurationPercent, setCustomMaxDurationPercent] =
+    useState('140')
+  const [detectionSensitivity, setDetectionSensitivity] =
+    useState<DetectionSensitivity>('standard')
   const [hoveredKeyPointName, setHoveredKeyPointName] = useState<string | null>(
     null
   )
@@ -317,6 +333,42 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
     )
   }
 
+  const parsedMinDurationPercent =
+    durationRangeMode === 'standard'
+      ? STANDARD_MIN_DURATION_PERCENT
+      : Number(customMinDurationPercent)
+  const parsedMaxDurationPercent =
+    durationRangeMode === 'standard'
+      ? STANDARD_MAX_DURATION_PERCENT
+      : Number(customMaxDurationPercent)
+  const hasValidDurationRange =
+    Number.isFinite(parsedMinDurationPercent) &&
+    Number.isFinite(parsedMaxDurationPercent) &&
+    parsedMinDurationPercent >= MIN_CUSTOM_DURATION_PERCENT &&
+    parsedMaxDurationPercent <= MAX_CUSTOM_DURATION_PERCENT &&
+    parsedMinDurationPercent <= parsedMaxDurationPercent
+  const durationRangeError = (() => {
+    if (durationRangeMode === 'standard' || hasValidDurationRange) return null
+    if (
+      !Number.isFinite(parsedMinDurationPercent) ||
+      !Number.isFinite(parsedMaxDurationPercent)
+    ) {
+      return '最小値と最大値を入力してください。'
+    }
+    if (
+      parsedMinDurationPercent < MIN_CUSTOM_DURATION_PERCENT ||
+      parsedMaxDurationPercent > MAX_CUSTOM_DURATION_PERCENT
+    ) {
+      return `${MIN_CUSTOM_DURATION_PERCENT}～${MAX_CUSTOM_DURATION_PERCENT}%の範囲で指定してください。`
+    }
+    return '最小値は最大値以下にしてください。'
+  })()
+  const templateDurationSeconds =
+    confirmedTemplate && Number.isFinite(frameRate) && frameRate > 0
+      ? (confirmedTemplate.endFrame - confirmedTemplate.startFrame + 1) /
+        frameRate
+      : null
+
   const getUploadedHumanImages = (
     file: File,
     single: boolean,
@@ -469,6 +521,12 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       setApiError({ message: '少なくとも1つの関節を選択してください。' })
       return
     }
+    if (!hasValidDurationRange) {
+      setApiError({
+        message: durationRangeError || '候補区間の長さを確認してください。'
+      })
+      return
+    }
 
     const progress = startProcessingProgress(
       {
@@ -504,6 +562,9 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
             singlePerson: isHumanCountSingle === true,
             layerName: confirmedTemplate.layerName,
             layerIndex: confirmedTemplate.layerIndex,
+            minDurationRatio: parsedMinDurationPercent / 100,
+            maxDurationRatio: parsedMaxDurationPercent / 100,
+            sensitivity: detectionSensitivity,
             progressId: progress.progressId
           })
         }
@@ -743,10 +804,130 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
                   </p>
                 )}
               </div>
+              <div className="similarity-search-settings">
+                <fieldset>
+                  <legend>候補区間の長さ</legend>
+                  <div className="similarity-setting-options duration-options">
+                    <label
+                      className={
+                        durationRangeMode === 'standard' ? 'selected' : ''
+                      }
+                    >
+                      <input
+                        type="radio"
+                        name="similarity-duration-range-mode"
+                        checked={durationRangeMode === 'standard'}
+                        onChange={() => setDurationRangeMode('standard')}
+                      />
+                      <span>
+                        <strong>標準</strong>
+                        <small>ベース注釈の70～140%</small>
+                      </span>
+                    </label>
+                    <label
+                      className={
+                        durationRangeMode === 'custom' ? 'selected' : ''
+                      }
+                    >
+                      <input
+                        type="radio"
+                        name="similarity-duration-range-mode"
+                        checked={durationRangeMode === 'custom'}
+                        onChange={() => setDurationRangeMode('custom')}
+                      />
+                      <span>
+                        <strong>カスタム</strong>
+                        <small>動作の長さに合わせて調整</small>
+                      </span>
+                    </label>
+                  </div>
+                  {durationRangeMode === 'custom' && (
+                    <div className="duration-range-inputs">
+                      <label>
+                        <span>最小</span>
+                        <input
+                          type="number"
+                          min={MIN_CUSTOM_DURATION_PERCENT}
+                          max={MAX_CUSTOM_DURATION_PERCENT}
+                          step="5"
+                          value={customMinDurationPercent}
+                          onChange={(event) =>
+                            setCustomMinDurationPercent(event.target.value)
+                          }
+                        />
+                        <span>%</span>
+                      </label>
+                      <span aria-hidden="true">～</span>
+                      <label>
+                        <span>最大</span>
+                        <input
+                          type="number"
+                          min={MIN_CUSTOM_DURATION_PERCENT}
+                          max={MAX_CUSTOM_DURATION_PERCENT}
+                          step="5"
+                          value={customMaxDurationPercent}
+                          onChange={(event) =>
+                            setCustomMaxDurationPercent(event.target.value)
+                          }
+                        />
+                        <span>%</span>
+                      </label>
+                    </div>
+                  )}
+                  {durationRangeError && (
+                    <p className="similarity-setting-error">
+                      {durationRangeError}
+                    </p>
+                  )}
+                  {hasValidDurationRange && templateDurationSeconds !== null && (
+                    <p className="similarity-setting-preview">
+                      {`約${(
+                        (templateDurationSeconds * parsedMinDurationPercent) /
+                        100
+                      ).toFixed(2)}～${(
+                        (templateDurationSeconds * parsedMaxDurationPercent) /
+                        100
+                      ).toFixed(2)}秒の区間を検索します。`}
+                    </p>
+                  )}
+                </fieldset>
+                <fieldset>
+                  <legend>検出感度</legend>
+                  <div className="similarity-setting-options sensitivity-options">
+                    {(
+                      [
+                        ['low', '低', '候補を厳選'],
+                        ['standard', '標準', '推奨設定'],
+                        ['high', '高', '候補を多めに提示']
+                      ] as const
+                    ).map(([value, label, description]) => (
+                      <label
+                        key={value}
+                        className={
+                          detectionSensitivity === value ? 'selected' : ''
+                        }
+                      >
+                        <input
+                          type="radio"
+                          name="similarity-detection-sensitivity"
+                          checked={detectionSensitivity === value}
+                          onChange={() => setDetectionSensitivity(value)}
+                        />
+                        <span>
+                          <strong>{label}</strong>
+                          <small>{description}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              </div>
               <div className="similarity-actions">
                 <button
                   className="primary-action"
-                  disabled={!isAiReady || !confirmedTemplate}
+                  disabled={
+                    !isAiReady || !confirmedTemplate || !hasValidDurationRange
+                  }
                   onClick={detectSimilarMotion}
                 >
                   類似候補を検出
