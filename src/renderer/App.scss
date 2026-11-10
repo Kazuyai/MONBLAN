@@ -2220,6 +2220,7 @@ button {
                       }
                     }
                     .similarity-setting-preview,
+                    .similarity-setting-note,
                     .similarity-setting-error {
                       margin-top: 8rem;
                       font-size: 12rem;
@@ -2227,6 +2228,9 @@ button {
                     }
                     .similarity-setting-preview {
                       color: #b7d8ed;
+                    }
+                    .similarity-setting-note {
+                      color: #b9b9b9;
                     }
                     .similarity-setting-error {
                       color: #ffb0b0;

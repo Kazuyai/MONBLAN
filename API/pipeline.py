@@ -667,7 +667,7 @@ def run_similarity_detection(
     search_start_frame: int | None = None,
     search_end_frame: int | None = None,
     frame_offset: int = 0,
-    min_duration_ratio: float = 0.70,
+    min_duration_ratio: float = 0.60,
     max_duration_ratio: float = 1.40,
     sensitivity: str = "standard",
 ) -> dict:
@@ -821,7 +821,7 @@ def get_cached_similarity_results(
     search_start_frame: int | None = None,
     search_end_frame: int | None = None,
     frame_offset: int = 0,
-    min_duration_ratio: float = 0.70,
+    min_duration_ratio: float = 0.60,
     max_duration_ratio: float = 1.40,
     sensitivity: str = "standard",
 ) -> tuple[dict, bool]:
@@ -1141,7 +1141,7 @@ def run_similarity_pipeline(
     analysis_range: dict | None = None,
     single_person: bool = False,
     progress_callback: ProgressCallback | None = None,
-    min_duration_ratio: float = 0.70,
+    min_duration_ratio: float = 0.60,
     max_duration_ratio: float = 1.40,
     sensitivity: str = "standard",
 ) -> dict:
