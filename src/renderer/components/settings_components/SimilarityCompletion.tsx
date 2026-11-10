@@ -68,10 +68,23 @@ interface SimilarMotionResponse {
 type DurationRangeMode = 'standard' | 'custom'
 type DetectionSensitivity = 'low' | 'standard' | 'high'
 
-const STANDARD_MIN_DURATION_PERCENT = 70
+const STANDARD_MIN_DURATION_PERCENT = 60
 const STANDARD_MAX_DURATION_PERCENT = 140
 const MIN_CUSTOM_DURATION_PERCENT = 30
 const MAX_CUSTOM_DURATION_PERCENT = 300
+
+const countDurationScales = (minimumPercent: number, maximumPercent: number) => {
+  const scales = new Set<number>([minimumPercent, maximumPercent])
+  const firstMultiple = Math.ceil(minimumPercent / 10) * 10
+  const lastMultiple = Math.floor(maximumPercent / 10) * 10
+  for (let value = firstMultiple; value <= lastMultiple; value += 10) {
+    scales.add(value)
+  }
+  if (minimumPercent <= 100 && maximumPercent >= 100) {
+    scales.add(100)
+  }
+  return scales.size
+}
 
 const getApiStatusMessage = (apiStatus: ApiStatus | null) => {
   if (!apiStatus || apiStatus.status === 'starting') {
@@ -368,6 +381,12 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
       ? (confirmedTemplate.endFrame - confirmedTemplate.startFrame + 1) /
         frameRate
       : null
+  const durationScaleCount = hasValidDurationRange
+    ? countDurationScales(
+        parsedMinDurationPercent,
+        parsedMaxDurationPercent
+      )
+    : 0
 
   const getUploadedHumanImages = (
     file: File,
@@ -821,7 +840,7 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
                       />
                       <span>
                         <strong>標準</strong>
-                        <small>ベース注釈の70～140%</small>
+                        <small>ベース注釈の60～140%</small>
                       </span>
                     </label>
                     <label
@@ -887,7 +906,12 @@ export const SimilarityCompletion: React.FC<SimilarityCompletionProps> = ({
                       ).toFixed(2)}～${(
                         (templateDurationSeconds * parsedMaxDurationPercent) /
                         100
-                      ).toFixed(2)}秒の区間を検索します。`}
+                      ).toFixed(2)}秒の区間を、${durationScaleCount}段階の長さで検索します。`}
+                    </p>
+                  )}
+                  {hasValidDurationRange && (
+                    <p className="similarity-setting-note">
+                      検索範囲を広げると、調べる区間の長さが増えるため処理時間が長くなります。
                     </p>
                   )}
                 </fieldset>

@@ -127,7 +127,7 @@ class SimilarMotionPathRequest(VideoPathRequest):
     layerIndex: int
     analysisRange: AnalysisRange | None = None
     singlePerson: bool = False
-    minDurationRatio: float = 0.70
+    minDurationRatio: float = 0.60
     maxDurationRatio: float = 1.40
     sensitivity: Literal["low", "standard", "high"] = "standard"
 

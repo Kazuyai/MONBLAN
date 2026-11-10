@@ -12,6 +12,11 @@ import numpy as np
 from scipy.signal import find_peaks, savgol_filter
 
 try:
+    from API.similarity_settings import build_window_scales, calculate_refine_radius
+except ImportError:
+    from similarity_settings import build_window_scales, calculate_refine_radius
+
+try:
     from numba import njit
 
     @njit(cache=True)
@@ -1552,31 +1557,10 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
             "final_relative_margin": 0.12,
         },
     }
-    CUSTOM_WINDOW_SCALES = [
-        0.3,
-        0.4,
-        0.5,
-        0.6,
-        0.7,
-        0.75,
-        0.9,
-        1.0,
-        1.1,
-        1.25,
-        1.4,
-        1.6,
-        1.8,
-        2.0,
-        2.25,
-        2.5,
-        2.75,
-        3.0,
-    ]
-
     def __init__(
         self,
         fps: float = 30.0,
-        min_len_ratio: float = 0.70,
+        min_len_ratio: float = 0.60,
         max_len_ratio: float = 1.40,
         sensitivity: str = "standard",
     ):
@@ -1593,17 +1577,9 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
         self.min_len_ratio = min_len_ratio
         self.max_len_ratio = max_len_ratio
         self.sensitivity = sensitivity
-        if min_len_ratio != 0.70 or max_len_ratio != 1.40:
-            scales = [
-                scale
-                for scale in self.CUSTOM_WINDOW_SCALES
-                if min_len_ratio <= scale <= max_len_ratio
-            ]
-            scales.extend([min_len_ratio, max_len_ratio])
-            self.window_scales = sorted(set(scales))
+        self.window_scales = build_window_scales(min_len_ratio, max_len_ratio)
 
         self.feature_type_name = "joint_specific_per_joint_dtw_pure_refined"
-        self.greedy_refine_radius = max(2, int(round(self.fps * 0.20)))
 
         sensitivity_settings = self.SENSITIVITY_SETTINGS[sensitivity]
         self.greedy_stop_threshold = sensitivity_settings["greedy_stop_threshold"]
@@ -1775,11 +1751,8 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
             coarse = self._coarse_candidates(t_norm, x_norm, len(t_norm), exclude)
 
             for c_start, c_len, c_sim, si in coarse:
-                source_best = self._frame_refine_joint(x_joint, t_joint, c_start, c_len)
-                if source_best is None:
-                    continue
-                s = int(source_best["s"])
-                e = int(source_best["e"])
+                s = int(c_start)
+                e = int(c_start + c_len - 1)
                 if self._overlaps_template(s, e, exclude_templates):
                     continue
                 built = self._build_single_template_candidate(
@@ -1809,12 +1782,13 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
         s0 = int(candidate["start_frame"])
         e0 = int(candidate["end_frame"])
         best = candidate
+        refine_radius = calculate_refine_radius(int(tmpl["length"]), self.fps)
 
-        for ds in range(-self.greedy_refine_radius, self.greedy_refine_radius + 1):
+        for ds in range(-refine_radius, refine_radius + 1):
             s = s0 + ds
             if s < 0 or s >= len(self.frames) - 1:
                 continue
-            for de in range(-self.greedy_refine_radius, self.greedy_refine_radius + 1):
+            for de in range(-refine_radius, refine_radius + 1):
                 e = e0 + de
                 if e <= s or e >= len(self.frames):
                     continue
@@ -2021,7 +1995,10 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
                 "length_score_used": False,
                 "template_overlap_margin_ratio": self.template_overlap_margin_ratio,
                 "selection_mode": "template_wise_greedy_refine_then_union",
-                "greedy_refine_radius": self.greedy_refine_radius,
+                "refine_radius_ratio": 0.10,
+                "refine_radius_min_frames": 3,
+                "refine_radius_max_seconds": 0.5,
+                "window_scales": self.window_scales,
                 "candidate_relative_margin": self.candidate_relative_margin,
                 "final_relative_margin": self.final_relative_margin,
                 "candidate_overlap_iou": self.candidate_overlap_iou,
