@@ -12,9 +12,15 @@ import numpy as np
 from scipy.signal import find_peaks, savgol_filter
 
 try:
-    from API.similarity_settings import build_window_scales, calculate_refine_radius
+    from API.similarity_settings import (
+        build_window_scales,
+        calculate_refine_radius,
+    )
 except ImportError:
-    from similarity_settings import build_window_scales, calculate_refine_radius
+    from similarity_settings import (
+        build_window_scales,
+        calculate_refine_radius,
+    )
 
 try:
     from numba import njit
@@ -1592,6 +1598,7 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
         self.final_union_iou = 0.18
         self.final_union_cover = 0.30
         self.near_duplicate_gap_frames = max(1, int(round(self.fps * 0.12)))
+        self.refinement_seeds_per_event = 3
 
     def _score_segment_against_single_template(
         self,
@@ -1723,6 +1730,28 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
             kept.append(cand)
         return sorted(kept, key=lambda x: x["start_frame"])
 
+    def _select_refinement_seeds(self, candidates: List[Dict]) -> List[Dict]:
+        ranked = sorted(
+            candidates,
+            key=lambda x: (x["final_score"], x["dtw_similarity"], x["window_length"]),
+            reverse=True,
+        )
+        selected: List[Dict] = []
+        for candidate in ranked:
+            same_event_count = sum(
+                1
+                for current in selected
+                if self._is_same_event(
+                    candidate,
+                    current,
+                    self.candidate_overlap_iou,
+                    self.candidate_overlap_cover,
+                )
+            )
+            if same_event_count < self.refinement_seeds_per_event:
+                selected.append(candidate)
+        return sorted(selected, key=lambda x: x["start_frame"])
+
     def _score_floor_from_best(self, best_score: float, relative_margin: float) -> float:
         return max(self.greedy_stop_threshold, best_score - relative_margin)
 
@@ -1768,8 +1797,7 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
                 if built is not None:
                     raw_candidates.append(built)
 
-        deduped = self._select_candidates_for_clustering(raw_candidates)
-        return self._collapse_local_duplicates(deduped)
+        return raw_candidates
 
     def _refine_selected_candidate_for_template(
         self,
@@ -1832,16 +1860,10 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
         if not raw_candidates:
             return [], [], []
 
-        best_raw_score = max(c["final_score"] for c in raw_candidates)
-        working_floor = self._score_floor_from_best(best_raw_score, self.candidate_relative_margin)
-        working = [c for c in raw_candidates if c["final_score"] >= working_floor]
-        working = sorted(working, key=lambda x: (x["final_score"], x["window_length"]), reverse=True)
-
-        selected_final: List[Dict] = []
+        refinement_seeds = self._select_refinement_seeds(raw_candidates)
+        refined_candidates: List[Dict] = []
         greedy_trace: List[Dict] = []
-
-        while working:
-            seed = working[0]
+        for seed in refinement_seeds:
             refined = self._refine_selected_candidate_for_template(
                 seed,
                 joint_features,
@@ -1849,20 +1871,27 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
                 selected_joints,
                 exclude_templates,
             )
+            refined_candidates.append(refined)
             greedy_trace.append(
                 {
                     "template_id": tmpl["id"],
                     "seed": self._segment_to_debug_dict(seed),
                     "refined": self._segment_to_debug_dict(refined),
-                    "remaining_before": len(working),
-                    "working_floor": float(working_floor),
                 }
             )
-            if refined["final_score"] < working_floor:
-                break
 
-            selected_final.append(refined)
-            working = self._remove_overlapping_candidates(working[1:], refined)
+        refined_candidates = self._collapse_local_duplicates(refined_candidates)
+        best_refined_score = max(c["final_score"] for c in refined_candidates)
+        working_floor = self._score_floor_from_best(best_refined_score, self.candidate_relative_margin)
+        working = [c for c in refined_candidates if c["final_score"] >= working_floor]
+        working = sorted(working, key=lambda x: (x["final_score"], x["window_length"]), reverse=True)
+
+        selected_final: List[Dict] = []
+
+        while working:
+            selected = working[0]
+            selected_final.append(selected)
+            working = self._remove_overlapping_candidates(working[1:], selected)
             working = sorted(working, key=lambda x: (x["final_score"], x["window_length"]), reverse=True)
 
         return raw_candidates, selected_final, greedy_trace
@@ -1998,6 +2027,7 @@ class DTWPureGreedy3DDetector(MultiTemplateUnion3DDetector):
                 "refine_radius_ratio": 0.10,
                 "refine_radius_min_frames": 3,
                 "refine_radius_max_seconds": 0.5,
+                "refinement_seeds_per_event": self.refinement_seeds_per_event,
                 "window_scales": self.window_scales,
                 "candidate_relative_margin": self.candidate_relative_margin,
                 "final_relative_margin": self.final_relative_margin,
