@@ -26,6 +26,8 @@ interface AnnotationProps {
     newEndFrame: number
   ) => boolean
   onSelectRange: (startFrame: number, endFrame: number) => void
+  autoFocusOnMount?: boolean
+  onAutoFocusHandled?: () => void
 }
 
 const Annotation: React.FC<AnnotationProps> = ({
@@ -46,12 +48,14 @@ const Annotation: React.FC<AnnotationProps> = ({
   setCurrentFrame,
   timelineWidth,
   canUpdateAnnotation,
-  onSelectRange
+  onSelectRange,
+  autoFocusOnMount = false,
+  onAutoFocusHandled
 }) => {
   const sliderRef = useRef<HTMLDivElement>(null)
   const [currentStartFrame, setCurrentStartFrame] = useState(startFrame)
   const [currentEndFrame, setCurrentEndFrame] = useState(endFrame)
-  const [isEditing, setIsEditing] = useState(false)
+  const [isEditing, setIsEditing] = useState(autoFocusOnMount)
   const [text, setText] = useState(initialText)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -255,10 +259,7 @@ const Annotation: React.FC<AnnotationProps> = ({
       setCurrentStartFrame(newStartFrame)
       setCurrentEndFrame(newEndFrame)
 
-      if (
-        newStartFrame !== startFrame ||
-        newEndFrame !== endFrame
-      ) {
+      if (newStartFrame !== startFrame || newEndFrame !== endFrame) {
         onChange(
           {
             startFrame: newStartFrame,
@@ -368,6 +369,20 @@ const Annotation: React.FC<AnnotationProps> = ({
       inputRef.current.focus()
     }
   }, [isEditing])
+
+  useEffect(() => {
+    if (!autoFocusOnMount) return
+
+    onEditing(true)
+    setCurrentFrame(currentStartFrame)
+    onAutoFocusHandled?.()
+  }, [
+    autoFocusOnMount,
+    currentStartFrame,
+    onAutoFocusHandled,
+    onEditing,
+    setCurrentFrame
+  ])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

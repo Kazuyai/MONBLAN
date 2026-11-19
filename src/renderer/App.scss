@@ -2485,6 +2485,10 @@ button {
                 line-height: 1.2;
                 white-space: nowrap;
                 z-index: 4;
+                transition: opacity 120ms ease;
+                &:hover {
+                  opacity: 0;
+                }
                 span:last-child {
                   padding-left: 8rem;
                   border-left: 1rem solid #ffffff55;
