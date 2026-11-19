@@ -93,6 +93,7 @@ const TIMELINE_CONTENT_OFFSET_REM = 210
 const TIMELINE_RULER_HEIGHT_REM = 40
 const LAYER_DRAG_AUTO_SCROLL_EDGE_PX = 72
 const LAYER_DRAG_AUTO_SCROLL_MAX_SPEED = 18
+const SELECTION_DRAG_THRESHOLD_PX = 4
 
 const Timeline = forwardRef<TimelineHandle, TimelineProps>(
   (
@@ -132,6 +133,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const timelinesRef = useRef<HTMLDivElement>(null)
     const timeBarRef = useRef<HTMLDivElement>(null)
     const playheadRef = useRef<HTMLDivElement>(null)
+    const selectedAreaRef = useRef<HTMLDivElement>(null)
 
     // 状態を統合
     const [state, setState] = useState<TimelineState>({
@@ -173,6 +175,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<
       string[]
     >([])
+    const [pendingEditingAnnotationId, setPendingEditingAnnotationId] =
+      useState<string | null>(null)
     const [editingLayerIndex, setEditingLayerIndex] = useState<number | null>(
       null
     )
@@ -210,6 +214,10 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     const [selectionStart, setSelectionStart] = useState<number>(0)
     const [selectionWidth, setSelectionWidth] = useState<number>(0)
     const selectionAnchorFrameRef = useRef<number>(1)
+    const pendingSelectionPointerRef = useRef<{
+      clientX: number
+      anchorFrame: number
+    } | null>(null)
 
     const annotations = state.annotations
     const layerNames = state.layerNames
@@ -883,47 +891,59 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       return clampedFrameIndex
     }
 
+    const insertAnnotation = (
+      layerIndex: number,
+      startFrame: number,
+      endFrame: number,
+      editImmediately: boolean
+    ) => {
+      if (endFrame <= startFrame) {
+        showTimelineNotice('選択範囲が無効です。')
+        return
+      }
+
+      const newAnnotation: AnnotationType = {
+        id: uuidv4(),
+        startFrame,
+        endFrame,
+        text: '',
+        layerIndex
+      }
+      const layerAnnotations = state.annotations.filter(
+        (annotation) => annotation.layerIndex === layerIndex
+      )
+
+      if (!canInsertAnnotation(newAnnotation, layerAnnotations)) {
+        showTimelineNotice('アノテーションが重なっています。')
+        return
+      }
+
+      applyEdit({
+        ...state,
+        annotations: [...state.annotations, newAnnotation]
+      })
+      setSelectedLayerIndex(layerIndex)
+      setFocusedAnnotationId(newAnnotation.id)
+      setSelectedAnnotationIds([newAnnotation.id])
+      setPendingEditingAnnotationId(editImmediately ? newAnnotation.id : null)
+      setSelectionFrameWidth(0)
+      setSelectionWidth(0)
+    }
+
     // 注釈の追加
     const addAnnotation = () => {
-      if (selectedLayerIndex !== null) {
-        if (selectionWidth === 0) {
-          showTimelineNotice('アノテーションを追加する範囲を選択してください。')
-          return
-        }
-
-        const startFrame = getFrameIndexFromPositionX(selectionStart)
-        const endFrame = getFrameIndexFromPositionX(
-          selectionStart + selectionWidth
-        )
-
-        if (endFrame <= startFrame) {
-          showTimelineNotice('選択範囲が無効です。')
-          return
-        }
-
-        const newAnnotation: AnnotationType = {
-          id: uuidv4(),
-          startFrame: startFrame,
-          endFrame: endFrame,
-          text: '',
-          layerIndex: selectedLayerIndex
-        }
-
-        const layerAnnotations = state.annotations.filter(
-          (a) => a.layerIndex === selectedLayerIndex
-        )
-
-        if (canInsertAnnotation(newAnnotation, layerAnnotations)) {
-          applyEdit({
-            ...state,
-            annotations: [...state.annotations, newAnnotation]
-          })
-          // アノテーションを追加した後、選択範囲をクリア
-          setSelectionWidth(0)
-        } else {
-          showTimelineNotice('アノテーションが重なっています。')
-        }
+      if (selectedLayerIndex === null) return
+      if (selectionWidth === 0) {
+        showTimelineNotice('アノテーションを追加する範囲を選択してください。')
+        return
       }
+
+      insertAnnotation(
+        selectedLayerIndex,
+        getFrameIndexFromPositionX(selectionStart),
+        getFrameIndexFromPositionX(selectionStart + selectionWidth),
+        false
+      )
     }
 
     // 注釈の削除
@@ -1345,9 +1365,8 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       updatePlayheadPosition(clientX)
     }
 
-    // 選択範囲の開始処理
+    // 単クリックでは既存範囲を維持し、ドラッグ開始まで新しい範囲を作らない。
     const handleSelectionMouseDown = (clientX: number) => {
-      isSelectingRef.current = true
       const containerRect = timelinesRef.current?.getBoundingClientRect()
       if (!containerRect) return
       const clampedClientX = clampClientXToVisibleTimeline(clientX)
@@ -1359,11 +1378,10 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       const startX = clampedClientX - containerRect.left - offset
       const frameIndex = Math.round(startX / frameWidth) + 1
       const clampedFrameIndex = Math.max(1, Math.min(totalFrames, frameIndex))
-      selectionAnchorFrameRef.current = clampedFrameIndex
-      setSelectionStartFrame(clampedFrameIndex)
-      setSelectionStart((clampedFrameIndex - 1) * frameWidth + offset)
-      setSelectionFrameWidth(0)
-      setSelectionWidth(0)
+      pendingSelectionPointerRef.current = {
+        clientX: clampedClientX,
+        anchorFrame: clampedFrameIndex
+      }
       syncPlayheadToFrame(clampedFrameIndex)
     }
 
@@ -1392,9 +1410,49 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       handleSelectionMouseDown(e.clientX)
     }
 
+    const handleTimelineDoubleClick = (
+      e: React.MouseEvent<HTMLDivElement>,
+      layerIndex: number
+    ) => {
+      if (isAnnotationEventTarget(e.target)) return
+
+      const selectedAreaRect = selectedAreaRef.current?.getBoundingClientRect()
+      if (
+        !selectedAreaRect ||
+        e.clientX < selectedAreaRect.left ||
+        e.clientX > selectedAreaRect.right ||
+        selectionFrameWidth <= 0
+      ) {
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+      insertAnnotation(
+        layerIndex,
+        selectionStartFrame,
+        selectionStartFrame + selectionFrameWidth,
+        true
+      )
+    }
+
     // 選択範囲のマウス移動処理
     const handleSelectionMouseMove = useCallback(
       (e: MouseEvent) => {
+        const pendingSelection = pendingSelectionPointerRef.current
+        if (
+          !isSelectingRef.current &&
+          pendingSelection &&
+          Math.abs(e.clientX - pendingSelection.clientX) >=
+            SELECTION_DRAG_THRESHOLD_PX
+        ) {
+          isSelectingRef.current = true
+          selectionAnchorFrameRef.current = pendingSelection.anchorFrame
+          setSelectionStartFrame(pendingSelection.anchorFrame)
+          setSelectionFrameWidth(0)
+          setSelectionWidth(0)
+        }
+
         if (isSelectingRef.current) {
           const containerRect = timelinesRef.current?.getBoundingClientRect()
           if (!containerRect) return
@@ -1434,6 +1492,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
     // 選択範囲の終了処理
     const handleSelectionMouseUp = useCallback(() => {
       isSelectingRef.current = false
+      pendingSelectionPointerRef.current = null
     }, [])
 
     // アノテーションの更新を処理する関数
@@ -1887,14 +1946,20 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
         if (isDraggingRef.current) {
           updatePlayheadPosition(e.clientX)
         }
-        if (isSelectingRef.current) {
+        if (
+          isSelectingRef.current ||
+          pendingSelectionPointerRef.current !== null
+        ) {
           handleSelectionMouseMove(e)
         }
       }
 
       const handleMouseUp = () => {
         isDraggingRef.current = false
-        if (isSelectingRef.current) {
+        if (
+          isSelectingRef.current ||
+          pendingSelectionPointerRef.current !== null
+        ) {
           handleSelectionMouseUp()
         }
       }
@@ -2189,6 +2254,7 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
               {/* 選択範囲を表示 */}
               {hasSelectionRange && selectionWidth !== 0 && (
                 <div
+                  ref={selectedAreaRef}
                   className="selected-area"
                   style={{
                     left: `${selectionStart}px`,
@@ -2305,6 +2371,9 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
                           position: 'relative'
                         }}
                         onMouseDown={handleTimelineMouseDown}
+                        onDoubleClick={(event) =>
+                          handleTimelineDoubleClick(event, layerIndex)
+                        }
                       >
                         {annotations
                           .filter(
@@ -2369,6 +2438,14 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
                                 )
                                 syncPlayheadToFrame(startFrame)
                               }}
+                              autoFocusOnMount={
+                                pendingEditingAnnotationId === annotation.id
+                              }
+                              onAutoFocusHandled={() =>
+                                setPendingEditingAnnotationId((currentId) =>
+                                  currentId === annotation.id ? null : currentId
+                                )
+                              }
                             />
                           ))}
                       </div>
