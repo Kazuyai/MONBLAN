@@ -1283,6 +1283,28 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
       syncPlayheadToFrame(currentFrame)
     }, [currentFrame, syncPlayheadToFrame])
 
+    const selectCandidateRange = useCallback(
+      (candidate: AnnotationCandidate) => {
+        setIsPlaying?.(false)
+        setIsPartiallyPlaying(false)
+        setSelectedLayerIndex(candidate.layerIndex)
+        setFocusedAnnotationId(null)
+        setSelectedAnnotationIds([])
+        setSelectionStartFrame(candidate.startFrame)
+        setSelectionFrameWidth(
+          Math.max(0, candidate.endFrame - candidate.startFrame)
+        )
+        syncPlayheadToFrame(candidate.startFrame)
+      },
+      [
+        setIsPartiallyPlaying,
+        setIsPlaying,
+        setSelectionFrameWidth,
+        setSelectionStartFrame,
+        syncPlayheadToFrame
+      ]
+    )
+
     const clampClientXToVisibleTimeline = useCallback((clientX: number) => {
       const viewport = timelineViewportRef.current
       if (!viewport) return clientX
@@ -2483,14 +2505,23 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
                                   left: `${(candidate.startFrame - 1) * frameWidth}px`,
                                   right: `${timelineWidth - (candidate.endFrame - 1) * frameWidth}px`
                                 }}
-                                title={
-                                  hasConflict
-                                    ? '動作範囲検出候補・既存注釈と重複'
-                                    : '動作範囲検出候補'
-                                }
                               >
-                                <span>{candidate.text}</span>
-                                <span>検出</span>
+                                <button
+                                  type="button"
+                                  className="candidate-range-select"
+                                  title={
+                                    hasConflict
+                                      ? '動作範囲検出候補・既存注釈と重複・クリックで範囲選択'
+                                      : '動作範囲検出候補・クリックで範囲選択'
+                                  }
+                                  aria-label={`${candidate.text}の動作範囲検出候補を範囲選択`}
+                                  onClick={() =>
+                                    selectCandidateRange(candidate)
+                                  }
+                                >
+                                  <span>{candidate.text}</span>
+                                  <span>検出</span>
+                                </button>
                                 <div className="similarity-candidate-actions">
                                   {hasConflict ? (
                                     <>
@@ -2571,10 +2602,19 @@ const Timeline = forwardRef<TimelineHandle, TimelineProps>(
                                   left: `${(candidate.startFrame - 1) * frameWidth}px`,
                                   right: `${timelineWidth - (candidate.endFrame - 1) * frameWidth}px`
                                 }}
-                                title={`類似度: ${candidate.similarity.toFixed(3)}${hasConflict ? '・既存注釈と重複' : ''}`}
                               >
-                                <span>{candidate.displayText}</span>
-                                <span>{candidate.similarity.toFixed(2)}</span>
+                                <button
+                                  type="button"
+                                  className="candidate-range-select"
+                                  title={`類似度: ${candidate.similarity.toFixed(3)}${hasConflict ? '・既存注釈と重複' : ''}・クリックで範囲選択`}
+                                  aria-label={`${candidate.displayText}の類似候補を範囲選択`}
+                                  onClick={() =>
+                                    selectCandidateRange(candidate)
+                                  }
+                                >
+                                  <span>{candidate.displayText}</span>
+                                  <span>{candidate.similarity.toFixed(2)}</span>
+                                </button>
                                 <div className="similarity-candidate-actions">
                                   {hasConflict ? (
                                     <>
