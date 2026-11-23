@@ -105,6 +105,61 @@ describe('EAF round trip', () => {
     expect(updatedEaf).toContain('TIME_SLOT_REF2="ts2"')
   })
 
+  it('既存EAFから独立した注釈層を削除して保存できる', () => {
+    const sourceEaf = generateEafContent({
+      annotations: [
+        {
+          id: 'keep-annotation',
+          startFrame: 30,
+          endFrame: 60,
+          text: '残す注釈',
+          layerIndex: 0
+        },
+        {
+          id: 'remove-annotation',
+          startFrame: 90,
+          endFrame: 120,
+          text: '削除する注釈',
+          layerIndex: 1
+        }
+      ],
+      layerNames: ['残す層', '削除する層'],
+      eafTierIds: [null, null],
+      eafSource: null,
+      frameRate: 30,
+      videos: [{ name: 'sample.mp4', path: 'C:\\videos\\sample.mp4' }]
+    })
+    const project = parseEafProject(sourceEaf, {
+      frameRate: 30,
+      fileName: 'sample.eaf'
+    })
+    const remainingAnnotations = project.annotations.filter(
+      (annotation) => annotation.layerIndex === 0
+    )
+
+    const updatedEaf = generateEafContent({
+      annotations: remainingAnnotations,
+      layerNames: [project.layerNames[0]],
+      eafTierIds: [project.eafTierIds?.[0] ?? null],
+      eafSource: project.eafSource ?? null,
+      frameRate: project.frameRate,
+      videos: project.videos
+    })
+
+    expect(updatedEaf).toContain('TIER_ID="残す層"')
+    expect(updatedEaf).toContain('残す注釈')
+    expect(updatedEaf).not.toContain('TIER_ID="削除する層"')
+    expect(updatedEaf).not.toContain('削除する注釈')
+
+    const reopenedProject = parseEafProject(updatedEaf, {
+      frameRate: 30,
+      fileName: 'reopened.eaf'
+    })
+    expect(reopenedProject.layerNames).toEqual(['残す層'])
+    expect(reopenedProject.annotations).toHaveLength(1)
+    expect(reopenedProject.annotations[0].text).toBe('残す注釈')
+  })
+
   it('参照注釈・複数メディア・未知要素を保持する', () => {
     const project = parseEafProject(referencedEaf, {
       frameRate: 30,

@@ -526,6 +526,7 @@ const updateSourceEaf = (options: GenerateEafOptions): string => {
   const removedTierIds = Array.from(originalTiers.keys()).filter(
     (id) => !mappedOriginalTierIds.has(id)
   )
+  const removedAnnotationIds = new Set<string>()
 
   removedTierIds.forEach((tierId) => {
     const hasChildTier = elementsByLocalName(document, 'TIER').some(
@@ -549,6 +550,9 @@ const updateSourceEaf = (options: GenerateEafOptions): string => {
         `注釈層「${tierId}」は他の注釈から参照されているため削除できません。`
       )
     }
+    annotationIds.forEach((annotationId) =>
+      removedAnnotationIds.add(annotationId)
+    )
     originalTiers.get(tierId)?.remove()
   })
 
@@ -640,7 +644,11 @@ const updateSourceEaf = (options: GenerateEafOptions): string => {
   )
 
   source.importedAnnotationIds.forEach((annotationId) => {
-    if (currentImportedIds.has(annotationId)) return
+    if (
+      currentImportedIds.has(annotationId) ||
+      removedAnnotationIds.has(annotationId)
+    )
+      return
     const isReferenced = elementsByLocalName(document, 'REF_ANNOTATION').some(
       (element) =>
         element.getAttribute('ANNOTATION_REF') === annotationId ||
