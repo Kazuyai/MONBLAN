@@ -20,6 +20,7 @@ from pydantic import BaseModel
 try:
     # 標準起動: リポジトリルートから `python -m uvicorn API.api:app` を実行する。
     from .environment import check_environment
+    from .experiment_log import ExperimentRunRecorder
     from .paths import BASE_DIR
     from .progress import (
         clear_progress,
@@ -46,6 +47,7 @@ try:
 except ImportError:
     # 互換用: APIディレクトリ内から `uvicorn api:app` で起動した場合も動かす。
     from environment import check_environment
+    from experiment_log import ExperimentRunRecorder
     from paths import BASE_DIR
     from progress import (
         clear_progress,
@@ -331,7 +333,19 @@ async def get_human_images_from_path(request: HumanImagesPathRequest):
     start_time = time.time()
     job_dir = None
     success = False
-    progress_callback = create_progress_callback(request.progressId)
+    alphapose_cache_hit = None
+    requested_range = analysis_range_dict(request.analysisRange)
+    experiment_recorder = ExperimentRunRecorder(
+        "get_human_images_from_path",
+        request.file_path,
+        request.progressId,
+        analysis_start_frame=requested_range.get("startFrame") if requested_range else None,
+        analysis_end_frame=requested_range.get("endFrame") if requested_range else None,
+        details={"singlePerson": request.singlePerson},
+    )
+    progress_callback = experiment_recorder.progress_callback(
+        create_progress_callback(request.progressId)
+    )
     initialize_progress(
         request.progressId,
         {
@@ -344,7 +358,8 @@ async def get_human_images_from_path(request: HumanImagesPathRequest):
     try:
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
-        selected_range = normalize_analysis_range(video_path, analysis_range_dict(request.analysisRange))
+        selected_range = normalize_analysis_range(video_path, requested_range)
+        experiment_recorder.transition("2次元姿勢推定")
         update_progress(
             request.progressId,
             {
@@ -408,6 +423,11 @@ async def get_human_images_from_path(request: HumanImagesPathRequest):
 
         end_time = time.time()
         log_api_call("get_human_images_from_path", start_time, end_time, f"Extracted {len(image_data_list)} human images, alphapose_cache_hit={alphapose_cache_hit}")
+        experiment_recorder.finish(
+            "success",
+            result_count=len(image_data_list),
+            alphapose_cache_hit=alphapose_cache_hit,
+        )
         success = True
         return JSONResponse(
             status_code=200,
@@ -422,17 +442,38 @@ async def get_human_images_from_path(request: HumanImagesPathRequest):
         end_time = time.time()
         error_info = _format_subprocess_error(error, job_dir)
         log_api_call("get_human_images_from_path", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
+        experiment_recorder.finish(
+            "failed",
+            alphapose_cache_hit=alphapose_cache_hit,
+            error=error_info["stderr"][:500],
+        )
         return JSONResponse(status_code=500, content=error_info)
     except ValueError as error:
+        experiment_recorder.finish(
+            "failed",
+            alphapose_cache_hit=alphapose_cache_hit,
+            error=str(error),
+        )
         return JSONResponse(status_code=422, content={"message": "Invalid request", "error": str(error)})
     except Exception as error:
         end_time = time.time()
         log_api_call("get_human_images_from_path", start_time, end_time, f"Error: {str(error)}")
+        experiment_recorder.finish(
+            "failed",
+            alphapose_cache_hit=alphapose_cache_hit,
+            error=str(error),
+        )
         content = {"message": "An error occurred", "error": str(error)}
         if job_dir:
             content["job_dir"] = job_dir
         return JSONResponse(status_code=500, content=content)
     finally:
+        if not experiment_recorder.finished:
+            experiment_recorder.finish(
+                "failed",
+                alphapose_cache_hit=alphapose_cache_hit,
+                error="Request ended before completion",
+            )
         if job_dir:
             if success:
                 cleanup_job_dir(job_dir)
@@ -520,7 +561,28 @@ async def create_item_from_path(request: ItemsPathRequest, response: Response):
     start_time = time.time()
     job_dir = None
     success = False
-    progress_callback = create_progress_callback(request.progressId)
+    alphapose_cache_hit = None
+    motionbert_cache_hit = None
+    requested_range = analysis_range_dict(request.analysisRange)
+    if requested_range is None and request.analysisStartFrame is not None and request.analysisEndFrame is not None:
+        requested_range = {
+            "startFrame": request.analysisStartFrame,
+            "endFrame": request.analysisEndFrame,
+        }
+    experiment_recorder = ExperimentRunRecorder(
+        "create_item_from_path",
+        request.file_path,
+        request.progressId,
+        analysis_start_frame=requested_range.get("startFrame") if requested_range else None,
+        analysis_end_frame=requested_range.get("endFrame") if requested_range else None,
+        details={
+            "singlePerson": request.singlePerson,
+            "layerCount": len(request.autoAnnotationLayer),
+        },
+    )
+    progress_callback = experiment_recorder.progress_callback(
+        create_progress_callback(request.progressId)
+    )
     initialize_progress(
         request.progressId,
         {
@@ -533,12 +595,8 @@ async def create_item_from_path(request: ItemsPathRequest, response: Response):
     try:
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
-        analysis_range = analysis_range_dict(request.analysisRange)
-        if analysis_range is None and request.analysisStartFrame is not None and request.analysisEndFrame is not None:
-            analysis_range = {
-                "startFrame": request.analysisStartFrame,
-                "endFrame": request.analysisEndFrame,
-            }
+        analysis_range = requested_range
+        experiment_recorder.transition("2次元姿勢推定")
         update_progress(
             request.progressId,
             {
@@ -587,8 +645,9 @@ async def create_item_from_path(request: ItemsPathRequest, response: Response):
         )
 
         motionbert_cache = pipeline_metadata.get("motionbertCache", {})
+        motionbert_cache_hit = motionbert_cache.get("allHit", False)
         response.headers["X-MotionBERT-Cache-Hit"] = str(
-            motionbert_cache.get("allHit", False)
+            motionbert_cache_hit
         ).lower()
         response.headers["X-MotionBERT-Cache-Hits"] = (
             f"{motionbert_cache.get('hits', 0)}/{motionbert_cache.get('total', 0)}"
@@ -601,6 +660,12 @@ async def create_item_from_path(request: ItemsPathRequest, response: Response):
             f"Processed {len(motion_times)} motion times, alphapose_cache_hit={alphapose_cache_hit}, "
             f"motionbert_cache_hits={motionbert_cache.get('hits', 0)}/{motionbert_cache.get('total', 0)}",
         )
+        experiment_recorder.finish(
+            "success",
+            result_count=len(motion_times),
+            alphapose_cache_hit=alphapose_cache_hit,
+            motionbert_cache_hit=motionbert_cache_hit,
+        )
         success = True
         return motion_times
 
@@ -608,17 +673,42 @@ async def create_item_from_path(request: ItemsPathRequest, response: Response):
         end_time = time.time()
         error_info = _format_subprocess_error(error, job_dir)
         log_api_call("create_item_from_path", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
+        experiment_recorder.finish(
+            "failed",
+            alphapose_cache_hit=alphapose_cache_hit,
+            motionbert_cache_hit=motionbert_cache_hit,
+            error=error_info["stderr"][:500],
+        )
         return JSONResponse(status_code=500, content=error_info)
     except ValueError as error:
+        experiment_recorder.finish(
+            "failed",
+            alphapose_cache_hit=alphapose_cache_hit,
+            motionbert_cache_hit=motionbert_cache_hit,
+            error=str(error),
+        )
         return JSONResponse(status_code=422, content={"message": "Invalid request", "error": str(error)})
     except Exception as error:
         end_time = time.time()
         log_api_call("create_item_from_path", start_time, end_time, f"Error: {str(error)}")
+        experiment_recorder.finish(
+            "failed",
+            alphapose_cache_hit=alphapose_cache_hit,
+            motionbert_cache_hit=motionbert_cache_hit,
+            error=str(error),
+        )
         content = {"message": "An error occurred", "error": str(error)}
         if job_dir:
             content["job_dir"] = job_dir
         return JSONResponse(status_code=500, content=content)
     finally:
+        if not experiment_recorder.finished:
+            experiment_recorder.finish(
+                "failed",
+                alphapose_cache_hit=alphapose_cache_hit,
+                motionbert_cache_hit=motionbert_cache_hit,
+                error="Request ended before completion",
+            )
         if job_dir:
             if success:
                 cleanup_job_dir(job_dir)
@@ -633,7 +723,47 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
     start_time = time.time()
     job_dir = None
     success = False
-    progress_callback = create_progress_callback(request.progressId)
+    alphapose_cache_hit = None
+    motionbert_cache_hit = None
+    similarity_cache_hit = None
+    requested_range = analysis_range_dict(request.analysisRange)
+    if (
+        requested_range is None
+        and request.searchStartFrame is not None
+        and request.searchEndFrame is not None
+        and request.templateSegments
+    ):
+        requested_range = {
+            "startFrame": min(
+                request.searchStartFrame,
+                *(segment.startFrame for segment in request.templateSegments),
+            ),
+            "endFrame": max(
+                request.searchEndFrame,
+                *(segment.endFrame for segment in request.templateSegments),
+            ),
+        }
+    experiment_recorder = ExperimentRunRecorder(
+        "similar_motion_from_path",
+        request.file_path,
+        request.progressId,
+        analysis_start_frame=requested_range.get("startFrame") if requested_range else None,
+        analysis_end_frame=requested_range.get("endFrame") if requested_range else None,
+        details={
+            "humanId": request.humanId,
+            "selectedJoints": request.selectedJoints,
+            "templateCount": len(request.templateSegments),
+            "layerName": request.layerName,
+            "layerIndex": request.layerIndex,
+            "minDurationRatio": request.minDurationRatio,
+            "maxDurationRatio": request.maxDurationRatio,
+            "sensitivity": request.sensitivity,
+            "singlePerson": request.singlePerson,
+        },
+    )
+    progress_callback = experiment_recorder.progress_callback(
+        create_progress_callback(request.progressId)
+    )
     initialize_progress(
         request.progressId,
         {
@@ -649,18 +779,14 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
 
         video_path = validate_local_video_path(request.file_path)
         job_dir = create_job_dir()
-        analysis_range = analysis_range_dict(request.analysisRange)
-        if analysis_range is None and request.searchStartFrame is not None and request.searchEndFrame is not None:
-            analysis_range = {
-                "startFrame": min(request.searchStartFrame, *(segment.startFrame for segment in request.templateSegments)),
-                "endFrame": max(request.searchEndFrame, *(segment.endFrame for segment in request.templateSegments)),
-            }
+        analysis_range = requested_range
         validated_range = normalize_analysis_range(video_path, analysis_range)
         if validated_range is not None and any(
             segment.startFrame < validated_range["startFrame"] or segment.endFrame > validated_range["endFrame"]
             for segment in request.templateSegments
         ):
             raise ValueError("Template segment must be fully contained in analysisRange")
+        experiment_recorder.transition("2次元姿勢推定")
         update_progress(
             request.progressId,
             {
@@ -716,14 +842,23 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
         )
 
         end_time = time.time()
+        motionbert_cache_hit = result["motionbertCache"]["hit"]
+        similarity_cache_hit = result["similarityCache"]["hit"]
         log_api_call(
             "similar_motion_from_path",
             start_time,
             end_time,
             f"Processed {len(result['candidates'])} similar motion candidates, "
             f"alphapose_cache_hit={alphapose_cache_hit}, "
-            f"motionbert_cache_hit={result['motionbertCache']['hit']}, "
-            f"similarity_cache_hit={result['similarityCache']['hit']}",
+            f"motionbert_cache_hit={motionbert_cache_hit}, "
+            f"similarity_cache_hit={similarity_cache_hit}",
+        )
+        experiment_recorder.finish(
+            "success",
+            result_count=len(result["candidates"]),
+            alphapose_cache_hit=alphapose_cache_hit,
+            motionbert_cache_hit=motionbert_cache_hit,
+            similarity_cache_hit=similarity_cache_hit,
         )
         success = True
         result["alphaposeCache"] = {"hit": alphapose_cache_hit}
@@ -733,19 +868,48 @@ async def detect_similar_motion_from_path(request: SimilarMotionPathRequest):
         end_time = time.time()
         error_info = _format_subprocess_error(error, job_dir)
         log_api_call("similar_motion_from_path", start_time, end_time, f"Subprocess error: {error_info['stderr'][:200]}")
+        experiment_recorder.finish(
+            "failed",
+            alphapose_cache_hit=alphapose_cache_hit,
+            motionbert_cache_hit=motionbert_cache_hit,
+            similarity_cache_hit=similarity_cache_hit,
+            error=error_info["stderr"][:500],
+        )
         return JSONResponse(status_code=500, content=error_info)
     except ValueError as error:
         end_time = time.time()
         log_api_call("similar_motion_from_path", start_time, end_time, f"Invalid request: {str(error)}")
+        experiment_recorder.finish(
+            "failed",
+            alphapose_cache_hit=alphapose_cache_hit,
+            motionbert_cache_hit=motionbert_cache_hit,
+            similarity_cache_hit=similarity_cache_hit,
+            error=str(error),
+        )
         return JSONResponse(status_code=422, content={"message": "Invalid request", "error": str(error)})
     except Exception as error:
         end_time = time.time()
         log_api_call("similar_motion_from_path", start_time, end_time, f"Error: {str(error)}")
+        experiment_recorder.finish(
+            "failed",
+            alphapose_cache_hit=alphapose_cache_hit,
+            motionbert_cache_hit=motionbert_cache_hit,
+            similarity_cache_hit=similarity_cache_hit,
+            error=str(error),
+        )
         content = {"message": "An error occurred", "error": str(error)}
         if job_dir:
             content["job_dir"] = job_dir
         return JSONResponse(status_code=500, content=content)
     finally:
+        if not experiment_recorder.finished:
+            experiment_recorder.finish(
+                "failed",
+                alphapose_cache_hit=alphapose_cache_hit,
+                motionbert_cache_hit=motionbert_cache_hit,
+                similarity_cache_hit=similarity_cache_hit,
+                error="Request ended before completion",
+            )
         if job_dir:
             if success:
                 cleanup_job_dir(job_dir)

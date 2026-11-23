@@ -239,7 +239,11 @@ const getManagedApiRuntime = (aiRoot?: string) => {
   }
 }
 
-export const startApiServer = async (projectRoot: string, aiRoot?: string) => {
+export const startApiServer = async (
+  projectRoot: string,
+  aiRoot?: string,
+  logDir?: string
+) => {
   updateStatus({
     status: 'starting',
     managed: false,
@@ -298,7 +302,10 @@ export const startApiServer = async (projectRoot: string, aiRoot?: string) => {
     ],
     {
       cwd: projectRoot,
-      env: runtime.env
+      env: {
+        ...runtime.env,
+        ...(logDir ? { MONBLAN_LOG_DIR: logDir } : {})
+      }
     }
   )
 
@@ -346,7 +353,8 @@ export const stopApiServer = () => {
 
 export const restartApiServer = async (
   projectRoot: string,
-  aiRoot?: string
+  aiRoot?: string,
+  logDir?: string
 ) => {
   const runningProcess = apiProcess
   updateStatus({ status: 'stopped' })
@@ -358,5 +366,5 @@ export const restartApiServer = async (
     apiProcess = null
     await Promise.race([processExited, sleep(3000)])
   }
-  return startApiServer(projectRoot, aiRoot)
+  return startApiServer(projectRoot, aiRoot, logDir)
 }

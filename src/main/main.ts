@@ -188,7 +188,8 @@ ipcMain.handle('api:refresh-status', async () => {
 ipcMain.handle('api:restart', async () =>
   restartApiServer(
     runtimePaths.runtimeRoot,
-    getAiSetupRoot(app.getPath('userData'))
+    getAiSetupRoot(app.getPath('userData')),
+    path.join(app.getPath('userData'), 'logs')
   )
 )
 ipcMain.handle('ai-setup:get-status', async () =>
@@ -462,7 +463,8 @@ app
     }
     startApiServer(
       runtimePaths.runtimeRoot,
-      getAiSetupRoot(app.getPath('userData'))
+      getAiSetupRoot(app.getPath('userData')),
+      path.join(app.getPath('userData'), 'logs')
     ).catch((error) => {
       log.error('Failed to start API server', error)
     })
