@@ -1,7 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cu118
 
 # PyTorch / CUDA 11.8
-torch==2.3.0+cu118
+torch==2.13.0
 torchvision==0.18.0+cu118
 
 # MONBLAN API
